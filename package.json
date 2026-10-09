@@ -1,0 +1,95 @@
+{
+  "name": "spreadsheet-viewer",
+  "displayName": "Spreadsheet Viewer",
+  "description": "This vscode extension gives the hability to view spreadsheets",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.137.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "spreadsheet-viewer.open",
+        "title": "Visualizar en Spreadsheet"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "spreadsheet-viewer.editor",
+        "displayName": "Spreadsheet Viewer",
+        "selector": [
+          {
+            "filenamePattern": "**/*.[cC][sS][vV]"
+          },
+          {
+            "filenamePattern": "**/*.[xX][lL][sS][xX]"
+          },
+          {
+            "filenamePattern": "**/*.[oO][dD][sS]"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "spreadsheet-viewer.open",
+          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|xlsx|ods)$/i",
+          "group": "1_modification"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "spreadsheet-viewer.open",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit && npm run check-types:webview",
+    "check-types:webview": "tsc --noEmit --project tsconfig.webview.json",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/papaparse": "^5.5.2",
+    "@types/vscode": "^1.140.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.5.0",
+    "npm-run-all": "^4.1.5",
+    "ts-loader": "9.6.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1",
+    "webpack": "5.104.1"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "0.9.12",
+    "fflate": "0.8.3",
+    "formualizer": "0.10.1",
+    "papaparse": "^5.7.0"
+  }
+}

@@ -1,0 +1,346 @@
+:root {
+	color-scheme: light dark;
+	font-family: var(--vscode-font-family), sans-serif;
+	font-size: var(--vscode-font-size);
+	color: var(--vscode-foreground);
+	background: var(--vscode-editor-background);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	padding: 16px;
+}
+
+main {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	height: calc(100vh - 32px);
+}
+
+header h1 {
+	font-size: 1.2rem;
+	font-weight: 600;
+	margin: 0 0 4px;
+}
+
+header p,
+#cell-state {
+	color: var(--vscode-descriptionForeground);
+	margin: 4px 0;
+}
+
+#header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+#reload-file {
+	min-height: 26px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 2px;
+	padding: 3px 10px;
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+	font: inherit;
+	cursor: pointer;
+}
+
+#reload-file:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground);
+}
+
+#reload-file:disabled {
+	opacity: 0.7;
+	cursor: wait;
+}
+
+#navigation-bar,
+#cell-navigation,
+#search-navigation {
+	display: flex;
+	align-items: end;
+	gap: 8px;
+}
+
+#navigation-bar {
+	flex-wrap: wrap;
+}
+
+#navigation-bar > label,
+#cell-navigation > label,
+#search-navigation > label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+#sheet-control[hidden] {
+	display: none;
+}
+
+#navigation-bar select,
+#cell-reference-input,
+#go-to-cell,
+#search-input,
+#previous-match,
+#next-match {
+	min-height: 26px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 2px;
+	padding: 3px 6px;
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	background: var(--vscode-input-background, var(--vscode-editor-background));
+	font: inherit;
+}
+
+#navigation-bar select {
+	max-width: min(28rem, 45vw);
+}
+
+#cell-reference-input {
+	width: 8rem;
+	font-family: var(--vscode-editor-font-family), monospace;
+}
+
+#search-input {
+	width: min(18rem, 32vw);
+}
+
+#previous-match,
+#next-match {
+	min-width: 2rem;
+	cursor: pointer;
+}
+
+#search-status {
+	align-self: center;
+	min-width: 7rem;
+	color: var(--vscode-descriptionForeground);
+}
+
+#go-to-cell {
+	cursor: pointer;
+}
+
+#selection {
+	border-left: 2px solid var(--vscode-focusBorder);
+	padding: 4px 10px;
+	min-height: 48px;
+}
+
+#cell-reference {
+	font-family: var(--vscode-editor-font-family), monospace;
+}
+
+#cell-value {
+	font-family: var(--vscode-editor-font-family), monospace;
+	margin: 4px 0 0;
+	max-height: 8rem;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+#cell-editor {
+	width: min(48rem, 100%);
+	min-height: 2.5rem;
+	resize: vertical;
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 2px;
+	padding: 6px;
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	background: var(--vscode-input-background, var(--vscode-editor-background));
+	font: inherit;
+	font-family: var(--vscode-editor-font-family), monospace;
+}
+
+#apply-cell-edit {
+	align-self: flex-start;
+	min-height: 26px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 2px;
+	padding: 3px 10px;
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+	cursor: pointer;
+}
+
+#save-status.save-error {
+	color: var(--vscode-errorForeground);
+}
+
+#grid-scroll {
+	min-height: 0;
+	flex: 1;
+	overflow: auto;
+	overscroll-behavior: contain;
+	overflow-anchor: none;
+	border: 1px solid var(--vscode-panel-border);
+}
+
+#grid-scroll:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+#grid-root {
+	font-family: var(--vscode-editor-font-family), monospace;
+	font-size: var(--vscode-editor-font-size);
+	overflow-anchor: none;
+}
+
+.rows-viewport {
+	position: relative;
+}
+
+.grid-row {
+	position: absolute;
+	left: 0;
+	display: grid;
+	width: max-content;
+	min-width: 100%;
+	grid-auto-rows: 1fr;
+}
+
+.grid-header {
+	position: sticky;
+	top: 0;
+	z-index: 4;
+	grid-auto-rows: 34px;
+}
+
+.grid-header > div {
+	height: 34px;
+}
+
+.grid-row > div {
+	min-width: 0;
+	height: 100%;
+	border-right: 1px solid var(--vscode-panel-border);
+	border-bottom: 1px solid var(--vscode-panel-border);
+	padding: 4px 8px;
+}
+
+.grid-cell {
+	position: relative;
+}
+
+.cell-inline-editor {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	resize: none;
+	overflow: auto;
+	border: 2px solid var(--vscode-focusBorder);
+	border-radius: 0;
+	padding: 3px 7px;
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	background: var(--vscode-input-background, var(--vscode-editor-background));
+	font: inherit;
+	line-height: 18px;
+}
+
+.column-header,
+.row-header,
+.corner-header {
+	background: var(--vscode-editorGroupHeader-tabsBackground);
+	color: var(--vscode-foreground);
+	font-weight: 500;
+	text-align: center;
+}
+
+.row-header {
+	position: sticky;
+	left: 0;
+	z-index: 2;
+	width: 64px;
+	min-width: 64px;
+	max-width: 64px;
+	padding-inline: 4px !important;
+	user-select: none;
+}
+
+.row-resize-handle {
+	position: absolute;
+	left: 0;
+	bottom: -4px;
+	z-index: 8;
+	width: 100%;
+	height: 8px;
+	cursor: row-resize;
+	touch-action: none;
+}
+
+.row-resize-handle:hover,
+.row-resize-handle:focus-visible {
+	background: var(--vscode-focusBorder);
+	outline: none;
+}
+
+.grid-header .row-header,
+.corner-header {
+	z-index: 5;
+	height: 34px !important;
+}
+
+.corner-header {
+	position: sticky;
+	left: 0;
+}
+
+.column-header {
+	position: relative;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	user-select: none;
+	padding-right: 12px !important;
+}
+
+.column-resize-handle {
+	position: absolute;
+	top: 0;
+	right: -4px;
+	z-index: 6;
+	width: 8px;
+	height: 100%;
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.column-resize-handle:hover,
+.column-resize-handle:focus-visible {
+	background: var(--vscode-focusBorder);
+	outline: none;
+}
+
+.grid-cell {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: pre;
+	cursor: cell;
+}
+
+.grid-cell.selected-cell {
+	position: relative;
+	z-index: 1;
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: -2px;
+}
+
+.grid-cell.missing-cell {
+	background: var(--vscode-editor-background);
+}
+
+.empty-state {
+	color: var(--vscode-descriptionForeground);
+	padding: 16px;
+}

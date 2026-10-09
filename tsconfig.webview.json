@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ES2022",
+        "lib": [
+            "ES2022",
+            "DOM"
+        ],
+        "types": [],
+        "skipLibCheck": true,
+        "sourceMap": true,
+        "rootDir": "src",
+        "strict": true,
+        "noEmit": true
+    },
+    "include": [
+        "src/protocol.ts",
+        "src/webview/**/*.ts"
+    ]
+}
