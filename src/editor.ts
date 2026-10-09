@@ -565,42 +565,57 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 </head>
 <body>
 	<main>
-		<header>
-			<h1>${escapeHtml(fileName)}</h1>
-			<p id="dimensions" role="status">Cargando archivo…</p>
-			<p id="format-note" role="status"></p>
-			<div id="header-actions">
-				<p id="save-status" role="status" aria-live="polite">Sin cambios</p>
-				<button id="reload-file" type="button" title="Volver a leer el archivo desde disco">↻ Recargar</button>
+		<header id="file-summary">
+			<div id="file-heading-row">
+				<div id="file-heading">
+					<h1>${escapeHtml(fileName)}</h1>
+					<p id="dimensions" role="status">Cargando archivo…</p>
+				</div>
+				<div id="header-actions">
+					<p id="save-status" role="status" aria-live="polite">Sin cambios</p>
+					<button id="reload-file" type="button" title="Volver a leer el archivo desde disco">↻ Recargar</button>
+				</div>
 			</div>
+			<p id="format-note" role="status"></p>
 		</header>
 		<nav id="navigation-bar" aria-label="Navegación de hoja y celda">
-			<label id="sheet-control" hidden>
-				Hoja
+			<label id="sheet-control" class="navigation-group" hidden>
+				<span class="control-label">Hoja</span>
 				<select id="sheet-selector" aria-label="Hoja activa"></select>
 			</label>
-			<div id="cell-navigation">
-				<label for="cell-reference-input">Ir a celda</label>
-				<input id="cell-reference-input" type="text" placeholder="B54" autocomplete="off" spellcheck="false">
-				<button id="go-to-cell" type="button">Ir</button>
+			<div id="cell-navigation" class="navigation-group">
+				<label class="control-label" for="cell-reference-input">Ir a celda</label>
+				<div class="control-row">
+					<input id="cell-reference-input" type="text" placeholder="B54" autocomplete="off" spellcheck="false">
+					<button id="go-to-cell" type="button">Ir</button>
+				</div>
 			</div>
-			<div id="search-navigation">
-				<label for="search-input">Buscar en la hoja</label>
-				<input id="search-input" type="search" autocomplete="off">
-				<button id="previous-match" type="button" aria-label="Coincidencia anterior" title="Coincidencia anterior">↑</button>
-				<button id="next-match" type="button" aria-label="Coincidencia siguiente" title="Coincidencia siguiente">↓</button>
-				<output id="search-status" aria-live="polite">Escribe para buscar</output>
+			<div id="search-navigation" class="navigation-group">
+				<label class="control-label" for="search-input">Buscar en la hoja</label>
+				<div class="control-row">
+					<input id="search-input" type="search" autocomplete="off" placeholder="Texto o valor">
+					<button id="previous-match" type="button" aria-label="Coincidencia anterior" title="Coincidencia anterior">↑</button>
+					<button id="next-match" type="button" aria-label="Coincidencia siguiente" title="Coincidencia siguiente">↓</button>
+					<output id="search-status" aria-live="polite">Escribe para buscar</output>
+				</div>
 			</div>
 		</nav>
 		<section id="selection" aria-live="polite">
-			<strong id="cell-reference">Sin selección</strong>
-			<p id="cell-state"></p>
-			<pre id="cell-value"></pre>
-			<label id="cell-edit-label" for="cell-editor">Editar valor crudo</label>
-			<textarea id="cell-editor" rows="2" spellcheck="false" aria-label="Editar valor crudo"></textarea>
-			<button id="apply-cell-edit" type="button">Aplicar</button>
+			<div id="selection-meta">
+				<strong id="cell-reference">Sin selección</strong>
+				<p id="cell-state" data-state="empty">Selecciona una celda para ver su contenido.</p>
+			</div>
+			<div id="selection-value">
+				<span class="control-label">Valor de la celda</span>
+				<pre id="cell-value"></pre>
+			</div>
+			<div id="cell-editor-group">
+				<label id="cell-edit-label" class="control-label" for="cell-editor">Editar valor crudo</label>
+				<textarea id="cell-editor" rows="2" spellcheck="false" aria-label="Editar valor crudo" disabled></textarea>
+				<button id="apply-cell-edit" type="button" disabled>Aplicar</button>
+			</div>
 		</section>
-		<div id="grid-scroll" aria-label="Vista de tabla">
+		<div id="grid-scroll" aria-label="Vista de tabla" tabindex="0">
 			<div id="grid-root"></div>
 		</div>
 	</main>

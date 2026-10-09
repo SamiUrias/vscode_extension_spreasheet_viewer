@@ -488,6 +488,10 @@ function selectCell(row: number, column: number): void {
 		: kind === 'empty' || (exists && values[column] === '')
 			? 'Celda vacía almacenada'
 			: kind === 'missing' || !exists ? 'Celda ausente' : 'Valor crudo';
+	cellState.dataset.state = kind === 'formula'
+		? snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods' ? 'formula'
+			: formulaResult?.status ?? 'calculating'
+		: kind === 'empty' || kind === 'missing' || !exists ? 'empty' : 'raw';
 	cellValue.textContent = exists ? values[column] : '';
 	if (kind === 'formula') {
 		const cache = getFormulaCache(row, column) || 'Sin valor almacenado';
