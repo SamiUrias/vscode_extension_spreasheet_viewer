@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"module": "ESNext",
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM"],
+		"types": ["node"],
+		"skipLibCheck": true,
+		"strict": true,
+		"noEmit": true,
+		"moduleResolution": "Bundler"
+	},
+	"include": [
+		"src/protocol.ts",
+		"src/formats/xlsx.ts",
+		"src/webview/formula-calculator.ts",
+		"src/test/formula-calculator.test.ts"
+	]
+}

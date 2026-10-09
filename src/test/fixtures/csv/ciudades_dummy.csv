@@ -1,0 +1,101 @@
+﻿ciudad,pais,continente,poblacion,area_km2,altitud_m,latitud,longitud,idioma_principal,zona_horaria
+Ciudad de Guatemala,Guatemala,América del Norte,3015018,997,1500,14.6349,-90.5069,Castellano,UTC-6
+Antigua Guatemala,Guatemala,América del Norte,46500,78,1530,14.5586,-90.7295,Español,UTC-6
+San Salvador,El Salvador,América del Norte,567700,72,658,13.6929,-89.2182,Español,UTC-6
+Tegucigalpa,Honduras,América del Norte,1500000,1514,990,14.0723,-87.1921,Español,UTC-6
+Managua,Nicaragua,América del Norte,1055000,544,83,12.114,-86.2362,Español,UTC-6
+San José,Costa Rica,América del Norte,342000,44,1172,9.9281,-84.0907,Español,UTC-6
+Ciudad de Panamá,Panamá,América del Norte,1060000,275,2,8.9824,-79.5199,Español,UTC-5
+Belmopán,Belice,América del Norte,20000,32,76,17.251,-88.759,Inglés,UTC-6
+Ciudad de México,México,América del Norte,9209944,1485,2240,19.4326,-99.1332,Español,UTC-6
+Nueva York,Estados Unidos,América del Norte,8804190,783.8,10,40.7128,-74.006,Inglés,UTC-5
+Toronto,Canadá,América del Norte,2794356,630.2,76,43.6532,-79.3832,Inglés,UTC-5
+La Habana,Cuba,América del Norte,2139500,728.3,59,23.1136,-82.3666,Español,UTC-5
+Santo Domingo,República Dominicana,América del Norte,965000,104.4,14,18.4861,-69.9312,Español,UTC-4
+Kingston,Jamaica,América del Norte,662000,480,9,17.9712,-76.7936,Inglés,UTC-5
+San Juan,Puerto Rico,América del Norte,342259,199,8,18.4655,-66.1057,Español,UTC-4
+Bogotá,Colombia,América del Sur,7181469,1587,2640,4.711,-74.0721,Español,UTC-5
+Medellín,Colombia,América del Sur,2569000,382,1495,6.2476,-75.5658,Español,UTC-5
+Quito,Ecuador,América del Sur,2011388,372,2850,-0.1807,-78.4678,Español,UTC-5
+Lima,Perú,América del Sur,9674755,2672,154,-12.0464,-77.0428,Español,UTC-5
+La Paz,Bolivia,América del Sur,755732,472,3640,-16.4897,-68.1193,Español,UTC-4
+Santiago,Chile,América del Sur,6257516,641,570,-33.4489,-70.6693,Español,UTC-4
+Buenos Aires,Argentina,América del Sur,3120612,203,25,-34.6037,-58.3816,Español,UTC-3
+Montevideo,Uruguay,América del Sur,1319108,201,43,-34.9011,-56.1645,Español,UTC-3
+Asunción,Paraguay,América del Sur,525294,117,43,-25.2637,-57.5759,Español,UTC-4
+São Paulo,Brasil,América del Sur,11451245,1521,760,-23.5505,-46.6333,Portugués,UTC-3
+Río de Janeiro,Brasil,América del Sur,6211223,1200,2,-22.9068,-43.1729,Portugués,UTC-3
+Caracas,Venezuela,América del Sur,1943901,433,900,10.4806,-66.9036,Español,UTC-4
+Georgetown,Guyana,América del Sur,118363,70,0,6.8013,-58.1551,Inglés,UTC-4
+Paramaribo,Surinam,América del Sur,240924,182,3,5.852,-55.2038,Neerlandés,UTC-3
+Londres,Reino Unido,Europa,8799728,1572,11,51.5072,-0.1276,Inglés,UTC+0
+París,Francia,Europa,2102650,105.4,35,48.8566,2.3522,Francés,UTC+1
+Madrid,España,Europa,3223334,604.3,667,40.4168,-3.7038,Español,UTC+1
+Roma,Italia,Europa,2754610,1285,21,41.9028,12.4964,Italiano,UTC+1
+Berlín,Alemania,Europa,3677472,891.7,34,52.52,13.405,Alemán,UTC+1
+Ámsterdam,Países Bajos,Europa,921402,219.3,2,52.3676,4.9041,Neerlandés,UTC+1
+Bruselas,Bélgica,Europa,188737,161.4,13,50.8503,4.3517,Neerlandés,UTC+1
+Viena,Austria,Europa,2002821,414.9,151,48.2082,16.3738,Alemán,UTC+1
+Praga,Chequia,Europa,1309000,496,235,50.0755,14.4378,Checo,UTC+1
+Varsovia,Polonia,Europa,1863056,517,100,52.2297,21.0122,Polaco,UTC+1
+Atenas,Grecia,Europa,664046,39,70,37.9838,23.7275,Griego,UTC+2
+Estocolmo,Suecia,Europa,984748,188,28,59.3293,18.0686,Sueco,UTC+1
+Oslo,Noruega,Europa,709037,454,23,59.9139,10.7522,Noruego,UTC+1
+Copenhague,Dinamarca,Europa,653664,86,14,55.6761,12.5683,Danés,UTC+1
+Helsinki,Finlandia,Europa,658864,213.8,25,60.1699,24.9384,Finés,UTC+2
+Dublín,Irlanda,Europa,592713,117.8,20,53.3498,-6.2603,Irlandés,UTC+0
+Lisboa,Portugal,Europa,545923,100,2,38.7223,-9.1393,Portugués,UTC+0
+Zúrich,Suiza,Europa,434008,87.9,408,47.3769,8.5417,Alemán,UTC+1
+Kiev,Ucrania,Europa,2952301,839,179,50.4501,30.5234,Ucraniano,UTC+2
+Moscú,Rusia,Europa,13104177,2511,156,55.7558,37.6173,Ruso,UTC+3
+Estambul,Turquía,Europa/Asia,15636243,5461,39,41.0082,28.9784,Turco,UTC+3
+El Cairo,Egipto,África,10100000,3085,23,30.0444,31.2357,Árabe,UTC+2
+Lagos,Nigeria,África,15388000,1171,41,6.5244,3.3792,Inglés,UTC+1
+Nairobi,Kenia,África,4397073,696,1795,-1.2921,36.8219,Suajili,UTC+3
+Adís Abeba,Etiopía,África,3352000,527,2355,8.9806,38.7578,Amárico,UTC+3
+Accra,Ghana,África,2388000,225,61,5.6037,-0.187,Inglés,UTC+0
+Dakar,Senegal,África,1146053,83,22,14.7167,-17.4677,Francés,UTC+0
+Casablanca,Marruecos,África,3359818,220,58,33.5731,-7.5898,Árabe,UTC+1
+Argel,Argelia,África,3415811,363,424,36.7538,3.0588,Árabe,UTC+1
+Túnez,Túnez,África,1056247,212,4,36.8065,10.1815,Árabe,UTC+1
+Kampala,Uganda,África,1680600,189,1190,0.3476,32.5825,Inglés,UTC+3
+Dar es Salaam,Tanzania,África,4364541,1393,55,-6.7924,39.2083,Suajili,UTC+3
+Kinshasa,República Democrática del Congo,África,17071000,9965,240,-4.4419,15.2663,Francés,UTC+1
+Luanda,Angola,África,2571861,116,6,-8.839,13.2894,Portugués,UTC+1
+Maputo,Mozambique,África,1101170,347,47,-25.9692,32.5732,Portugués,UTC+2
+Johannesburgo,Sudáfrica,África,5635127,1645,1753,-26.2041,28.0473,Inglés,UTC+2
+Ciudad del Cabo,Sudáfrica,África,433688,400,25,-33.9249,18.4241,Afrikáans,UTC+2
+Riad,Arabia Saudita,Asia,7676654,1973,612,24.7136,46.6753,Árabe,UTC+3
+Dubái,Emiratos Árabes Unidos,Asia,3331420,4114,16,25.2048,55.2708,Árabe,UTC+4
+Doha,Catar,Asia,1186023,132,10,25.2854,51.531,Árabe,UTC+3
+Teherán,Irán,Asia,8693706,730,1191,35.6892,51.389,Persa,UTC+3:30
+Jerusalén,Israel,Asia,971800,125,754,31.7683,35.2137,Hebreo,UTC+2
+Amán,Jordania,Asia,4007526,1680,757,31.9539,35.9106,Árabe,UTC+2
+Bagdad,Irak,Asia,8126755,4555,34,33.3152,44.3661,Árabe,UTC+3
+Karachi,Pakistán,Asia,14910352,3780,8,24.8607,67.0011,Urdu,UTC+5
+Nueva Delhi,India,Asia,16787941,1484,216,28.6139,77.209,Hindi,UTC+5:30
+Mumbai,India,Asia,12442373,603,14,19.076,72.8777,Maratí,UTC+5:30
+Daca,Bangladés,Asia,10356500,306,4,23.8103,90.4125,Bengalí,UTC+6
+Katmandú,Nepal,Asia,845767,49.5,1400,27.7172,85.324,Nepalí,UTC+5:45
+Bangkok,Tailandia,Asia,10539000,1569,1,13.7563,100.5018,Tailandés,UTC+7
+Hanói,Vietnam,Asia,8053663,3359,16,21.0285,105.8542,Vietnamita,UTC+7
+Yakarta,Indonesia,Asia,10562088,661.5,8,-6.2088,106.8456,Indonesio,UTC+7
+Singapur,Singapur,Asia,5638700,733.1,15,1.3521,103.8198,Inglés,UTC+8
+Kuala Lumpur,Malasia,Asia,1982112,243,66,3.139,101.6869,Malayo,UTC+8
+Manila,Filipinas,Asia,1846513,42.3,16,14.5995,120.9842,Filipino,UTC+8
+Hong Kong,China,Asia,7482500,1114,32,22.3193,114.1694,Cantonés,UTC+8
+Shanghái,China,Asia,24870895,6340,4,31.2304,121.4737,Mandarín,UTC+8
+Pekín,China,Asia,21893095,16410,43,39.9042,116.4074,Mandarín,UTC+8
+Seúl,Corea del Sur,Asia,9720846,605,38,37.5665,126.978,Coreano,UTC+9
+Tokio,Japón,Asia,13960000,2194,40,35.6762,139.6503,Japonés,UTC+9
+Osaka,Japón,Asia,2753862,225,23,34.6937,135.5023,Japonés,UTC+9
+Taipéi,Taiwán,Asia,2603000,272,10,25.033,121.5654,Mandarín,UTC+8
+Sídney,Australia,Oceanía,5312163,12368,58,-33.8688,151.2093,Inglés,UTC+10
+Melbourne,Australia,Oceanía,5078193,9993,31,-37.8136,144.9631,Inglés,UTC+10
+Auckland,Nueva Zelanda,Oceanía,1657200,1086,196,-36.8509,174.7645,Inglés,UTC+12
+Suva,Fiyi,Oceanía,93970,26,5,-18.1248,178.4501,Inglés,UTC+12
+Port Moresby,Papúa Nueva Guinea,Oceanía,364125,240,35,-9.4438,147.1803,Tok Pisin,UTC+10
+Canberra,Australia,Oceanía,431380,814,577,-35.2809,149.13,Inglés,UTC+10
+Perth,Australia,Oceanía,2141834,6417,46,-31.9505,115.8605,Inglés,UTC+8
+Wellington,Nueva Zelanda,Oceanía,215100,442,31,-41.2866,174.7756,Inglés,UTC+12
+Hagatña,Guam,Oceanía,1051,30,16,13.4757,144.7489,Chamorro,UTC+10
