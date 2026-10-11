@@ -1033,14 +1033,14 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 **Aceptación:** pruebas para filas reordenadas y cambio de alturas; al desplazar, no se recorren todas las filas para reconstruir offsets; navegación y selección se conservan. **Fuera:** virtualizar columnas o cambiar cálculo.
 
 - [x] Cachear alturas y offsets por identidad de proyección y revisión de dimensiones de fila.
-- [x] Probar orden de filas, offsets acumulados y revisión tras resize; `test:grid-layout` pasa y también cubre ventanas horizontales y merges.
+- [x] Probar orden de filas, offsets acumulados y revisión tras resize; `test:grid-layout` pasa y también cubre ventanas horizontales y merges. Reejecutado el 2026-10-11 con Node 24.21.0: pasan seis grupos para muestreo, altura de filas, offsets proyectados, virtualización/overscan, columnas congeladas y merges.
 - [ ] Medir scroll con datos de 35 290 filas en Extension Host y registrar p50/p95. Los tests verifican offsets y caché, pero no miden render, interacción ni rendimiento visual.
 
 #### V2-19B2 — Virtualización horizontal
 
 **Depende de:** V2-19B1. **Archivos:** grid/layout/styles/tests. **Pasos:** crear solo nodos de celdas visibles más overscan por ancho/scroll, manteniendo las pistas de columnas completas del CSS grid. Mantener encabezados, filtros y orden de las hasta 256 columnas existentes; columnas congeladas siguen renderizadas. Conservar selección, navegación, búsqueda, combinaciones y redimensionamiento.
 
-**Estado local:** implementación completada en `edf32c0`; `npm run test:grid-layout` pasa ventanas visibles, overscan, columnas congeladas, offsets de filas y merges dentro/fuera del viewport. **Pendiente de verificación:** inspeccionar DOM y navegación horizontal en Extension Host, incluyendo foco/IME, columnas congeladas, combinaciones y resize. La prueba de layout es de modelo y no certifica la interacción visual. **Fuera:** worker de fórmulas.
+**Estado local:** implementación completada en `edf32c0`; `npm run test:grid-layout` pasa ventanas visibles, overscan, columnas congeladas, offsets de filas y merges dentro/fuera del viewport. Reejecutado el 2026-10-11 con Node 24.21.0: seis grupos pasan. **Pendiente de verificación:** inspeccionar DOM y navegación horizontal en Extension Host, incluyendo foco/IME, columnas congeladas, combinaciones y resize. La prueba de layout es de modelo y no certifica la interacción visual. **Fuera:** worker de fórmulas.
 
 #### V2-19B3 — Worker local de fórmulas
 
