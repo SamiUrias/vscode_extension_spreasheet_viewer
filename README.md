@@ -61,7 +61,7 @@ Sorting and filtering only change the visible projection. The source rows and th
 
 Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Paste TSV into the focused grid to apply the whole range as one undoable edit; a single value fills the selected range. Press `Delete` or `Backspace` to clear selected contents. Paste and clear are disabled for sorted, filtered, or searched views to prevent changes landing on unexpected rows. Formulas and unsupported cells are rejected by the edit preflight. Moving ranges is not available yet.
 
-For editable CSV files, **Insertar fila** adds an empty row below the selection, **Añadir fila** adds one at the end, and **Eliminar fila(s)** removes the selected range after confirmation. The actions are disabled while sorting, filtering, or searching; their visibility is controlled by `spreadsheet-viewer.csv.showRowActions`.
+For editable CSV files, **Insertar fila** adds an empty row below the selection, **Añadir fila** adds one at the end, and **Eliminar fila(s)** removes the selected range after confirmation. If the CSV has no rows or columns, **Añadir fila** asks how many fields the first record should contain. The actions are disabled while sorting, filtering, or searching; their visibility is controlled by `spreadsheet-viewer.csv.showRowActions`.
 
 ### Adjust the view
 

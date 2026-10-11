@@ -115,6 +115,22 @@ suite('CSV reader', () => {
 		assert.throws(() => serializeCsvRowOperation(table, { kind: 'delete', rows: [1] }), /registros de datos/);
 	});
 
+	test('CSV row operations create the first chosen-width record and preserve UTF-16 byte order', () => {
+		const empty = parseCsvBytes(new Uint8Array());
+		const first = serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [['001', '', 'three']] });
+		assert.equal(new TextDecoder().decode(first), '001,,three');
+		assert.deepStrictEqual(parseCsvBytes(first).rows, [['001', '', 'three']]);
+		assert.throws(() => serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [[]] }), /límites/);
+		assert.throws(() => serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [['a'], ['b', 'c']] }), /ancho/);
+		for (const littleEndian of [true, false]) {
+			const source = encodeUtf16('name,value\r\nfirst,1\r\n', littleEndian);
+			const table = parseCsvBytes(source);
+			const inserted = serializeCsvRowOperation(table, { kind: 'insert', index: 1, rows: [['next', '2']] });
+			assert.deepStrictEqual([...inserted.slice(0, 2)], littleEndian ? [0xff, 0xfe] : [0xfe, 0xff]);
+			assert.deepStrictEqual(parseCsvBytes(inserted).rows, [['name', 'value'], ['next', '2'], ['first', '1']]);
+		}
+	});
+
 	test('CSV model undo/redo and invalid edits preserve the prior value', () => {
 		const table = parseUtf8('id,value\n001,0.25000000000000000001');
 		const session = new SpreadsheetEditSession(table);

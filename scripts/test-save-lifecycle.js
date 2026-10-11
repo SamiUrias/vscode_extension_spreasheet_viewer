@@ -91,6 +91,20 @@ exports.activate = context => {
 			return provider.applyCsvRowOperation(document, panel, { type: 'csvRowOperation', kind: 'insert',
 				documentId: document.documentId, revision: document.revision, sheetId: document.sheetId(0), index });
 		},
+		appendFirstCsvRow(width) {
+			const panel = provider.panels.get(document.uri.toString())?.values().next().value;
+			if (!panel) {throw new Error('The empty CSV custom editor panel is not registered.');}
+			const original = vscode.window.showInputBox;
+			vscode.window.showInputBox = async options => {
+				if (options.title !== 'Añadir el primer registro CSV') {throw new Error('Unexpected Quick Input prompt.');}
+				const validation = options.validateInput?.(String(width));
+				if (validation) {throw new Error('The chosen width was rejected: ' + validation);}
+				return String(width);
+			};
+			return provider.applyCsvRowOperation(document, panel, { type: 'csvRowOperation', kind: 'append',
+				documentId: document.documentId, revision: document.revision, sheetId: document.sheetId(0) })
+				.finally(() => {vscode.window.showInputBox = original;});
+		},
 		commitFormula(sheetIndex, row, column, formula) {
 			return provider.applyFormulaEdit(document, { type: 'editFormula', documentId: document.documentId,
 				revision: document.revision, sheetId: document.sheetId(sheetIndex), sheetIndex, row, column, formula });
@@ -170,6 +184,21 @@ exports.run = async () => {
 	await waitFor('CSV row insertion redo', saved(inserted));
 	await vscode.commands.executeCommand('undo');
 	await waitFor('CSV row insertion restored', saved(batch));
+	await vscode.window.tabGroups.close(tab());
+	const emptyCsvUri = vscode.Uri.file(path.join(__dirname, 'empty.csv'));
+	await writeFile(emptyCsvUri.fsPath, '');
+	await vscode.commands.executeCommand('vscode.openWith', emptyCsvUri, 'spreadsheet-viewer.editor');
+	await waitFor('empty CSV open', async () => api.document?.uri.toString() === emptyCsvUri.toString(), false);
+	const emptyTab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
+		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === emptyCsvUri.toString());
+	await waitFor('empty CSV panel ready', async () => emptyTab()?.isDirty === false);
+	await api.appendFirstCsvRow(3);
+	await waitFor('first empty CSV row autosave', async () => (await readFile(emptyCsvUri.fsPath, 'utf8')) === ',,');
+	await vscode.commands.executeCommand('undo');
+	await waitFor('empty CSV row undo', async () => (await readFile(emptyCsvUri.fsPath, 'utf8')) === '');
+	await vscode.commands.executeCommand('redo');
+	await waitFor('empty CSV row redo', async () => (await readFile(emptyCsvUri.fsPath, 'utf8')) === ',,');
+	await vscode.window.tabGroups.close(emptyTab());
 	api.commit(1, 1, '30');
 	api.commit(2, 1, '40');
 	await waitFor('rapid consecutive edits', saved(third));
@@ -242,7 +271,7 @@ exports.run = async () => {
 		assert.equal(await readFile(recoveryPath, 'utf8'), external, 'Save As must preserve the external source');
 	} finally {conflicted.dispose();}
 	await vscode.window.tabGroups.close(recoveryTab());
-	console.log('PASS: CSV consecutive edits, batch edit/clear, insert/undo/redo, in-flight save; XLSX formula lifecycle; recovery backup, undo, conflict, and Save As');
+	console.log('PASS: CSV consecutive edits, batch edit/clear, insert/undo/redo, empty CSV first row, in-flight save; XLSX formula lifecycle; recovery backup, undo, conflict, and Save As');
 };
 `);
 		// An integrated terminal can inherit this from VS Code's Node processes.

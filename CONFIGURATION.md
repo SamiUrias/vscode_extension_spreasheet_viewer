@@ -80,7 +80,7 @@ El botón **Restablecer vista** muestra una ayuda emergente al pasar el puntero 
 
 El botón **Limpiar orden** también muestra una ayuda breve al pasar el puntero o enfocarlo. Quita todos los criterios de orden activos; no cambia los datos del archivo.
 
-Las acciones de filas CSV muestran tooltips. Insertar y añadir crean un registro vacío del ancho de la tabla; eliminar pide confirmación. Las operaciones se pueden deshacer y respetan los registros de comentario y el formato del archivo. Se deshabilitan mientras haya orden, filtros o búsqueda activos, y una edición borrador se confirma antes de cambiar la estructura.
+Las acciones de filas CSV muestran tooltips. Insertar y añadir crean un registro vacío del ancho de la tabla; si el archivo está completamente vacío, **Añadir fila** solicita un ancho de 1 a 256 campos. Eliminar pide confirmación. Las operaciones se pueden deshacer y respetan los registros de comentario y el formato del archivo. Se deshabilitan mientras haya orden, filtros o búsqueda activos, y una edición borrador se confirma antes de cambiar la estructura.
 
 ## Detalles de comportamiento
 

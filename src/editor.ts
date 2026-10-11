@@ -1066,11 +1066,26 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				const answer = await vscode.window.showWarningMessage(`¿Eliminar ${message.rows?.length ?? 0} registro(s) CSV?`, { modal: true }, 'Eliminar');
 				if (answer !== 'Eliminar') {return;}
 			}
+			let columnCount = document.csv.columnCount;
+			if (message.kind === 'append' && document.csv.rowCount === 0 && columnCount === 0) {
+				const entered = await vscode.window.showInputBox({
+					title: 'Añadir el primer registro CSV',
+					prompt: 'El archivo está vacío. Indica cuántos campos tendrá el primer registro (1–256).',
+					value: '1',
+					validateInput: value => {
+						const count = Number(value);
+						return /^\d+$/.test(value) && Number.isInteger(count) && count >= 1 && count <= 256
+							? undefined : 'Escribe un número entero entre 1 y 256.';
+					},
+				});
+				if (entered === undefined) {return;}
+				columnCount = Number(entered);
+			}
 			await this.confirmDraftsBeforeSave(document);
 			const operation = message.kind === 'delete'
 				? { kind: 'delete' as const, rows: message.rows ?? [] }
 			: { kind: 'insert' as const, index: message.kind === 'append' ? document.csv.rowCount : message.index ?? -1,
-				rows: [Array.from({ length: document.csv.columnCount }, () => '')] };
+				rows: [Array.from({ length: columnCount }, () => '')] };
 			const transactionId = document.applyCsvRowOperation(operation);
 			const label = message.kind === 'delete' ? 'Eliminar registros CSV' : message.kind === 'append' ? 'Añadir registro CSV' : 'Insertar registro CSV';
 			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};

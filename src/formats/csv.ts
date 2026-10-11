@@ -217,12 +217,14 @@ export function serializeCsvRowOperation(table: CsvTable, operation: CsvRowOpera
 	const eol = nearestRecordEnding(text, recordStarts, operation.kind === 'insert' ? operation.index : undefined);
 	let output: string;
 	if (operation.kind === 'insert') {
+		const emptyTable = table.rowCount === 0 && table.columnCount === 0 && text.length === table.preamble.length;
+		const chosenWidth = emptyTable ? operation.rows[0]?.length ?? 0 : table.columnCount;
 		if (!Number.isInteger(operation.index) || operation.index < 0 || operation.index > table.rowCount
-			|| operation.rows.length === 0 || table.columnCount === 0 || table.rowCount + operation.rows.length > 50_000) {
+			|| operation.rows.length === 0 || chosenWidth < 1 || chosenWidth > 256 || table.rowCount + operation.rows.length > 50_000) {
 			throw new Error('La inserción CSV está fuera de los límites permitidos.');
 		}
 		const serialized = operation.rows.map(row => {
-			if (row.length !== table.columnCount || row.some(value => typeof value !== 'string')) {throw new Error('Cada registro nuevo debe tener el ancho de la tabla y valores de texto.');}
+			if (row.length !== chosenWidth || row.some(value => typeof value !== 'string')) {throw new Error('Cada registro nuevo debe tener el ancho de la tabla y valores de texto.');}
 			return row.map(value => encodeCsvField(value, table.delimiter, table.quoteChar, table.quotes, false)).join(table.delimiter);
 		}).join(eol);
 		const position = operation.index < table.rowCount ? recordStarts[operation.index]! : text.length;

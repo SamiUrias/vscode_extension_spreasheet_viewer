@@ -6,6 +6,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+### Añadido
+
+- Al añadir una fila a un CSV completamente vacío, se puede elegir cuántos campos tendrá el primer registro.
+
 ### Corregido
 
 - Un backup recuperado respeta el modo de guardado manual y no escribe cambios al archivo hasta que el usuario los guarde.
