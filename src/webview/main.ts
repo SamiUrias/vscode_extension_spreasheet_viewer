@@ -105,6 +105,7 @@ const overscan = 6;
 let snapshot: CsvDataMessage | XlsxDataMessage | undefined;
 let formulaResults: Record<string, FormulaEvaluation> = {};
 let formulaCalculationGeneration = 0;
+let formulaWorkbookSnapshot: { documentId: string; revision: number; base64: string } | undefined;
 let reloadWatchdog: number | undefined;
 let startupDataTimer: number | undefined;
 let startupDataAttempts = 0;
@@ -272,11 +273,18 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		}
 		return;
 	}
-
 	if (isXlsxDataMessage(event.data)
 		&& event.data.requestId !== undefined
 		&& event.data.requestId !== pendingSheetRequestId) {
 		return;
+	}
+	if (isXlsxDataMessage(event.data) && event.data.fileFormat !== 'ods') {
+		if (event.data.workbookBase64) {
+			formulaWorkbookSnapshot = { documentId: event.data.documentId, revision: event.data.revision, base64: event.data.workbookBase64 };
+		} else if (formulaWorkbookSnapshot?.documentId === event.data.documentId
+			&& formulaWorkbookSnapshot.revision === event.data.revision) {
+			event.data.workbookBase64 = formulaWorkbookSnapshot.base64;
+		}
 	}
 	const previousSheetIndex = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : undefined;
 	const previousSheetId = snapshot?.sheetId;
@@ -2019,7 +2027,7 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 		&& typeof candidate.formulaCaches === 'object'
 		&& candidate.formulaCaches !== null
 		&& (candidate.fileFormat === undefined || candidate.fileFormat === 'xlsx' || candidate.fileFormat === 'ods')
-		&& (candidate.fileFormat === 'ods' || typeof candidate.workbookBase64 === 'string')
+		&& (candidate.fileFormat === 'ods' || candidate.workbookBase64 === undefined || typeof candidate.workbookBase64 === 'string')
 		&& (candidate.date1904 === undefined || typeof candidate.date1904 === 'boolean')
 		&& (candidate.cellStyleIndexes === undefined || Array.isArray(candidate.cellStyleIndexes)
 			&& candidate.cellStyleIndexes.length === candidate.rowCount

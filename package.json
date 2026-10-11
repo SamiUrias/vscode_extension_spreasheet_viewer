@@ -241,6 +241,7 @@
     "compile-tests": "tsc -p . --outDir out",
     "test:formulas": "node scripts/test-formulas.js",
     "test:formula-references": "node scripts/test-formulas.js --reference",
+		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
     "test:save-lifecycle": "node scripts/test-save-lifecycle.js",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",

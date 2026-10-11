@@ -31,6 +31,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private readonly conflictPrompts = new Set<string>();
 	private readonly ownWrites = new WeakMap<SpreadsheetDocument, Uint8Array[]>();
 	private readonly formulaSnapshots = new WeakMap<SpreadsheetDocument, { revision: number; base64: string }>();
+	private readonly formulaSnapshotsSent = new WeakMap<vscode.WebviewPanel, { documentId: string; revision: number }>();
 	private readonly panelDrafts = new Map<vscode.WebviewPanel, Extract<WebviewToExtensionMessage, { type: 'draftState' }>>();
 	private readonly draftTransactions = new Map<vscode.WebviewPanel, { current: Extract<WebviewToExtensionMessage, { type: 'draftState' }>; active: boolean }>();
 	private readonly draftCaptureWaiters = new Map<number, { panel: vscode.WebviewPanel; timer: ReturnType<typeof setTimeout>; resolve: (ok: boolean) => void }>();
@@ -169,6 +170,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				return;
 			}
 			if (isWebviewReadyMessage(message)) {
+				this.formulaSnapshotsSent.delete(panel);
 				const restored = this.readViewState(document.uri, 'edit');
 				const workbook = document.xlsx ?? document.ods;
 				const recoveredDraft = document.takeRecoveredDraft();
@@ -314,8 +316,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 		const sheet = workbook.sheets[sheetIndex];
 		const snapshot = document.editSession.getSheetSnapshot(sheetIndex);
-		const workbookBase64 = document.xlsx ? this.getFormulaSnapshot(document) : undefined;
-		const workbookMatchesSavedBytes = workbookBase64 === undefined || workbookBase64 === Buffer.from(document.sourceBytes).toString('base64');
+		const workbookHasFormulas = document.xlsx?.sheets.some(item => item.cellTypes.some(row => row.includes('formula'))) ?? false;
+		const formulaSnapshot = workbookHasFormulas ? this.getFormulaSnapshot(document) : undefined;
+		const sentSnapshot = this.formulaSnapshotsSent.get(panel);
+		const workbookBase64 = formulaSnapshot && (sentSnapshot?.documentId !== document.documentId || sentSnapshot.revision !== document.revision)
+			? formulaSnapshot : undefined;
+		const workbookMatchesSavedBytes = formulaSnapshot === undefined || formulaSnapshot === Buffer.from(document.sourceBytes).toString('base64');
 		const sheetProtected = document.ods?.sheets[sheetIndex]?.odsMetadata?.protected === true;
 		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
 		const data: XlsxDataMessage = {
@@ -374,7 +380,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			columnCount: sheet.columnCount,
 			warnings: workbook.warnings,
 		};
-		void panel.webview.postMessage(data);
+		void panel.webview.postMessage(data).then(sent => {
+			if (sent && workbookBase64) {this.formulaSnapshotsSent.set(panel, { documentId: document.documentId, revision: document.revision });}
+		});
 	}
 
 	private getFormulaSnapshot(document: SpreadsheetDocument): string {
