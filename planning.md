@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-18B están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18 y V2-18B aún requiere abrir fixtures guardados en Excel o LibreOffice. V2-19A1 está implementada; V2-19A2 (CSV) y V2-19A3 (XLSX/ODS sin fórmulas) tienen la integración de Extension Host pendiente; V2-19B1 está implementada y V2-19B2 está en progreso. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 sigue en progreso. Hay implementación local y pruebas focalizadas hasta V2-20B, además de la corrección y pruebas locales de V2-18B. V2-16/17, V2-19A2/19A3 y V2-19B2/B3 mantienen verificaciones visuales o de Extension Host pendientes; VS Code instalado abortó con `SIGABRT` al ejecutar el harness con Node 24. V2-18B requiere también abrir el archivo en Excel o LibreOffice, cuyas aplicaciones no iniciaron en este entorno. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -989,7 +989,8 @@ Las tarjetas V2-00A a V2-20A tienen implementación local; desde V2-16A siguen p
 
 - [x] Emite delta para ediciones CSV de celdas cuando la firma del header no cambia; header y otros cambios conservan snapshot completo.
 - [x] Webview valida `baseRevision`, actualiza solo filas tocadas y solicita snapshot completo ante revisión inesperada o coordenadas no válidas.
-- [ ] Probar interacción real del provider/Webview y medir los bytes de un cambio de celda frente al snapshot completo. `npm run test:save-lifecycle` se intentó el 2026-10-11, pero el runner no pudo descargar VS Code por DNS (`ENOTFOUND update.code.visualstudio.com`); registrar tamaños del delta y snapshot en próximas mediciones del benchmark.
+- [x] Añadir `npm run test:cell-deltas` para compilar y ejecutar los tests focalizados de inmutabilidad, celdas múltiples, coordenadas, revisión y documentos distintos; el benchmark registra 129 bytes para un delta frente a 1,779,673 bytes para el mensaje CSV completo.
+- [ ] Verificar la interacción real provider/Webview (selección, filtros, borrador y resync). `npm run test:save-lifecycle` se ejecutó con Node 24.21.0 y VS Code instalado, pero el proceso termina con `SIGABRT` antes de cargar las pruebas; no se marca integración como verificada.
 
 #### V2-19A3 — Deltas de edición XLSX/ODS sin fórmulas
 
@@ -999,7 +1000,7 @@ Las tarjetas V2-00A a V2-20A tienen implementación local; desde V2-16A siguen p
 
 - [x] Enviar deltas con valor/tipo/kind/capability solo si ninguna hoja contiene fórmulas; enviar snapshot completo si las hay.
 - [x] Aplicar deltas solo a la hoja activa, avanzar revisión de paneles en otras hojas y solicitar resync tras desfase.
-- [ ] Verificar cambios, celdas protegidas y fórmulas en Provider/Webview dentro de Extension Host; el intento de ejecutar VS Code está bloqueado por DNS.
+- [ ] Verificar cambios, celdas protegidas, fórmulas y metadatos en Provider/Webview dentro de Extension Host. `npm run test:save-lifecycle` con Node 24.21.0 y VS Code instalado termina con `SIGABRT` antes de cargar las pruebas; esta verificación sigue pendiente.
 
 #### V2-19B1 — Cache de offsets de filas proyectadas
 
