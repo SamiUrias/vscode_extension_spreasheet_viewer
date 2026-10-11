@@ -110,44 +110,60 @@ suite('Spreadsheet Viewer editor', () => {
 		}
 	});
 
-	test('opens a disk preview in its own read-only panel without changing the file', async () => {
+	test('creates a disk preview panel without changing the source bytes', async () => {
 		const directory = await mkdtemp(path.join(os.tmpdir(), 'spreadsheet-viewer-preview-'));
 		const uri = vscode.Uri.file(path.join(directory, 'preview.csv'));
 		const bytes = Buffer.from('name,value\nfirst,1\n');
+		const webviews = captureWebviewPanels();
 		await writeFile(uri.fsPath, bytes);
 		try {
 			await vscode.commands.executeCommand('spreadsheet-viewer.preview', uri);
-			await waitFor(() => findWebviewTabs('spreadsheet-viewer.preview').length === 1, 'disk preview tab');
-			assert.strictEqual(findWebviewTabs('spreadsheet-viewer.preview').length, 1);
+			assert.strictEqual(webviews.panels.length, 1);
+			assert.strictEqual(webviews.panels[0]?.viewType, 'spreadsheet-viewer.preview');
 			assert.deepStrictEqual(await readFile(uri.fsPath), bytes);
 		} finally {
-			for (const tab of findWebviewTabs('spreadsheet-viewer.preview')) {await vscode.window.tabGroups.close(tab);}
+			webviews.restore();
+			for (const panel of webviews.panels) {panel.dispose();}
 			await rm(directory, { recursive: true, force: true });
 		}
 	});
 
-	test('previews live CSV buffer changes without saving them to disk', async () => {
+	test('creates a preview panel for a dirty CSV buffer without saving it', async () => {
 		const directory = await mkdtemp(path.join(os.tmpdir(), 'spreadsheet-viewer-buffer-preview-'));
 		const uri = vscode.Uri.file(path.join(directory, 'buffer.csv'));
 		const original = Buffer.from('name,value\noriginal,1\n');
 		await writeFile(uri.fsPath, original);
 		const textDocument = await vscode.workspace.openTextDocument(uri);
+		const webviews = captureWebviewPanels();
 		try {
 			const edit = new vscode.WorkspaceEdit();
 			edit.replace(uri, new vscode.Range(textDocument.positionAt(0), textDocument.positionAt(textDocument.getText().length)), 'name,value\nchanged,2\n');
 			assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
 			await vscode.commands.executeCommand('spreadsheet-viewer.previewBuffer', uri);
-			await waitFor(() => findWebviewTabs('spreadsheet-viewer.preview').length === 1, 'buffer preview tab');
-			assert.strictEqual(findWebviewTabs('spreadsheet-viewer.preview').length, 1);
+			assert.strictEqual(webviews.panels.length, 1);
+			assert.strictEqual(webviews.panels[0]?.viewType, 'spreadsheet-viewer.preview');
 			assert.strictEqual(textDocument.isDirty, true);
 			assert.deepStrictEqual(await readFile(uri.fsPath), original);
 		} finally {
-			for (const tab of findWebviewTabs('spreadsheet-viewer.preview')) {await vscode.window.tabGroups.close(tab);}
+			webviews.restore();
+			for (const panel of webviews.panels) {panel.dispose();}
 			await vscode.commands.executeCommand('workbench.action.files.revert', uri);
 			await rm(directory, { recursive: true, force: true });
 		}
 	});
 });
+
+function captureWebviewPanels(): { panels: vscode.WebviewPanel[]; restore: () => void } {
+	const panels: vscode.WebviewPanel[] = [];
+	const windowApi = vscode.window as unknown as { createWebviewPanel: typeof vscode.window.createWebviewPanel };
+	const original = windowApi.createWebviewPanel;
+	windowApi.createWebviewPanel = (...args: Parameters<typeof original>) => {
+		const panel = original.apply(vscode.window, args);
+		panels.push(panel);
+		return panel;
+	};
+	return { panels, restore: () => {windowApi.createWebviewPanel = original;} };
+}
 
 function findCustomTabs(uri: vscode.Uri, viewType: string): vscode.Tab[] {
 	return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => {
@@ -156,17 +172,4 @@ function findCustomTabs(uri: vscode.Uri, viewType: string): vscode.Tab[] {
 			&& input.viewType === viewType
 			&& input.uri.toString() === uri.toString();
 	});
-}
-
-function findWebviewTabs(viewType: string): vscode.Tab[] {
-	return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab =>
-		tab.input instanceof vscode.TabInputWebview && tab.input.viewType === viewType);
-}
-
-async function waitFor(predicate: () => boolean, label: string, timeoutMs = 5000): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (!predicate()) {
-		if (Date.now() >= deadline) {assert.fail(`Timed out waiting for ${label} after ${timeoutMs}ms`);}
-		await new Promise(resolve => setTimeout(resolve, 25));
-	}
 }
