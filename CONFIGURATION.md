@@ -13,6 +13,7 @@ Ejemplo de `.vscode/settings.json`:
   "spreadsheet-viewer.csv.commentPrefix": "#",
   "spreadsheet-viewer.csv.firstRowHeader": true,
   "spreadsheet-viewer.csv.headerCase": "none",
+  "spreadsheet-viewer.xlsx.showStructureActions": true,
   "spreadsheet-viewer.view.restoreState": true,
   "spreadsheet-viewer.view.showResetButton": true,
   "spreadsheet-viewer.view.showClearSortButton": true,
@@ -35,6 +36,7 @@ Para probar el comportamiento de la extensión en este repositorio, `.vscode/set
 | `spreadsheet-viewer.csv.firstRowHeader` | Booleano: `true` o `false` | `true` | Si es `true`, usa el primer registro de datos (no un comentario) como etiqueta visual de las columnas. No elimina ni mueve esa fila: sigue apareciendo en la tabla como dato editable. |
 | `spreadsheet-viewer.csv.headerCase` | Cadena: `"none"`, `"upper"` o `"lower"` | `"none"` | Deja igual, convierte a mayúsculas o convierte a minúsculas las etiquetas visuales del encabezado. No cambia el texto guardado en el CSV. |
 | `spreadsheet-viewer.csv.showRowActions` | Booleano: `true` o `false` | `true` | Muestra u oculta las acciones **Insertar fila**, **Añadir fila** y **Eliminar fila(s)** en el editor CSV. No afecta a XLSX/ODS ni a las vistas previas. |
+| `spreadsheet-viewer.xlsx.showStructureActions` | Booleano: `true` o `false` | `true` | Muestra u oculta el menú para insertar o eliminar filas y columnas en el editor XLSX. Solo se aplican a libros que pasan el preflight de seguridad; no afecta CSV/ODS ni vistas previas. |
 | `spreadsheet-viewer.view.restoreState` | Booleano: `true` o `false` | `true` | Guarda y restaura por archivo, hoja y modo de vista la selección, scroll, búsqueda, orden, visibilidad de comentarios y tamaños manuales de columnas/filas. Con `false` no lee ni guarda este estado. No afecta el contenido, los cambios pendientes ni los backups del documento. |
 | `spreadsheet-viewer.view.showResetButton` | Booleano: `true` o `false` | `true` | Muestra u oculta el botón **Restablecer vista** en el editor y las vistas previas. Con `false` el botón no aparece; la acción de restablecimiento sigue disponible como **Spreadsheet Viewer: Restablecer vista de hoja** en la paleta de comandos. El cambio se refleja en las vistas que ya están abiertas. |
 | `spreadsheet-viewer.view.showClearSortButton` | Booleano: `true` o `false` | `true` | Permite mostrar **Limpiar orden** cuando hay criterios de orden activos. Con `false` oculta el botón en el editor y las vistas previas; el orden se puede quitar haciendo clic en el encabezado o usando el comando **Restablecer vista**. El cambio se refleja en las vistas abiertas. |

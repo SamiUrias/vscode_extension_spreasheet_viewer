@@ -188,6 +188,11 @@
           "default": true,
           "description": "Muestra acciones para insertar, añadir y eliminar registros CSV en el editor."
         },
+        "spreadsheet-viewer.xlsx.showStructureActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra las acciones para insertar y eliminar filas o columnas en libros XLSX compatibles."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,

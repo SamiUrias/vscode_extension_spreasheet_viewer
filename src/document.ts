@@ -5,13 +5,14 @@ import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
 import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
-import type { XlsxStructureOperation } from './formats/xlsx-structure';
+import { getXlsxStructureCapability, type XlsxStructureCapability, type XlsxStructureOperation } from './formats/xlsx-structure';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
 	readonly documentId = randomUUID();
 	csv: CsvTable | undefined;
 	xlsx: XlsxWorkbook | undefined;
+	xlsxStructureCapability: XlsxStructureCapability = { allowed: false, reason: 'El documento no es XLSX.' };
 	ods: OdsWorkbook | undefined;
 	sourceBytes: Uint8Array;
 	editSession: SpreadsheetEditSession;
@@ -27,6 +28,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		this.csvOptions = csvOptions;
 		this.sourceBytes = baselineBytes.slice();
 		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(uri, bytes, this.csvOptions));
+		if (this.xlsx) {this.xlsxStructureCapability = getXlsxStructureCapability(bytes);}
 		this.editSession = new SpreadsheetEditSession(this.csv, this.xlsx, this.xlsx ? bytes : undefined, this.ods, this.ods ? bytes : undefined);
 	}
 
@@ -87,6 +89,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 			}
 			if (this.xlsx && working.xlsx && baseline.sheets.some((sheet, index) => sheet.rowCount !== current.sheets[index]?.rowCount || sheet.columnCount !== current.sheets[index]?.columnCount)) {
 				this.xlsx = working.xlsx;
+				this.xlsxStructureCapability = getXlsxStructureCapability(workingBytes);
 				this.editSession = new SpreadsheetEditSession(undefined, working.xlsx, workingBytes);
 				return;
 			}
@@ -165,6 +168,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	replaceSavedBytes(bytes: Uint8Array, csvOptions?: CsvParseOptions): void {
 		if (csvOptions) {this.csvOptions = { ...csvOptions };}
 		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(this.uri, bytes, this.csvOptions));
+		this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(bytes) : { allowed: false, reason: 'El documento no es XLSX.' };
 		this.sourceBytes = bytes.slice();
 		this.editSession = new SpreadsheetEditSession(this.csv, this.xlsx, this.xlsx ? bytes : undefined, this.ods, this.ods ? bytes : undefined);
 		this.revision++;

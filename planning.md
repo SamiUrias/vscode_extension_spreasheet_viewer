@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-15B están implementadas; V2-16A y V2-16B1/B2 tienen implementación y pruebas focalizadas, con verificación de Extension Host pendiente por Node 18. Las verificaciones pendientes siguen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-17B están implementadas con pruebas focalizadas; V2-16 y V2-17 tienen verificaciones visuales/Extension Host pendientes por Node 18. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -942,6 +942,13 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A y V2
 **Depende de:** V2-17A/V2-13. **Archivos:** grid/editor/capabilities/tests. **Pasos:** menú accesible insertar/borrar filas/columnas; scope original, confirmar borrado y resolver pendientes; sort/filter deben limpiarse antes de inserción estructural. Mostrar bloqueo por capability en UI y revalidar host. Actualizar vista/estado tras commit y undo.
 
 **Aceptación:** misma columna/fila original afectada; undo un paso; no guardar libro bloqueado; operación fuera de tamaño rechaza todo; edición normal sigue disponible en libros fuera de perfil. **Fuera:** estructura ODS o gestión de hojas.
+
+- [x] Añadir menú **Estructura XLSX** con insertar fila arriba/abajo, insertar columna izquierda/derecha y eliminar filas/columnas seleccionadas; cada control incluye tooltip.
+- [x] Añadir `spreadsheet-viewer.xlsx.showStructureActions` (booleano, default `true`) para ocultar el menú y documentar su alcance en README y CONFIGURATION.md.
+- [x] Deshabilitar acciones con orden/filtros activos o cuando el preflight informa una causa; host revalida archivo, revisión, límites y perfil antes de operar.
+- [x] Confirmar eliminaciones; bloquear cambios pendientes y proyectar selección; registrar cada operación en el journal de undo/redo.
+- [x] Verificar tipos, lint, paquete de producción, capability/preflight y operaciones estructurales del modelo: 41 pruebas focalizadas pasan.
+- [ ] Verificar visualmente el menú, los modales, la selección, auto-save/guardado manual y undo/redo en Extension Host; el runner sigue bloqueado por Node 18.20.4 y dependencia `/v`.
 
 #### V2-18A — Ajuste de referencias de fórmulas
 

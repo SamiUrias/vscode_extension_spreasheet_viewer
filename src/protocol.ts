@@ -33,10 +33,15 @@ export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; vis
 export interface DisplayModeButtonVisibilityMessage { type: 'displayModeButtonVisibility'; visible: boolean; }
 export interface WorkbookAppearanceVisibilityMessage { type: 'workbookAppearanceVisibility'; visible: boolean; }
 export interface CsvRowActionsVisibilityMessage { type: 'csvRowActionsVisibility'; visible: boolean; }
+export interface XlsxStructureActionsVisibilityMessage { type: 'xlsxStructureActionsVisibility'; visible: boolean; }
 export interface FocusCellMessage { type: 'focusCell'; row: number; column: number; }
 export interface CsvRowOperationMessage {
 	type: 'csvRowOperation'; documentId: string; revision: number; sheetId: string;
 	kind: 'insert' | 'append' | 'delete'; index?: number; rows?: number[];
+}
+export interface XlsxStructureOperationMessage {
+	type: 'xlsxStructureOperation'; documentId: string; revision: number; sheetId: string; sheetIndex: number;
+	kind: 'insertRows' | 'deleteRows' | 'insertColumns' | 'deleteColumns'; index: number; count: number;
 }
 export interface RecoveredDraft { sheetIndex: number; row: number; column: number; value: string; }
 export interface RestoreCellDraftMessage { type: 'restoreCellDraft'; draft: RecoveredDraft; }
@@ -88,7 +93,7 @@ export interface DraftStateMessage {
 export interface DraftCaptureResultMessage { type: 'draftCaptureResult'; requestId: number; draft?: RecoveredDraft; }
 export interface CaptureDraftMessage { type: 'captureDraft'; requestId: number; }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditCellsMessage | CsvRowOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';
@@ -154,6 +159,7 @@ export interface XlsxDataMessage {
 	cellVisualStyles?: Array<CellVisualStyle>;
 	date1904?: boolean;
 	workbookBase64?: string;
+	structureCapability?: { allowed: boolean; reason?: string };
 	rowCount: number;
 	columnCount: number;
 	warnings: string[];
@@ -181,5 +187,5 @@ export interface CellCapability {
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
 export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | CsvRowActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

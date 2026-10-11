@@ -59,6 +59,10 @@ let showCopyButtons = !copyActions.hidden;
 const displayModeButton = requiredElement<HTMLButtonElement>('#toggle-display-mode');
 const displayModeTooltip = requiredElement<HTMLSpanElement>('#display-mode-tooltip');
 let showDisplayModeButton = !displayModeButton.hidden;
+const toggleXlsxStructureButton = requiredElement<HTMLButtonElement>('#toggle-xlsx-structure');
+const xlsxStructureActions = requiredElement<HTMLDivElement>('#xlsx-structure-actions');
+const xlsxStructureStatus = requiredElement<HTMLParagraphElement>('#xlsx-structure-status');
+let showXlsxStructureActions = !toggleXlsxStructureButton.hidden;
 let showWorkbookAppearance = gridRoot.dataset.workbookAppearance !== 'false';
 const csvRowActions = requiredElement<HTMLDivElement>('#csv-row-actions');
 let showCsvRowActions = !csvRowActions.hidden;
@@ -193,6 +197,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'displayModeButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showDisplayModeButton = event.data.visible;
 		updateDisplayModeControl();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'xlsxStructureActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showXlsxStructureActions = event.data.visible;
+		updateXlsxStructureActions();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
@@ -670,6 +680,48 @@ requiredElement<HTMLButtonElement>('#delete-row').addEventListener('click', () =
 	vscodeApi.postMessage({ type: 'csvRowOperation', kind: 'delete', documentId: snapshot.documentId, revision: snapshot.revision,
 		sheetId: snapshot.sheetId, rows: Array.from({ length: last - first + 1 }, (_, index) => first + index) });
 });
+toggleXlsxStructureButton.addEventListener('click', () => {
+	xlsxStructureActions.hidden = !xlsxStructureActions.hidden;
+	toggleXlsxStructureButton.setAttribute('aria-expanded', String(!xlsxStructureActions.hidden));
+	updateXlsxStructureActions();
+});
+for (const [id, kind, axis, direction] of [
+	['insert-xlsx-row-before', 'insertRows', 'row', -1], ['insert-xlsx-row-after', 'insertRows', 'row', 1],
+	['delete-xlsx-row', 'deleteRows', 'row', 0], ['insert-xlsx-column-before', 'insertColumns', 'column', -1],
+	['insert-xlsx-column-after', 'insertColumns', 'column', 1], ['delete-xlsx-column', 'deleteColumns', 'column', 0],
+] as const) {
+	requiredElement<HTMLButtonElement>(`#${id}`).addEventListener('click', () => requestXlsxStructure(kind, axis, direction));
+}
+
+function requestXlsxStructure(kind: 'insertRows' | 'deleteRows' | 'insertColumns' | 'deleteColumns', axis: 'row' | 'column', direction: -1 | 0 | 1): void {
+	if (snapshot?.type !== 'xlsxData' || !selectedCell || sortCriteria.length || columnFilters.length) {return;}
+	const start = axis === 'row' ? selectedCell.row : selectedCell.column;
+	const end = selectionRange ? Math.max(axis === 'row' ? selectionRange.anchor.row : selectionRange.anchor.column,
+		axis === 'row' ? selectionRange.focus.row : selectionRange.focus.column) : start;
+	const first = selectionRange ? Math.min(axis === 'row' ? selectionRange.anchor.row : selectionRange.anchor.column,
+		axis === 'row' ? selectionRange.focus.row : selectionRange.focus.column) : start;
+	const index = direction < 0 ? first : direction > 0 ? end + 1 : first;
+	const count = direction === 0 ? end - first + 1 : 1;
+	vscodeApi.postMessage({ type: 'xlsxStructureOperation', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetId: snapshot.sheetId, sheetIndex: snapshot.activeSheetIndex, kind, index, count });
+}
+
+function updateXlsxStructureActions(): void {
+	const visible = showXlsxStructureActions && snapshot?.type === 'xlsxData' && snapshot.fileFormat === 'xlsx';
+	toggleXlsxStructureButton.hidden = !visible;
+	const blockedByProjection = sortCriteria.length > 0 || columnFilters.length > 0;
+	const capability = snapshot?.type === 'xlsxData' ? snapshot.structureCapability : undefined;
+	const blocked = blockedByProjection || !capability?.allowed || !selectedCell;
+	xlsxStructureStatus.textContent = blockedByProjection ? 'Quita el orden y los filtros antes de cambiar la estructura.'
+		: capability?.allowed ? selectedCell ? '' : 'Selecciona una celda en la fila o columna que quieres modificar.'
+			: capability?.reason ?? 'El libro no cumple el perfil de seguridad para cambios estructurales.';
+	xlsxStructureStatus.hidden = !blocked || !visible;
+	for (const button of xlsxStructureActions.querySelectorAll<HTMLButtonElement>('button')) {
+		button.disabled = blocked;
+		button.title = blocked ? xlsxStructureStatus.textContent : '';
+	}
+	if (!visible) {xlsxStructureActions.hidden = true; toggleXlsxStructureButton.setAttribute('aria-expanded', 'false');}
+}
 
 async function copySelection(mode: 'raw' | 'displayed' | 'headers'): Promise<void> {
 	if (!showCopyButtons || !snapshot || !selectedCell) {return;}
@@ -806,6 +858,7 @@ function renderGrid(): void {
 	} else {gridScroll.removeAttribute('aria-activedescendant');}
 	if (wrapCells || (snapshot?.type === 'xlsxData' && snapshot.cellVisualStyles?.some(style => style.wrapText))) {updateWrappedVisibleRowHeights();}
 	updateCsvRowActions();
+	updateXlsxStructureActions();
 }
 
 function updateDisplayModeControl(): void {
@@ -961,6 +1014,11 @@ function isEditing(row: number, column: number): boolean {
 }
 
 function updateSaveStatus(message: SaveStateMessage): void {
+	if ((message.state === 'saved' || message.state === 'clean') && snapshot?.type === 'xlsxData'
+		&& snapshot.structureCapability?.reason === 'Guarda o deshaz los cambios pendientes antes de cambiar la estructura.') {
+		snapshot = { ...snapshot, structureCapability: { allowed: true } };
+		updateXlsxStructureActions();
+	}
 	saveStatus.textContent = message.state === 'clean' ? 'Sin cambios'
 		: message.state === 'pending' ? 'Cambios pendientes…'
 			: message.state === 'saving' ? 'Guardando…'

@@ -7,6 +7,34 @@ export type XlsxStructureOperation =
 	| { readonly kind: 'insertColumns' | 'deleteColumns'; readonly sheetIndex: number; readonly index: number; readonly count: number };
 
 export interface XlsxStructureSnapshot { readonly before: Uint8Array; readonly after: Uint8Array; readonly operation: XlsxStructureOperation; }
+export interface XlsxStructureCapability { readonly allowed: boolean; readonly reason?: string; }
+
+export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapability {
+	try {
+		const workbook = parseXlsxBytes(bytes);
+		assertSupportedStructureProfile(workbook);
+		const files = unzipSync(bytes);
+		if (files['xl/calcChain.xml'] || files['xl/connections.xml'] || Object.keys(files).some(name => /^xl\/(?:queryTables|slicerCaches|slicers)\//i.test(name))) {
+			throw new Error('El libro contiene conexiones o referencias de cálculo no compatibles.');
+		}
+		const workbookXml = files['xl/workbook.xml']; const relsXml = files['xl/_rels/workbook.xml.rels'];
+		if (!workbookXml || !relsXml) {throw new Error('Falta la estructura de libro esperada.');}
+		const book = parseXml(workbookXml, 'xl/workbook.xml'); const rels = parseXml(relsXml, 'xl/_rels/workbook.xml.rels');
+		for (const sheet of descendants(book, 'sheet')) {
+			const id = sheet.getAttribute('r:id') ?? '';
+			const relation = descendants(rels, 'Relationship').find(item => item.getAttribute('Id') === id);
+			const target = relation?.getAttribute('Target');
+			const part = target ? files[resolveTarget(target)] : undefined;
+			if (!part || relation?.getAttribute('TargetMode') === 'External') {throw new Error('No se pudo localizar una hoja interna del libro.');}
+			const worksheet = parseXml(part, 'hoja XLSX');
+			const unsupportedNodes = ['extLst', 'autoFilter', 'dataValidations', 'conditionalFormatting', 'tableParts', 'legacyDrawing', 'drawing', 'mergeCells', 'hyperlinks', 'sheetProtection'];
+			if (unsupportedNodes.some(name => descendants(worksheet, name).length > 0)) {throw new Error('Una hoja contiene filtros, vínculos o extensiones que la operación no actualiza.');}
+		}
+		return { allowed: true };
+	} catch (error) {
+		return { allowed: false, reason: error instanceof Error ? error.message.replace(/^No se puede cambiar la estructura:\s*/, '') : 'El libro no cumple el perfil estructural seguro.' };
+	}
+}
 
 /**
  * Small conservative profile for structural edits. This deliberately rejects any construct whose

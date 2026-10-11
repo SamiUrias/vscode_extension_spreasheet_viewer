@@ -223,6 +223,7 @@ main {
 
 #copy-actions {display: flex; align-items: center; gap: 4px;}
 #csv-row-actions {display: flex; align-items: center; gap: 4px;}
+#xlsx-structure-actions {display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: min(720px, 90vw);}
 
 #reset-view-control,
 #auto-fit-control,

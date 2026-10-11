@@ -69,6 +69,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showDisplayModeButton', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'displayModeButtonVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showStructureActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showStructureActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'xlsxStructureActionsVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });}
@@ -220,6 +224,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				void this.applyCsvRowOperation(document, panel, message);
 				return;
 			}
+			if (isXlsxStructureOperationMessage(message)) {
+				void this.applyXlsxStructureOperation(document, panel, message);
+				return;
+			}
 			if (isDraftStateMessage(message)) {
 				if (message.documentId !== document.documentId || message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {return;}
 				let transaction = this.draftTransactions.get(panel);
@@ -305,6 +313,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 		const sheet = workbook.sheets[sheetIndex];
 		const snapshot = document.editSession.getSheetSnapshot(sheetIndex);
+		const workbookBase64 = document.xlsx ? this.getFormulaSnapshot(document) : undefined;
+		const workbookMatchesSavedBytes = workbookBase64 === undefined || workbookBase64 === Buffer.from(document.sourceBytes).toString('base64');
 		const sheetProtected = document.ods?.sheets[sheetIndex]?.odsMetadata?.protected === true;
 		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
 		const data: XlsxDataMessage = {
@@ -347,6 +357,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			})),
 			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
 			...(document.xlsx ? {
+				structureCapability: !workbookMatchesSavedBytes
+					? { allowed: false, reason: 'Guarda o deshaz los cambios pendientes antes de cambiar la estructura.' }
+					: document.xlsxStructureCapability,
 				cellStyleIndexes: document.xlsx.sheets[sheetIndex]?.cellStyleIndexes,
 				cellNumberFormats: document.xlsx.styles?.cellFormats.map(style => {
 					const custom = document.xlsx!.styles?.customNumberFormats.find(item => item.id === style.numberFormatId);
@@ -355,7 +368,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				cellVisualStyles: document.xlsx.styles?.cellVisualStyles,
 				date1904: document.xlsx.date1904,
 			} : {}),
-			...(document.xlsx ? { workbookBase64: this.getFormulaSnapshot(document) } : {}),
+			...(workbookBase64 ? { workbookBase64 } : {}),
 			rowCount: sheet.rowCount,
 			columnCount: sheet.columnCount,
 			warnings: workbook.warnings,
@@ -612,6 +625,36 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
 			void vscode.window.showErrorMessage(`No se pudo aplicar la edición: ${messageText}`);
 			return false;
+		}
+	}
+
+	private async applyXlsxStructureOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'xlsxStructureOperation' }>): Promise<void> {
+		try {
+			if (!document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('La operación quedó desactualizada; se recargaron los datos actuales.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showStructureActions', true)) {return;}
+			if (document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('Guarda o deshaz los cambios pendientes antes de cambiar la estructura XLSX.');}
+			if (message.kind.startsWith('delete')) {
+				const label = message.kind === 'deleteRows' ? 'fila(s)' : 'columna(s)';
+				const answer = await vscode.window.showWarningMessage(`¿Eliminar ${message.count} ${label} XLSX seleccionada(s)?`, { modal: true }, 'Eliminar');
+				if (answer !== 'Eliminar') {return;}
+				if (message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {
+					throw new Error('La operación cambió mientras se confirmaba; vuelve a intentarlo.');
+				}
+			}
+			const transactionId = document.applyXlsxStructure({ kind: message.kind, sheetIndex: message.sheetIndex, index: message.index, count: message.count });
+			const label = message.kind.startsWith('insert') ? 'Insertar estructura XLSX' : 'Eliminar estructura XLSX';
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({ document, label, undo: () => {if (document.undo(transactionId)) {update();}}, redo: () => {if (document.redo(transactionId)) {update();}} });
+			update();
+			const sheet = document.xlsx.sheets[message.sheetIndex];
+			if (sheet && sheet.rowCount && sheet.columnCount) {
+				const row = Math.min(message.kind.includes('Rows') ? message.index : 0, sheet.rowCount - 1);
+				const column = Math.min(message.kind.includes('Columns') ? message.index : 0, sheet.columnCount - 1);
+				void panel.webview.postMessage({ type: 'focusCell', row, column });
+			}
+		} catch (error) {
+			void vscode.window.showErrorMessage(`No se pudo cambiar la estructura XLSX: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1033,6 +1076,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
 		const showCopyButtons = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showCopyButtons', true);
 		const showDisplayModeButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showDisplayModeButton', true);
+		const showXlsxStructureActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showStructureActions', true);
 		const showWorkbookAppearance = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showWorkbookAppearance', true);
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
@@ -1067,6 +1111,16 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>
 						<span class="copy-control"><button id="append-row" type="button" aria-describedby="append-row-tooltip">Añadir fila</button><span id="append-row-tooltip" role="tooltip">Añade un registro vacío al final de los datos CSV. La operación se puede deshacer.</span></span>
 						<span class="copy-control"><button id="delete-row" type="button" aria-describedby="delete-row-tooltip">Eliminar fila(s)</button><span id="delete-row-tooltip" role="tooltip">Elimina el registro o rango seleccionado después de pedir confirmación.</span></span>
+					</div>
+					<span class="copy-control"><button id="toggle-xlsx-structure" type="button"${showXlsxStructureActions ? '' : ' hidden'} aria-describedby="xlsx-structure-tooltip" aria-expanded="false">Estructura XLSX</button><span id="xlsx-structure-tooltip" role="tooltip">Abre las acciones para insertar o eliminar filas y columnas. Se habilitan solo en libros compatibles.</span></span>
+					<div id="xlsx-structure-actions" hidden aria-label="Acciones estructurales XLSX">
+						<p id="xlsx-structure-status" role="status" aria-live="polite"></p>
+						<span class="copy-control"><button id="insert-xlsx-row-before" type="button" aria-describedby="insert-xlsx-row-before-tooltip">Insertar fila arriba</button><span id="insert-xlsx-row-before-tooltip" role="tooltip">Inserta una fila vacía antes de la fila seleccionada.</span></span>
+						<span class="copy-control"><button id="insert-xlsx-row-after" type="button" aria-describedby="insert-xlsx-row-after-tooltip">Insertar fila abajo</button><span id="insert-xlsx-row-after-tooltip" role="tooltip">Inserta una fila vacía después de la fila seleccionada.</span></span>
+						<span class="copy-control"><button id="delete-xlsx-row" type="button" aria-describedby="delete-xlsx-row-tooltip">Eliminar fila(s)</button><span id="delete-xlsx-row-tooltip" role="tooltip">Elimina las filas seleccionadas después de pedir confirmación.</span></span>
+						<span class="copy-control"><button id="insert-xlsx-column-before" type="button" aria-describedby="insert-xlsx-column-before-tooltip">Insertar columna izquierda</button><span id="insert-xlsx-column-before-tooltip" role="tooltip">Inserta una columna vacía a la izquierda de la columna seleccionada.</span></span>
+						<span class="copy-control"><button id="insert-xlsx-column-after" type="button" aria-describedby="insert-xlsx-column-after-tooltip">Insertar columna derecha</button><span id="insert-xlsx-column-after-tooltip" role="tooltip">Inserta una columna vacía a la derecha de la columna seleccionada.</span></span>
+						<span class="copy-control"><button id="delete-xlsx-column" type="button" aria-describedby="delete-xlsx-column-tooltip">Eliminar columna(s)</button><span id="delete-xlsx-column-tooltip" role="tooltip">Elimina las columnas seleccionadas después de pedir confirmación.</span></span>
 					</div>
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
 					<span id="clear-sort-control">
@@ -1254,6 +1308,15 @@ function isCsvRowOperationMessage(message: unknown): message is Extract<WebviewT
 	if (value.kind === 'delete' && (!Array.isArray(value.rows) || value.rows.length === 0 || value.rows.length > 50_000
 		|| !value.rows.every(Number.isInteger))) {return false;}
 	return true;
+}
+
+function isXlsxStructureOperationMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'xlsxStructureOperation' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'xlsxStructureOperation') {return false;}
+	const value = message as Record<string, unknown>;
+	return typeof value.documentId === 'string' && Number.isInteger(value.revision) && typeof value.sheetId === 'string'
+		&& Number.isInteger(value.sheetIndex) && ['insertRows', 'deleteRows', 'insertColumns', 'deleteColumns'].includes(String(value.kind))
+		&& Number.isInteger(value.index) && Number(value.index) >= 0 && Number.isInteger(value.count)
+		&& Number(value.count) > 0 && Number(value.count) <= 50_000;
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {
