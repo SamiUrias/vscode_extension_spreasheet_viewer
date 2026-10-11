@@ -181,6 +181,11 @@
           "type": "boolean",
           "default": true,
           "description": "Muestra el botón para restablecer la vista de la hoja."
+        },
+        "spreadsheet-viewer.view.showClearSortButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra el botón para quitar todos los criterios de orden activos."
         }
       }
     }

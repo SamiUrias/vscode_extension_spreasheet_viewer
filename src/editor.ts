@@ -46,6 +46,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						void panel.webview.postMessage({ type: 'resetViewButtonVisibility', visible });
 					}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showClearSortButton', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showClearSortButton', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {
+						void panel.webview.postMessage({ type: 'clearSortButtonVisibility', visible });
+					}
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', document.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', document.uri);
 				if (visualChanged) {this.postDocument(document);}
@@ -718,6 +724,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	getHtml(uri: vscode.Uri, webview: vscode.Webview, modeLabel?: string): string {
 		const fileName = uri.path.split('/').pop() || uri.toString();
 		const showResetButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showResetButton', true);
+		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const nonce = randomBytes(16).toString('base64');
@@ -741,7 +748,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				</div>
 				<div id="header-actions">
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
-					<button id="clear-sort" type="button" title="Quitar todos los criterios de orden" hidden>Limpiar orden</button>
+					<button id="clear-sort" type="button" title="Quita todos los criterios de orden activos. No modifica los datos del archivo." data-setting-enabled="${showClearSortButton}" hidden>Limpiar orden</button>
 					<span id="reset-view-control">
 						<button id="reset-view" type="button"${showResetButton ? '' : ' hidden'} aria-describedby="reset-view-tooltip">Restablecer vista</button>
 						<span id="reset-view-tooltip" role="tooltip">Borra búsqueda, orden y filtros, y restaura selección y tamaños. No modifica el archivo ni descarta el borrador.</span>

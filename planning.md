@@ -1,6 +1,6 @@
 # Spreadsheet Viewer — guía de implementación del MVP y propuesta v2
 
-El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15; sus etapas están pendientes y requieren una solicitud de implementación específica.
+El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. Al 2026-10-11, la implementación llega hasta V2-10; V2-11 en adelante sigue pendiente. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
 
 ## 1. Resumen del producto
 
@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** análisis y propuesta; V2-00A, V2-00B, V2-01A y V2-01B implementadas. **Revisión:** 2026-10-10 (America/Guatemala). **Implementador previsto:** GPT Luna 6, esfuerzo medio. Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** análisis y propuesta; las etapas V2-00A a V2-10 tienen implementación en el workspace. V2-09 y V2-10 se añadieron en el commit `f81b7bc` junto con configuración de prueba y documentación. Siguen pendientes las verificaciones manuales que indican sus checklists y las tarjetas previas. V2-11 en adelante no está implementada. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -496,6 +496,8 @@ Búsqueda por defecto en filas visibles y valores crudos; opción “Toda la hoj
 
 `spreadsheet-viewer.view.showResetButton` permite ocultar el botón de restablecimiento, está activada por defecto y actualiza vistas abiertas. El tooltip explica el alcance del restablecimiento sin afectar archivo o borrador; definición, efecto y texto documentados en `CONFIGURATION.md`.
 
+`spreadsheet-viewer.view.showClearSortButton` permite ocultar **Limpiar orden**, está activada por defecto y actualiza vistas abiertas. El botón muestra un tooltip que aclara que quita todos los criterios activos sin cambiar los datos del archivo; definición, efecto y texto documentados en `CONFIGURATION.md`.
+
 `ViewStateV1`: versión 1, URI completa, modo, firma de esquema, hoja activa y mapa por sheetId. Cada hoja guarda consulta/ámbito, selección fuente, scroll/anchor, sort/filter, anchos y alturas **solo modificados**, freeze y presentación. Debounce 250 ms; flush al cerrar/cambiar de hoja. Propuesta de cotas: 256 KiB por archivo, 100 archivos con LRU por workspace; purgar preferencias viejas, nunca backups. Persistir en workspaceState; `getState/setState` guarda solo contexto efímero del panel. No incluir libros, matrices, cache de cálculo ni drafts en preferencias.
 
 Firma tabular: formato/dialecto, cantidad de columnas, encabezado identificado y hash de su texto si está activo. Firma de hojas: sheetId/nombre/estructura; cambios de nombre se reconcilian por identidad. Cambio de filas conserva anchos/criterios compatibles, ajusta selección/scroll; cambio de columnas invalida filtros/sorts por columnas y avisa. No invalidar todo por un cambio de valor cualquiera. **Restablecer vista** limpia preferencias y proyección, conserva borrador e historial; **Recargar** vuelve a disco y mantiene la confirmación de descartar pendientes.
@@ -560,7 +562,7 @@ No crear todos los archivos al inicio. Los nombres son destinos propuestos; reut
 
 ### 15.9. Tarjetas de trabajo para GPT Luna 6 (esfuerzo medio)
 
-Las tarjetas V2-00A, V2-00B, V2-01A, V2-01B, V2-02A, V2-02B y V2-03 están **implementadas**. V2-04A y V2-04B tienen la implementación lista; ambas conservan pendiente la verificación en Extension Host/F5. Las demás siguen pendientes. Cada tarjeta indica una unidad de implementación; las subtarjetas A/B/C/D requieren solicitudes separadas. La existencia de una propuesta de arquitectura no es evidencia de que la dependencia ya esté implementada.
+Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V2-04A/B, V2-05 a V2-10 aún tienen verificaciones manuales o de Extension Host abiertas, indicadas en cada checklist. `npm test` no inicia con el Node 18.20.4 de este entorno porque una dependencia del runner usa la bandera de regex `/v`; `npm run test:save-lifecycle` requiere descargar VS Code y aquí falla por DNS. V2-11 en adelante sigue pendiente. Cada tarjeta indica una unidad de implementación; las subtarjetas A/B/C/D requieren solicitudes separadas. La existencia de una propuesta de arquitectura no es evidencia de que la dependencia ya esté implementada.
 
 **Orden recomendado de solicitudes (dependencias resueltas):** V2-00A → 00B → 01A → 01B → 02A → 02B → 03 → 04A → 04B → 05 → 06 → 07 → 08A → 08B → 09 → 10 → 11 → 12A → 12B → 13 → 14A → 14B → 15A → 15B → 16A → 16B → 17A → 17B → 18A → **20A → 20B → 18B** → 19A → 19B → 21 → 22A → 22B → 22C → 23A → 23B → 24A → 24B → 24C → 24D → 25. Cada número abreviado conserva prefijo `V2-`. 22B/22C y 24A–D son bloques ampliados; si no forman parte del release elegido, 25 debe documentarlos pendientes. 24E es registro de límites, no implementación del estándar completo. No seguir el número a ciegas: 18B requiere 20A.
 
@@ -719,6 +721,7 @@ Las tarjetas V2-00A, V2-00B, V2-01A, V2-01B, V2-02A, V2-02B y V2-03 están **imp
 - [x] Mantener el encabezado CSV anclado arriba y excluirlo de la comparación numérica.
 - [x] Dejar vacíos e incompatibles numéricos al final en ambos sentidos, anunciando las columnas incompatibles.
 - [x] Mantener compatibilidad con persistencia de V2-06 y añadir pruebas de lexemas, estabilidad y proyección.
+- [x] Permitir ocultar **Limpiar orden** con `spreadsheet-viewer.view.showClearSortButton` (default `true`) y explicar su efecto en tooltip/documentación.
 - [ ] Verificar manualmente prioridad, limpieza, edición de B54 ordenada y lectura del aviso de incompatibles.
 
 #### V2-08A — Motor de filtros completo

@@ -135,6 +135,7 @@ export interface CellCapability {
 }
 
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
+export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage;
 

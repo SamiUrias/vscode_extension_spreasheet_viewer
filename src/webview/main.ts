@@ -51,6 +51,7 @@ const saveStatus = requiredElement<HTMLParagraphElement>('#save-status');
 const reloadFileButton = requiredElement<HTMLButtonElement>('#reload-file');
 const toggleCommentsButton = requiredElement<HTMLButtonElement>('#toggle-comments');
 const clearSortButton = requiredElement<HTMLButtonElement>('#clear-sort');
+let showClearSortButton = clearSortButton.dataset.settingEnabled !== 'false';
 const sortWarning = requiredElement<HTMLParagraphElement>('#sort-warning');
 const filterChips = requiredElement<HTMLDivElement>('#filter-chips');
 const projectionCount = requiredElement<HTMLOutputElement>('#projection-count');
@@ -150,6 +151,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'resetViewButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		resetViewButton.hidden = !event.data.visible;
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'clearSortButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showClearSortButton = event.data.visible;
+		clearSortButton.hidden = !showClearSortButton || sortCriteria.length === 0;
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'sortState'
@@ -891,7 +898,7 @@ function getRowProjection() {
 	cachedProjectionCriteria = sortCriteria;
 	cachedProjectionComments = showComments;
 	cachedProjectionFilters = columnFilters;
-	clearSortButton.hidden = sortCriteria.length === 0;
+	clearSortButton.hidden = !showClearSortButton || sortCriteria.length === 0;
 	sortWarning.textContent = cachedProjection.incompatibleColumns.length
 		? `Orden numérico: valores no numéricos se colocan al final en las columnas ${cachedProjection.incompatibleColumns.map(columnName).join(', ')}.`
 		: '';

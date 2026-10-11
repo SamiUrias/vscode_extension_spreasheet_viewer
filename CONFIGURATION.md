@@ -14,13 +14,14 @@ Ejemplo de `.vscode/settings.json`:
   "spreadsheet-viewer.csv.firstRowHeader": true,
   "spreadsheet-viewer.csv.headerCase": "none",
   "spreadsheet-viewer.view.restoreState": true,
-  "spreadsheet-viewer.view.showResetButton": true
+  "spreadsheet-viewer.view.showResetButton": true,
+  "spreadsheet-viewer.view.showClearSortButton": true
 }
 ```
 
 Los valores siguientes son los predeterminados. No hace falta escribirlos en `settings.json` salvo que quieras sobrescribirlos. Las propiedades no declaran un ámbito de recurso o lenguaje; se configuran en User o Workspace Settings, no como una opción distinta para cada archivo CSV.
 
-Para probar el comportamiento de la extensión en este repositorio, `.vscode/settings.json` activa las cinco opciones disponibles: prefijo de comentarios `#`, primera fila como encabezado, encabezado en mayúsculas, restauración de vista y botón **Restablecer vista**. `headerCase: "upper"` solo transforma la etiqueta visual; no cambia el archivo. Las opciones de autoajuste, multilínea, freeze y teclado de tabla de V2-09/V2-10 son controles de vista, no propiedades de `settings.json`.
+Para probar el comportamiento de la extensión en este repositorio, `.vscode/settings.json` activa las seis opciones disponibles: prefijo de comentarios `#`, primera fila como encabezado, encabezado en mayúsculas, restauración de vista, botón **Restablecer vista** y botón **Limpiar orden**. `headerCase: "upper"` solo transforma la etiqueta visual; no cambia el archivo. Las opciones de autoajuste, multilínea, freeze y teclado de tabla de V2-09/V2-10 son controles de vista, no propiedades de `settings.json`.
 
 ## Opciones disponibles
 
@@ -31,6 +32,7 @@ Para probar el comportamiento de la extensión en este repositorio, `.vscode/set
 | `spreadsheet-viewer.csv.headerCase` | Cadena: `"none"`, `"upper"` o `"lower"` | `"none"` | Deja igual, convierte a mayúsculas o convierte a minúsculas las etiquetas visuales del encabezado. No cambia el texto guardado en el CSV. |
 | `spreadsheet-viewer.view.restoreState` | Booleano: `true` o `false` | `true` | Guarda y restaura por archivo, hoja y modo de vista la selección, scroll, búsqueda, orden, visibilidad de comentarios y tamaños manuales de columnas/filas. Con `false` no lee ni guarda este estado. No afecta el contenido, los cambios pendientes ni los backups del documento. |
 | `spreadsheet-viewer.view.showResetButton` | Booleano: `true` o `false` | `true` | Muestra u oculta el botón **Restablecer vista** en el editor y las vistas previas. Con `false` el botón no aparece; la acción de restablecimiento sigue disponible como **Spreadsheet Viewer: Restablecer vista de hoja** en la paleta de comandos. El cambio se refleja en las vistas que ya están abiertas. |
+| `spreadsheet-viewer.view.showClearSortButton` | Booleano: `true` o `false` | `true` | Permite mostrar **Limpiar orden** cuando hay criterios de orden activos. Con `false` oculta el botón en el editor y las vistas previas; el orden se puede quitar haciendo clic en el encabezado o usando el comando **Restablecer vista**. El cambio se refleja en las vistas abiertas. |
 
 Ejemplo para desactivar los comentarios convencionales y la persistencia:
 
@@ -38,11 +40,14 @@ Ejemplo para desactivar los comentarios convencionales y la persistencia:
 {
   "spreadsheet-viewer.csv.commentPrefix": "",
   "spreadsheet-viewer.view.restoreState": false,
-  "spreadsheet-viewer.view.showResetButton": false
+  "spreadsheet-viewer.view.showResetButton": false,
+  "spreadsheet-viewer.view.showClearSortButton": false
 }
 ```
 
 El botón **Restablecer vista** muestra una ayuda emergente al pasar el puntero o enfocarlo con el teclado. Restablece búsqueda, orden, filtros, selección y tamaños de vista; no modifica el archivo ni descarta el borrador de edición.
+
+El botón **Limpiar orden** también muestra una ayuda breve al pasar el puntero o enfocarlo. Quita todos los criterios de orden activos; no cambia los datos del archivo.
 
 ## Detalles de comportamiento
 
