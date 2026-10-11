@@ -1059,6 +1059,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				|| message.sheetId !== document.sheetId(0)) {throw new Error('La operación quedó desactualizada; se recargaron los datos actuales.');}
 			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true)) {return;}
 			if (message.kind === 'delete') {
+				if (vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('firstRowHeader', true)) {
+					const headerRow = document.csv.rowKinds.findIndex(kind => kind === 'data');
+					if (headerRow >= 0 && message.rows?.includes(headerRow)) {throw new Error('No se puede eliminar la fila de encabezados CSV.');}
+				}
 				const answer = await vscode.window.showWarningMessage(`¿Eliminar ${message.rows?.length ?? 0} registro(s) CSV?`, { modal: true }, 'Eliminar');
 				if (answer !== 'Eliminar') {return;}
 			}

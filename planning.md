@@ -862,7 +862,9 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir setting booleano `spreadsheet-viewer.csv.showRowActions`, default `true`, y documentar valores/efecto en README y CONFIGURATION.md.
 - [x] Desactivar acciones si hay proyección por orden/filtro/búsqueda; recoger borradores antes de modificar filas y deshacer/rehacer con el journal.
 - [x] Tras insertar, enfocar la primera celda del registro nuevo; tras borrar, enfocar la fila vecina cuando aún existe.
-- [ ] Verificar foco, selección y ciclo save/undo en Extension Host. El runtime de VS Code no se pudo descargar por `ENOTFOUND update.code.visualstudio.com`; su handler puede validarse con el runner local.
+- [x] Proteger en el host la fila de encabezado configurada contra eliminación accidental; `firstRowHeader: false` conserva la opción de eliminarla como dato.
+- [x] Extender `npm run test:edit-batch-host` para probar por el handler real inserción/foco, confirmación al borrar, undo/redo y bloqueo del encabezado.
+- [ ] Verificar selección y ciclo save/undo con interacción gráfica en Extension Host. El runtime de VS Code no se pudo descargar por `ENOTFOUND update.code.visualstudio.com`; las operaciones y mensajes del handler sí pasan el runner local.
 
 **Aceptación:** borrar tras sort borra registros seleccionados, no primeros N; undo reconstruye proyección; comentarios/header no eliminados por selección de datos accidental; límites antes de mutar; no autosave por cada fila. **Fuera:** columnas CSV; se planifican por separado en V4.
 
