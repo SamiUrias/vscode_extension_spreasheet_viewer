@@ -1140,6 +1140,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
+		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
+		const formulaWasmBaseUri = `${webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist')).toString()}/`;
 		const nonce = randomBytes(16).toString('base64');
 
 		return `<!DOCTYPE html>
@@ -1147,11 +1149,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource}; worker-src blob:; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval';">
 	<link rel="stylesheet" href="${stylesheetUri}">
 	<title>${escapeHtml(modeLabel ? `${fileName} · ${modeLabel}` : fileName)}</title>
 </head>
-<body>
+<body data-formula-worker-src="${escapeHtml(formulaWorkerUri.toString())}" data-formula-wasm-base-uri="${escapeHtml(formulaWasmBaseUri)}">
 	<main>
 		<header id="file-summary">
 			<div id="file-heading-row">

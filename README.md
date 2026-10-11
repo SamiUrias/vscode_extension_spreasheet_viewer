@@ -18,7 +18,7 @@
 - **Adjust the table layout:** resize columns and rows, auto-fit columns, wrap text, and freeze visible rows or columns.
 - **Remember your view:** restore selection, scroll position, search, sort, filters, and sizes per file and sheet. This can be disabled in Settings.
 - **Preview without editing:** inspect a file from disk, preview unsaved CSV/TSV/TAB text, or explicitly preview another text file as CSV.
-- **Inspect XLSX formulas:** supported formulas can be calculated for display; calculated results are never written to the workbook.
+- **Inspect XLSX formulas:** supported formulas are calculated in a local Web Worker so they do not run on the grid's UI thread. A calculation that takes over 60 seconds is stopped; calculated results are for display and are never written to the workbook.
 
 ## Get started
 

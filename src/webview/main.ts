@@ -107,6 +107,9 @@ const overscan = 6;
 let snapshot: CsvDataMessage | XlsxDataMessage | undefined;
 let formulaResults: Record<string, FormulaEvaluation> = {};
 let formulaCalculationGeneration = 0;
+let formulaWorkerPromise: Promise<Worker> | undefined;
+let formulaWorkerRequestId = 0;
+const pendingFormulaRequests = new Map<number, { resolve: (results: Record<string, FormulaEvaluation>) => void; reject: (error: Error) => void; timer: number }>();
 let formulaWorkbookSnapshot: { documentId: string; revision: number; base64: string } | undefined;
 let reloadWatchdog: number | undefined;
 let startupDataTimer: number | undefined;
@@ -348,6 +351,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		window.clearTimeout(startupDataTimer);
 		startupDataTimer = undefined;
 	}
+	formulaCalculationGeneration++;
+	if (pendingFormulaRequests.size > 0) {stopFormulaWorker(new Error('Se canceló un cálculo de fórmulas reemplazado por una vista más reciente.'));}
 	snapshot = event.data;
 	updateDisplayModeControl();
 	updateCsvRowActions();
@@ -428,13 +433,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (snapshot.type === 'xlsxData' && snapshot.fileFormat !== 'ods' && snapshot.workbookBase64 && snapshot.cellKinds.some(row => row.includes('formula'))) {
 		const calculationSnapshot = snapshot;
 		const generation = ++formulaCalculationGeneration;
-		void import('./formula-calculator').then(({ calculateFormulaResults }) => calculateFormulaResults(
-			calculationSnapshot.workbookBase64!,
-			calculationSnapshot.revision,
-			calculationSnapshot.sheetName,
-			calculationSnapshot.cellKinds,
-			calculationSnapshot.rows,
-		)).then(results => {
+		void calculateFormulasInWorker(calculationSnapshot, generation).then(results => {
 			if (generation !== formulaCalculationGeneration || snapshot !== calculationSnapshot) {return;}
 			formulaResults = results;
 			if (selectedCell && isFormula(selectedCell.row, selectedCell.column)) {
@@ -460,6 +459,79 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		});
 	}
 });
+
+interface FormulaWorkerResponse {
+	type: 'result' | 'error';
+	requestId: number;
+	results?: Record<string, FormulaEvaluation>;
+	error?: string;
+}
+
+function getFormulaWorker(): Promise<Worker> {
+	if (formulaWorkerPromise) {return formulaWorkerPromise;}
+	formulaWorkerPromise = (async () => {
+		const source = document.body.dataset.formulaWorkerSrc;
+		if (!source) {throw new Error('No se encontró el worker local de fórmulas.');}
+		const response = await fetch(source);
+		if (!response.ok) {throw new Error(`No se pudo cargar el worker de fórmulas (${response.status}).`);}
+		const code = await response.text();
+		const blobUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+		let worker: Worker;
+		try {worker = new Worker(blobUrl);}
+		finally {URL.revokeObjectURL(blobUrl);}
+		worker.addEventListener('message', event => {
+			const result = event.data as FormulaWorkerResponse;
+			const pending = pendingFormulaRequests.get(result?.requestId);
+			if (!pending) {return;}
+			window.clearTimeout(pending.timer);
+			pendingFormulaRequests.delete(result.requestId);
+			if (result.type === 'result' && result.results) {pending.resolve(result.results);}
+			else {pending.reject(new Error(result.error || 'Falló el cálculo de fórmulas.'));}
+		});
+		worker.addEventListener('error', event => {
+			const error = new Error(event.message || 'Falló el worker de fórmulas.');
+			stopFormulaWorker(error);
+		});
+		return worker;
+	})().catch(error => {
+		formulaWorkerPromise = undefined;
+		throw error;
+	});
+	return formulaWorkerPromise;
+}
+
+async function calculateFormulasInWorker(data: XlsxDataMessage, generation: number): Promise<Record<string, FormulaEvaluation>> {
+	const worker = await getFormulaWorker();
+	if (generation !== formulaCalculationGeneration) {return {};}
+	const requestId = ++formulaWorkerRequestId;
+	return new Promise((resolve, reject) => {
+		const timer = window.setTimeout(() => {
+			stopFormulaWorker(new Error('El cálculo de fórmulas excedió el límite de 60 segundos.'));
+		}, 60_000);
+		pendingFormulaRequests.set(requestId, { resolve, reject, timer });
+		const wasmBaseUri = document.body.dataset.formulaWasmBaseUri;
+		if (!wasmBaseUri) {
+			window.clearTimeout(timer);
+			pendingFormulaRequests.delete(requestId);
+			reject(new Error('No se encontró el recurso WASM local para fórmulas.'));
+			return;
+		}
+		worker.postMessage({
+			type: 'calculate', requestId, workbookBase64: data.workbookBase64!, revision: data.revision,
+			sheetName: data.sheetName, kinds: data.cellKinds, rows: data.rows, wasmBaseUri,
+		});
+	});
+}
+
+function stopFormulaWorker(error: Error): void {
+	void formulaWorkerPromise?.then(worker => worker.terminate(), () => undefined);
+	formulaWorkerPromise = undefined;
+	for (const [requestId, pending] of pendingFormulaRequests) {
+		window.clearTimeout(pending.timer);
+		pending.reject(error);
+		pendingFormulaRequests.delete(requestId);
+	}
+}
 
 reloadFileButton.addEventListener('click', () => {
 	reloadFileButton.disabled = true;

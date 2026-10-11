@@ -61,6 +61,7 @@ async function main() {
 		}),
 	]);
 	await buildWebview();
+	await buildFormulaWorker();
 	await buildFormulaParserNode();
 	fs.mkdirSync('dist', { recursive: true });
 	fs.copyFileSync('node_modules/formualizer/LICENSE-MIT', 'dist/FORMUALIZER-LICENSE-MIT');
@@ -161,6 +162,46 @@ function buildWebview() {
 				reject(new Error(stats.toString({ all: false, errors: true, warnings: true })));
 				return;
 			}
+			reportWebpackBuild(undefined, stats);
+			compiler.close(closeError => closeError ? reject(closeError) : resolve());
+		});
+	});
+}
+
+function buildFormulaWorker() {
+	const compiler = webpack({
+		mode: production ? 'production' : 'development',
+		entry: './src/webview/formula-worker.ts',
+		target: ['webworker', 'es2022'],
+		experiments: { asyncWebAssembly: true },
+		module: {
+			rules: [
+				{
+					test: /\.tsx?$/,
+					exclude: /node_modules/,
+					use: { loader: 'ts-loader', options: { configFile: 'tsconfig.webview.json', transpileOnly: true, compilerOptions: { noEmit: false } } },
+				},
+				{ test: /\.wasm$/, type: 'webassembly/async' },
+			],
+		},
+		resolve: { extensions: ['.ts', '.js'] },
+		plugins: [new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })],
+		output: {
+			path: path.resolve('dist'),
+			filename: 'formula-worker.js',
+			webassemblyModuleFilename: 'formualizer.wasm',
+		},
+		optimization: { minimize: production },
+		devtool: production ? false : 'source-map',
+	});
+	if (watch) {
+		compiler.watch({}, (error, stats) => reportWebpackBuild(error, stats));
+		return Promise.resolve();
+	}
+	return new Promise((resolve, reject) => {
+		compiler.run((error, stats) => {
+			if (error) {reject(error); return;}
+			if (stats?.hasErrors()) {reject(new Error(stats.toString({ all: false, errors: true, warnings: true }))); return;}
 			reportWebpackBuild(undefined, stats);
 			compiler.close(closeError => closeError ? reject(closeError) : resolve());
 		});

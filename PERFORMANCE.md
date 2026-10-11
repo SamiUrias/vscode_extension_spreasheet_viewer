@@ -23,9 +23,11 @@ For this fixture, one changed CSV cell serializes to 129 bytes versus 1,779,673 
 
 This identifies XLSX XML parsing as the main memory and latency cost for this fixture. The benchmark does not measure Extension Host message delivery, browser rendering, or formula calculation: those require an instrumented VS Code/Webview host and formula-bearing fixtures. The JSON measurement estimates serialization size/time; it does not claim to be an IPC timing measurement. The tested XLSX has numeric cells and no formulas, styles, merges, or relationships beyond the minimum workbook parts.
 
+Formula evaluation now runs in a locally packaged Web Worker. The worker receives one workbook revision at a time, loads Formualizer WASM from the extension's packaged resources, and returns results tagged with a request ID. Superseded calculations are ignored; an active calculation is terminated after 60 seconds and the worker can be created again. This keeps synchronous WASM evaluation off the Webview UI thread, but does not make the calculation itself faster. UI responsiveness, cross-sheet formula behavior in the worker, and timeout recovery still need verification in a running Extension Host/Webview.
+
 ## Current limits and follow-up
 
 - Formula workbook bytes are sent to a Webview once per document/revision and retained there for subsequent sheet changes. A newly initialized Webview receives the current revision again.
 - Scroll and viewport rendering remain client-side; they do not request a workbook snapshot from the extension.
 - The current parser peak for a 35,290 × 5 XLSX is high and needs profiling before increasing file-size or cell-count limits.
-- CSV edits send a 129-byte cell delta for the baseline fixture and request a full snapshot after a revision gap; provider/Webview integration remains pending. XLSX/ODS edits are being extended for formula-free books; formula-bearing workbooks still use full snapshots. Rendering and formula timing remain unmeasured until an Extension Host runner can capture them reliably.
+- CSV edits send a 129-byte cell delta for the baseline fixture and request a full snapshot after a revision gap; provider/Webview integration remains pending. XLSX/ODS edits use deltas for formula-free books; formula-bearing workbooks still use full snapshots. Rendering and formula timing remain unmeasured until an Extension Host runner can capture them reliably.
