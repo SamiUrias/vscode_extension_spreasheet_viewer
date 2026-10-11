@@ -1,6 +1,6 @@
 # Spreadsheet Viewer — guía de implementación del MVP y propuesta v2
 
-El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. Al 2026-10-11, la implementación llega hasta V2-10; V2-11 en adelante sigue pendiente. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
+El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. Al 2026-10-11, la implementación llega hasta V2-10; V2-11 en adelante sigue pendiente. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
 
 ## 1. Resumen del producto
 
@@ -20,7 +20,7 @@ Extensión para quienes inspeccionan y corrigen dumps y archivos tabulares senci
 
 **Excluido del MVP**
 
-Macros, gráficos/pivots interactivos, edición de fórmulas, compatibilidad completa con Excel u ODF, formato visual avanzado y colaboración. El motor calcula fórmulas XLSX para presentación; en ODS las fórmulas y su caché se muestran sin recalcular. Los resultados calculados nunca se escriben al archivo. No se requiere insertar/eliminar filas, columnas u hojas. Excluir una función no autoriza a eliminar su contenido al guardar un libro.
+Macros, gráficos/pivots interactivos, edición de fórmulas, compatibilidad completa con Excel u ODF, formato visual avanzado y colaboración quedan fuera del MVP. La fase futura V7 evalúa cinco gráficos básicos sin edición; no implica soporte de charts de Excel. El motor calcula fórmulas XLSX para presentación; en ODS las fórmulas y su caché se muestran sin recalcular. Los resultados calculados nunca se escriben al archivo. No se requiere insertar/eliminar filas, columnas u hojas. Excluir una función no autoriza a eliminar su contenido al guardar un libro.
 
 **Supuestos que deben validarse**
 
@@ -459,7 +459,7 @@ La primera propuesta solo cubría exploración. Este roadmap incluye **experienc
 
 **V2 de escritorio competitiva:** A+B+C, más V2-21, V2-23 (valores), V2-25. Se distinguen lectura/edición cotidiana de paridad ampliada de acciones; las versiones parciales no deben llamarse paridad completa con el control. **Paridad ampliada Web/XLSM y edición avanzada:** V2-22/V2-24A–D y extensiones explícitas de V2-18/V2-23. Publicar un bloque temprano no implica declarar paridad completa. Cada diferencia restante se documenta; no sustituir capacidades por simples warnings o maquillar límites.
 
-Macros ejecutables, gráficos/pivots interactivos, colaboración y XLS quedan fuera: no son una brecha demostrada de los flujos activos que debemos reproducir. ODS conserva lectura/edición tabular y capacidades comunes; presentación ODF y estructura avanzada ODF deben tener etapas propias de paridad posterior, no reutilizar sin pruebas las reglas XLSX.
+Macros ejecutables, gráficos/pivots interactivos, colaboración y XLS quedan fuera de la entrega v2: no son una brecha demostrada de los flujos activos que debemos reproducir. Una vista futura de cinco gráficos básicos está registrada en V7, sin compatibilidad con gráficos/pivots incrustados en Excel. ODS conserva lectura/edición tabular y capacidades comunes; presentación ODF y estructura avanzada ODF deben tener etapas propias de paridad posterior, no reutilizar sin pruebas las reglas XLSX.
 
 ### 15.6. Decisiones técnicas resueltas
 
@@ -816,7 +816,7 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Depende de:** V2-14A/V2-13. **Archivos:** grid/selection/editor/view-state/tests. **Pasos:** menú contextual/acciones accesibles añadir/insertar antes/eliminar filas; usar coordenadas originales capturadas. Deshabilitar insertar en vista sorted/filtered con acción para limpiar; borrar selección visible confirma cantidad y origen cuando hay proyección. Reconciliar selección/sizes/criterios tras estructura y nuevo revision.
 
-**Aceptación:** borrar tras sort borra registros seleccionados, no primeros N; undo reconstruye proyección; comentarios/header no eliminados por selección de datos accidental; límites antes de mutar; no autosave por cada fila. **Fuera:** columnas CSV (no presentes como función explícita de la referencia); pueden añadirse con tarjeta propia futura.
+**Aceptación:** borrar tras sort borra registros seleccionados, no primeros N; undo reconstruye proyección; comentarios/header no eliminados por selección de datos accidental; límites antes de mutar; no autosave por cada fila. **Fuera:** columnas CSV; se planifican por separado en V4.
 
 #### V2-15A — Metadata y capacidades XLSX
 
@@ -1013,3 +1013,89 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 El trabajo implementado llega hasta **V2-10**; sigue con **V2-11 — Copia de rangos** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
+
+## 16. Fases adicionales posteriores a V2 — pendientes de detallar
+
+Estas fases se ejecutarán después de cerrar V2 y ML-01–ML-06. El alcance, dependencias, límites, pruebas y orden interno de cada fase todavía deben definirse. Las ideas opcionales y candidatas no core de V7–V10 no deben retrasar las fases anteriores.
+
+### V3 — Modos de uso y evaluación de formatos adicionales
+
+- Agregar una opción de Settings para abrir los archivos en modo de solo lectura. Debe ser configurable desde `settings.json`, con `false` por defecto para conservar la edición actual.
+- Evaluar soporte para los formatos que todavía no cubrimos: XLS, XLSM, XLSB, FODS y Apple Numbers. Definir por formato qué operaciones de lectura, edición y guardado pueden preservarse de forma segura. Para XLS legado, evaluar primero una vista de solo lectura si la escritura no puede preservar el libro; comprobar explícitamente hojas múltiples, formatos básicos, anchos/altos, celdas combinadas, paneles congelados y filas/columnas ocultas, y aclarar cómo se muestran fórmulas si no se calculan.
+- Ampliar las codificaciones CSV reconocidas y permitir elegir una codificación compatible al abrir o guardar. Preservar los bytes y avisar antes de cualquier conversión con pérdida.
+- Mejorar el ordenamiento de columnas CSV con un modo de comparación de fechas para formatos admitidos y explícitos (por ejemplo, ISO `YYYY-MM-DD` y formatos día/mes/año). Mantener texto como texto por defecto y no adivinar fechas ambiguas; permitir desactivar esta ayuda mediante Settings, habilitada por defecto. Añadir tooltip al control y documentar la opción en `CONFIGURATION.md` y `README.md` al implementarla.
+- Evaluar lectura tabular de Parquet, Arrow/Feather, JSON, JSONL/NDJSON, SQLite, Avro y ORC. Priorizar una apertura de lectura segura; definir por formato el modelo de filas/columnas, selección de tabla u hoja, carga parcial y límites. No prometer edición ni conversión de vuelta hasta probar preservación y semántica. La lectura implementada de Parquet y ORC para dumps de BigQuery queda planificada en V4.
+- Para JSON, definir qué formas se pueden presentar como tabla (por ejemplo, listas de objetos) y cómo avisar cuando la estructura no sea tabular. No aplanar estructuras anidadas automáticamente: cualquier proyección a CSV/tabla debe tener reglas explícitas para conservar o representar jerarquías y tipos. Para SQLite, permitir seleccionar una tabla sin modificar la base de datos en la fase inicial. Revisar dependencias y requisitos externos antes de adoptar una solución; ORC no debe imponer una instalación de Python sin decisión explícita.
+
+### V4 — Comparación, exportación y archivos grandes
+
+- Añadir lectura de solo lectura para archivos **Parquet y ORC**, especialmente dumps exportados desde BigQuery. El caso de uso esperado son tablas con muchas columnas y datos tabulares, sin estructuras especialmente complejas. La apertura y navegación deben ocurrir dentro de VS Code y no requerir que la persona instale o ejecute Python; priorizar un lector integrado en la extensión y procesamiento local. Definir límites, vista parcial/paginada y comportamiento con tipos anidados, compresión y archivos grandes durante el diseño de la fase. Confirmar por separado si ambos formatos pueden funcionar sin conexión; no prometer soporte completo hasta verificarlo con archivos representativos.
+- Comparar dos libros y mostrar sus diferencias; definir cómo se alinean filas/columnas insertadas, eliminadas o modificadas.
+- Exportar una hoja a CSV y permitir exportar la proyección visible (filas filtradas y orden actual) a un archivo nuevo, sin cambiar el origen.
+- Evaluar exportación y conversión entre formatos tabulares compatibles (por ejemplo, CSV ↔ XLSX/XLS), con límites y avisos claros sobre fórmulas, tipos y características que no se pueden conservar.
+- Ampliar el soporte para archivos grandes con límites configurables, uso de memoria y criterios de rendimiento. Evaluar vista parcial o de solo lectura cuando editar el archivo completo no sea seguro.
+
+### V5 — Exportación JSON complementaria
+
+- Evaluar exportar una hoja a JSON como opción secundaria, separada de la exportación CSV y de las conversiones tabulares core de V4.
+- Definir al detallar la fase la forma de los registros, el tratamiento de encabezados repetidos/vacíos, celdas vacías y valores que en la hoja se conservan como texto crudo.
+- No alterar el libro de origen. Mantener esta opción como utilidad para quien necesite consumir datos desde código; no es parte del flujo principal del viewer.
+
+### V6 — Resumen discreto de datos
+
+- Añadir colores sutiles por columna para ayudar a seguir columnas en tablas anchas. Será una preferencia booleana de Settings, habilitada por defecto y desactivable por `settings.json`; usar colores que respeten el tema y no dependan de interpretar o cambiar los valores.
+- Añadir un resumen compacto por columna, visible en el footer o en una sección equivalente. Desde **Opciones avanzadas**, permitir elegir qué métricas se muestran: cantidad de valores y vacíos, porcentaje de vacíos, cantidad de distintos y duplicados, porcentaje de repetición y estadísticas numéricas comunes como suma, media/promedio, mediana, mínimo y máximo.
+- Definir con precisión los conteos: si “duplicados” cuenta las apariciones que exceden la primera o los valores distintos que se repiten; y el denominador de cada porcentaje. No confundir duplicados de celda con filas duplicadas. Las métricas numéricas deben explicar qué valores de texto, vacíos y números con formatos locales excluyen.
+- Añadir diagnósticos estructurales básicos para CSV: registros con diferente número de campos y errores de comillas/parseo cuando el lector pueda localizarlos. Mostrar el registro afectado y permitir saltar a él; no reparar ni reescribir automáticamente. La opción debe estar habilitada por defecto y poder desactivarse en Settings; documentarla en `CONFIGURATION.md`/`README.md` y añadir tooltip si se presenta como botón o acción.
+- El resumen es informativo: no convierte ni modifica valores. Añadir una opción booleana de Settings, habilitada por defecto y desactivable por `settings.json`; documentar el efecto, las métricas y sus costos de rendimiento. Las métricas elegidas por el usuario se configuran dentro del viewer.
+- Mantener los colores y el resumen discretos y ocultables para que la vista de tabla siga siendo el elemento principal. Estas funciones ayudan a leer e inspeccionar la hoja; no limpian ni corrigen datos ni pretenden sustituir una herramienta de análisis.
+
+### V7 — Gráficos básicos opcionales
+
+- Añadir una acción contextual **Ver gráfico** para crear una visualización rápida a partir de una columna de etiquetas y una o más columnas numéricas compatibles.
+- Empezar con cinco tipos comunes: barras/columnas, líneas, circular/anillo, área y dispersión. Detallar la selección de datos y las reglas de agregación cuando el rango incluya etiquetas repetidas; no inferir ni convertir silenciosamente valores.
+- Mostrar el gráfico en una vista ligera que no altere el archivo. Sin paneles analíticos, consultas, dashboards ni edición avanzada de gráficos.
+- La función tendrá una opción booleana de Settings habilitada por defecto y desactivable; la acción tendrá tooltip. Si no hay datos compatibles, explicar qué selección necesita el usuario.
+
+### V8 — Búsqueda de libro y herramientas opcionales avanzadas
+
+- Historial local de guardados por archivo, con diff entre versiones y restauración como cambios pendientes que se revisan antes de guardar. Es una función complementaria, no requisito del viewer core.
+- Evaluar un diff avanzado de libros, incluida su integración con Source Control, navegación por cambios y alineación estructural de filas/columnas. El diff básico de dos libros permanece en V4; esta tarjeta cubre la experiencia avanzada y no es core.
+- Añadir búsqueda en todas las hojas del libro abierto, además del ámbito de hoja actual. Recorrer coincidencias en orden de pestañas y por fila/columna; mostrar hoja y referencia de celda en el estado/resultado. Al usar Siguiente/Anterior, cambiar automáticamente a la hoja de la coincidencia y seleccionarla/enfocarla. Definir cómo tratar hojas ocultas y resultados que no pueden mostrarse.
+- Evaluar búsqueda por expresiones regulares como opción de búsqueda avanzada, manteniendo literal como modo predeterminado y sin alterar el comportamiento de la búsqueda simple. Al combinarla con búsqueda de libro, los resultados deben conservar hoja, referencia y navegación; errores de patrón deben mostrarse sin congelar la vista.
+- La búsqueda de esta fase queda limitada al libro abierto; búsqueda recursiva por carpetas, archivos múltiples y formas/objetos Excel permanece fuera del alcance.
+
+### Requisito core de guardado seguro
+
+El guardado seguro es parte del core de V2, no una mejora opcional posterior. El contrato ya está definido en las etapas V2-12A/V2-12B y en la sección de persistencia: validar antes de escribir, detectar cambios externos, conservar el archivo original y el draft ante un fallo, y permitir recuperar o reintentar sin pérdida silenciosa. Debe quedar verificado antes de ampliar formatos o conversiones.
+
+### V9 — Candidata posterior no core: gestión de columnas CSV
+
+Esta idea se conserva como candidata independiente para que no se pierda, pero queda fuera de V2–V8 y no bloquea el desarrollo del viewer core. Requiere planeación adicional antes de implementarse.
+
+- Permitir añadir columnas al final o insertarlas antes/después de una existente, y eliminar una o varias columnas seleccionadas en CSV. Evaluar si duplicar o mover columnas aporta suficiente valor para incluirlo.
+- Definir cómo se comportan headers ausentes o duplicados, campos vacíos vs ausentes, filas cortas/largas, comentarios/preamble, separadores y codificaciones. Los saltos de línea dentro de campos citados deben seguir siendo parte del mismo registro.
+- Preservar delimitador, quoting, escapes, BOM/codificación, finales de línea y bytes de contenido no afectados; determinar cuándo un caso irregular debe bloquear la operación con una explicación en vez de reescribirlo de forma inesperada.
+- Modelar cada cambio como una transacción con preflight y undo/redo; las coordenadas deben apuntar a registros fuente correctos aunque la vista esté ordenada o filtrada. Guardar solo después de validar el resultado completo.
+- Limitar inicialmente la función a CSV; no inferir soporte de estructura para XLSX/ODS. Si se implementa, la opción se habilita por defecto y puede desactivarse en Settings; botones/acciones llevan tooltip y se actualizan README, CONFIGURATION y este planning.
+
+Las reglas generales de las secciones 15.6 y 15.7 aplican también a estas fases: toda nueva opción de usuario se documenta, y los controles de funciones nuevas siguen el requisito de Settings habilitado por defecto salvo que aquí se indique un default distinto.
+
+### V10 — Candidata posterior no core: inspección explícita de vacíos y espacios
+
+Conservar esta idea para una fase futura, sin incorporarla al core ni implementarla antes de planear sus reglas visuales y semánticas.
+
+- Permitir inspeccionar celdas que parecen vacías pero contienen espacios, tabuladores u otros caracteres invisibles. En principio, mostrar una representación escapada o marcadores solo en el detalle de la celda seleccionada; evaluar un modo visual de cuadrícula para que la tabla normal no se llene de símbolos.
+- Distinguir celda ausente, campo/celda vacío, cadena vacía y texto formado solo por espacios/tabuladores. En formatos que tengan semántica nula explícita, permitir mostrar un marcador `[null]`; nunca inferir que el texto literal `NULL` o `[null]` en CSV es un valor nulo sin una convención configurada.
+- Evaluar opciones booleanas de Settings, activadas por defecto y desactivables, con nombres tentativos como `spreadsheet-viewer.explicitEmpty`, `spreadsheet-viewer.explicitNull` y `spreadsheet-viewer.explicitWhitespace`. Definir si los marcadores son etiquetas, glifos o escapes como `\\t`, y su localización en español/inglés.
+- La representación es solo visual: editar/guardar debe conservar exactamente el valor original, incluidos espacios, tabuladores, comillas, saltos internos y bytes. Debe poder copiarse el valor crudo sin incluir marcadores de presentación.
+- Requiere planeación adicional de accesibilidad, colisiones entre marcadores literales y valores reales, representación de caracteres Unicode invisibles, costos en hojas grandes y pruebas de round-trip.
+
+### V11 — Candidata no core: edición tabular de SQLite
+
+V3 conserva la apertura de SQLite en solo lectura. Esta fase guarda la posibilidad de editar datos de una tabla existente si una prueba técnica confirma un flujo local, comprensible y seguro comparable al de los formatos tabulares admitidos. SQLite es una base de datos con transacciones y restricciones, por lo que no se debe asumir que editar una celda es equivalente a reescribir un CSV.
+
+- Limitar el alcance a abrir la base local, elegir una tabla existente e inspeccionar/editar sus registros en la cuadrícula. No incluir consola SQL, consultas libres, joins, creación/modificación de esquema, migraciones, administración de conexiones ni funciones de DBeaver.
+- Antes de planear implementación, probar transacciones con rollback, claves y tipos, restricciones, índices/triggers, claves foráneas, bloqueo/cambios externos y archivos WAL. Una edición inválida o conflicto debe dejar la base intacta y explicar el motivo.
+- Si no puede demostrarse una edición segura sin introducir una complejidad desproporcionada, mantener SQLite como formato de solo lectura y cerrar la candidata sin ampliar el producto.
+- Si se implementa, la edición estará habilitada por defecto y podrá desactivarse en Settings; documentar sus opciones en `CONFIGURATION.md` y `README.md`, y añadir tooltip a cada acción nueva.
