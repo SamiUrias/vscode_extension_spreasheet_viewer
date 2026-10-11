@@ -8,6 +8,7 @@
 
 - **One table for common spreadsheet files:** open CSV, TSV, TAB, XLSX, and ODS files in an editor tab.
 - **Edit and save cells:** edit values in place or in the cell editor and save changes to the original file.
+- **Manage CSV records:** insert or append an empty row, or delete selected rows with confirmation. These actions can be undone and are configurable in Settings.
 - **Choose when changes are written:** automatic saving after confirming an edit is on by default; it can be disabled to save with `Ctrl+S` (`Cmd+S` on macOS).
 - **Keep raw values visible:** values are not silently converted to dates, percentages, or display-formatted numbers.
 - **Find data quickly:** search the active sheet and jump to a cell by reference, such as `B54`.
@@ -48,6 +49,8 @@ Sorting and filtering only change the visible projection. The source rows and th
 - Use the search field and its previous/next controls to move through matches in the active sheet.
 
 Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Paste TSV into the focused grid to apply the whole range as one undoable edit; a single value fills the selected range. Press `Delete` or `Backspace` to clear selected contents. Paste and clear are disabled for sorted, filtered, or searched views to prevent changes landing on unexpected rows. Formulas and unsupported cells are rejected by the edit preflight. Moving ranges is not available yet.
+
+For editable CSV files, **Insertar fila** adds an empty row below the selection, **Añadir fila** adds one at the end, and **Eliminar fila(s)** removes the selected range after confirmation. The actions are disabled while sorting, filtering, or searching; their visibility is controlled by `spreadsheet-viewer.csv.showRowActions`.
 
 ### Adjust the view
 

@@ -63,6 +63,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						void panel.webview.postMessage({ type: 'copyButtonVisibility', visible });
 					}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.csv.showRowActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'csvRowActionsVisibility', visible });}
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', document.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', document.uri);
 				if (visualChanged) {this.postDocument(document);}
@@ -200,6 +204,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isEditCellsMessage(message)) {
 				this.applyEditBatch(document, message, message.edits.map(edit => ({ ...edit, sheetIndex: message.sheetIndex })));
+				return;
+			}
+			if (isCsvRowOperationMessage(message)) {
+				void this.applyCsvRowOperation(document, panel, message);
 				return;
 			}
 			if (isDraftStateMessage(message)) {
@@ -565,6 +573,36 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
 			void vscode.window.showErrorMessage(`No se pudo aplicar la edición: ${messageText}`);
 			return false;
+		}
+	}
+
+	private async applyCsvRowOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'csvRowOperation' }>): Promise<void> {
+		try {
+			if (!document.csv || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(0)) {throw new Error('La operación quedó desactualizada; se recargaron los datos actuales.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true)) {return;}
+			if (message.kind === 'delete') {
+				const answer = await vscode.window.showWarningMessage(`¿Eliminar ${message.rows?.length ?? 0} registro(s) CSV?`, { modal: true }, 'Eliminar');
+				if (answer !== 'Eliminar') {return;}
+			}
+			await this.confirmDraftsBeforeSave(document);
+			const operation = message.kind === 'delete'
+				? { kind: 'delete' as const, rows: message.rows ?? [] }
+			: { kind: 'insert' as const, index: message.kind === 'append' ? document.csv.rowCount : message.index ?? -1,
+				rows: [Array.from({ length: document.csv.columnCount }, () => '')] };
+			const transactionId = document.applyCsvRowOperation(operation);
+			const label = message.kind === 'delete' ? 'Eliminar registros CSV' : message.kind === 'append' ? 'Añadir registro CSV' : 'Insertar registro CSV';
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({ document, label, undo: () => {if (document.undo(transactionId)) {update();}}, redo: () => {if (document.redo(transactionId)) {update();}} });
+			update();
+			if (document.csv.rowCount > 0) {
+				const row = message.kind === 'append' ? document.csv.rowCount - 1
+					: message.kind === 'insert' ? Math.min(message.index ?? 0, document.csv.rowCount - 1)
+						: Math.min(Math.min(...(message.rows ?? [0])), document.csv.rowCount - 1);
+				void panel.webview.postMessage({ type: 'focusCell', row, column: 0 });
+			}
+		} catch (error) {
+			void vscode.window.showErrorMessage(`No se pudo cambiar la estructura CSV: ${errorMessage(error)}`);
 		}
 	}
 
@@ -955,6 +993,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showResetButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showResetButton', true);
 		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
 		const showCopyButtons = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showCopyButtons', true);
+		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const nonce = randomBytes(16).toString('base64');
@@ -981,6 +1020,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="copy-raw" type="button" aria-describedby="copy-raw-tooltip">Copiar</button><span id="copy-raw-tooltip" role="tooltip">Copia la selección cruda en TSV; las fórmulas se copian como expresión.</span></span>
 						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">Copiar mostrado</button><span id="copy-displayed-tooltip" role="tooltip">Copia los valores tal como aparecen en la cuadrícula con la presentación actual.</span></span>
 						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
+					</div>
+					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="Acciones de registros CSV">
+						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>
+						<span class="copy-control"><button id="append-row" type="button" aria-describedby="append-row-tooltip">Añadir fila</button><span id="append-row-tooltip" role="tooltip">Añade un registro vacío al final de los datos CSV. La operación se puede deshacer.</span></span>
+						<span class="copy-control"><button id="delete-row" type="button" aria-describedby="delete-row-tooltip">Eliminar fila(s)</button><span id="delete-row-tooltip" role="tooltip">Elimina el registro o rango seleccionado después de pedir confirmación.</span></span>
 					</div>
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
 					<span id="clear-sort-control">
@@ -1156,6 +1200,17 @@ function isEditCellsMessage(message: unknown): message is Extract<WebviewToExten
 		totalCharacters += (edit.value as string).length;
 		return totalCharacters <= 50 * 1024 * 1024;
 	});
+}
+
+function isCsvRowOperationMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'csvRowOperation' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'csvRowOperation') {return false;}
+	const value = message as Record<string, unknown>;
+	if (typeof value.documentId !== 'string' || !Number.isInteger(value.revision) || typeof value.sheetId !== 'string'
+		|| !['insert', 'append', 'delete'].includes(String(value.kind))) {return false;}
+	if (value.kind === 'insert' && !Number.isInteger(value.index)) {return false;}
+	if (value.kind === 'delete' && (!Array.isArray(value.rows) || value.rows.length === 0 || value.rows.length > 50_000
+		|| !value.rows.every(Number.isInteger))) {return false;}
+	return true;
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {

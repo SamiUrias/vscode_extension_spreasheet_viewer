@@ -20,6 +20,7 @@
     "spreadsheet-viewer.csv.commentPrefix": "#",
     "spreadsheet-viewer.csv.firstRowHeader": true,
     "spreadsheet-viewer.csv.headerCase": "upper",
+    "spreadsheet-viewer.csv.showRowActions": true,
     "spreadsheet-viewer.view.restoreState": true,
     "spreadsheet-viewer.view.showResetButton": true,
     "spreadsheet-viewer.view.showClearSortButton": true,

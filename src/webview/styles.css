@@ -222,6 +222,7 @@ main {
 }
 
 #copy-actions {display: flex; align-items: center; gap: 4px;}
+#csv-row-actions {display: flex; align-items: center; gap: 4px;}
 
 #reset-view-control,
 #auto-fit-control,

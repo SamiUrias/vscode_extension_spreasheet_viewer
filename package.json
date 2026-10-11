@@ -183,6 +183,11 @@
           "default": "none",
           "description": "Transformación visual aplicada a las etiquetas de encabezado CSV."
         },
+        "spreadsheet-viewer.csv.showRowActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra acciones para insertar, añadir y eliminar registros CSV en el editor."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,

@@ -55,6 +55,8 @@ const clearSortButton = requiredElement<HTMLButtonElement>('#clear-sort');
 let showClearSortButton = clearSortButton.dataset.settingEnabled !== 'false';
 const copyActions = requiredElement<HTMLDivElement>('#copy-actions');
 let showCopyButtons = !copyActions.hidden;
+const csvRowActions = requiredElement<HTMLDivElement>('#csv-row-actions');
+let showCsvRowActions = !csvRowActions.hidden;
 const sortWarning = requiredElement<HTMLParagraphElement>('#sort-warning');
 const filterChips = requiredElement<HTMLDivElement>('#filter-chips');
 const projectionCount = requiredElement<HTMLOutputElement>('#projection-count');
@@ -180,6 +182,21 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'csvRowActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showCsvRowActions = event.data.visible;
+		updateCsvRowActions();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'focusCell'
+		&& 'row' in event.data && Number.isInteger(event.data.row) && 'column' in event.data && Number.isInteger(event.data.column)) {
+		const position = event.data as { row: number; column: number };
+		if (snapshot && position.row < snapshot.rowCount && position.column < snapshot.columnCount) {
+			selectCell(position.row, position.column);
+			gridScroll.focus();
+		}
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'resetViewButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		resetViewButton.hidden = !event.data.visible;
 		return;
@@ -246,6 +263,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		startupDataTimer = undefined;
 	}
 	snapshot = event.data;
+	updateCsvRowActions();
 	const changedSheet = snapshot.type === 'xlsxData'
 		&& (previousSheetIndex !== snapshot.activeSheetIndex || snapshot.requestId !== undefined);
 	formulaResults = {};
@@ -463,7 +481,7 @@ cellReferenceInput.addEventListener('keydown', event => {
 
 searchInput.addEventListener('input', () => {
 	pendingHiddenCell = undefined; revealHiddenMatchButton.hidden = true; filterStatus.textContent = '';
-	scheduleSearch(); schedulePersistViewState();
+	scheduleSearch(); schedulePersistViewState(); updateCsvRowActions();
 });
 searchAllRowsInput.addEventListener('change', () => {
 	searchAllRows = searchAllRowsInput.checked;
@@ -604,6 +622,22 @@ function clearSelectionContents(): void {
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
 requiredElement<HTMLButtonElement>('#copy-displayed').addEventListener('click', () => {void copySelection('displayed');});
 requiredElement<HTMLButtonElement>('#copy-headers').addEventListener('click', () => {void copySelection('headers');});
+requiredElement<HTMLButtonElement>('#insert-row').addEventListener('click', () => {
+	if (!snapshot || snapshot.type !== 'csvData' || !selectedCell) {return;}
+	vscodeApi.postMessage({ type: 'csvRowOperation', kind: 'insert', documentId: snapshot.documentId,
+		revision: snapshot.revision, sheetId: snapshot.sheetId, index: selectedCell.row + 1 });
+});
+requiredElement<HTMLButtonElement>('#append-row').addEventListener('click', () => {
+	if (!snapshot || snapshot.type !== 'csvData') {return;}
+	vscodeApi.postMessage({ type: 'csvRowOperation', kind: 'append', documentId: snapshot.documentId, revision: snapshot.revision, sheetId: snapshot.sheetId });
+});
+requiredElement<HTMLButtonElement>('#delete-row').addEventListener('click', () => {
+	if (!snapshot || snapshot.type !== 'csvData' || !selectedCell) {return;}
+	const first = selectionRange ? Math.min(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+	const last = selectionRange ? Math.max(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+	vscodeApi.postMessage({ type: 'csvRowOperation', kind: 'delete', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetId: snapshot.sheetId, rows: Array.from({ length: last - first + 1 }, (_, index) => first + index) });
+});
 
 async function copySelection(mode: 'raw' | 'displayed' | 'headers'): Promise<void> {
 	if (!showCopyButtons || !snapshot || !selectedCell) {return;}
@@ -734,6 +768,7 @@ function renderGrid(): void {
 		gridScroll.setAttribute('aria-activedescendant', `cell-${selectedCell.row}-${selectedCell.column}`);
 	} else {gridScroll.removeAttribute('aria-activedescendant');}
 	if (wrapCells) {updateWrappedVisibleRowHeights();}
+	updateCsvRowActions();
 }
 function selectCell(row: number, column: number, extend = false): void {
 	if (!showComments && snapshot?.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
@@ -750,6 +785,16 @@ function selectCell(row: number, column: number, extend = false): void {
 		ensureSelectionVisible, renderGrid,
 	}, row, column);
 	schedulePersistViewState();
+}
+
+function updateCsvRowActions(): void {
+	const visible = showCsvRowActions && snapshot?.type === 'csvData' && !snapshot.readonly;
+	csvRowActions.hidden = !visible;
+	const projected = sortCriteria.length > 0 || columnFilters.length > 0 || searchInput.value.length > 0;
+	const enabled = visible && !projected;
+	requiredElement<HTMLButtonElement>('#insert-row').disabled = !enabled || !selectedCell;
+	requiredElement<HTMLButtonElement>('#append-row').disabled = !enabled;
+	requiredElement<HTMLButtonElement>('#delete-row').disabled = !enabled || !selectedCell;
 }
 
 function commitSelectedEdit(): void {

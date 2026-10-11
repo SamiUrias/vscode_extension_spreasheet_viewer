@@ -849,6 +849,11 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Depende de:** V2-14A/V2-13. **Archivos:** grid/selection/editor/view-state/tests. **Pasos:** menú contextual/acciones accesibles añadir/insertar antes/eliminar filas; usar coordenadas originales capturadas. Deshabilitar insertar en vista sorted/filtered con acción para limpiar; borrar selección visible confirma cantidad y origen cuando hay proyección. Reconciliar selección/sizes/criterios tras estructura y nuevo revision.
 
+- [x] Añadir botones accesibles Insertar fila, Añadir fila y Eliminar fila(s), cada uno con tooltip; pedir confirmación explícita para eliminar.
+- [x] Añadir setting booleano `spreadsheet-viewer.csv.showRowActions`, default `true`, y documentar valores/efecto en README y CONFIGURATION.md.
+- [x] Desactivar acciones si hay proyección por orden/filtro/búsqueda; recoger borradores antes de modificar filas y deshacer/rehacer con el journal.
+- [ ] Verificar foco, selección y ciclo save/undo en Extension Host. El runner sigue bloqueado por Node 18.20.4 y dependencia `/v`.
+
 **Aceptación:** borrar tras sort borra registros seleccionados, no primeros N; undo reconstruye proyección; comentarios/header no eliminados por selección de datos accidental; límites antes de mutar; no autosave por cada fila. **Fuera:** columnas CSV; se planifican por separado en V4.
 
 #### V2-15A — Metadata y capacidades XLSX
