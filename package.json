@@ -319,6 +319,7 @@
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
     "test:save-lifecycle": "npm run compile-tests && node scripts/test-save-lifecycle.js",
+    "test:hot-exit": "npm run compile-tests && node scripts/test-hot-exit.js",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit && npm run check-types:webview",

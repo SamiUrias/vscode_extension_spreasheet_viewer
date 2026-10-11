@@ -135,7 +135,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.xlsx.showSheetActions` | `true` | Show or hide add, rename, and delete actions for compatible XLSX workbooks. |
 | `spreadsheet-viewer.xlsx.showStyleActions` | `true` | Show or hide basic XLSX range formatting, merge, and saved pane actions. |
 | `spreadsheet-viewer.view.showWorkbookAppearance` | `true` | Apply basic workbook cell styles and merged-cell layout; set to `false` to use plain cells. |
-| `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. |
+| `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. Recovered edits also remain pending in manual-save mode. |
 
 For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.
 

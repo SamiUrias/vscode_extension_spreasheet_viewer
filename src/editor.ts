@@ -230,7 +230,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					this.postSaveState(document, { type: 'saveState', state: document.hasUnsavedChanges ? 'pending' : 'clean' }, panel);
 					if (document.recoveryConflict) {
 						this.handleExternalConflict(document, false, false, 'Se recuperó un respaldo cuya versión base no coincide con el archivo actual. El borrador se conserva; guarda una copia para evitar sobrescribir cambios externos.');
-					} else if (document.hasUnsavedChanges) {this.scheduleSave(document);}
+					} else if (document.hasUnsavedChanges && this.saveOnCommit(document)) {this.scheduleSave(document);}
 				} catch (error) {
 					const detail = errorMessage(error);
 					this.output.appendLine(`No se pudo enviar el documento a la vista: ${detail}`);

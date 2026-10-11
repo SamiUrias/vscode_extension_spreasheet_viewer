@@ -4,6 +4,12 @@ All notable changes to the "spreadsheet-viewer" extension will be documented in 
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### Corregido
+
+- Un backup recuperado respeta el modo de guardado manual y no escribe cambios al archivo hasta que el usuario los guarde.
+
 ## [0.0.1] - 2026-10-11
 
 ### Añadido
