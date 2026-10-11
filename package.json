@@ -21,6 +21,11 @@
     "Visualization"
   ],
   "activationEvents": ["onStartupFinished", "onLanguage:plaintext"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -260,6 +265,7 @@
     "test:grid-layout": "npm run compile-tests && node scripts/test-grid-layout.js",
     "test:csv-dialect": "npm run compile-tests && node scripts/test-csv-dialect.js",
     "test:filesystem-capability": "npm run compile-tests && node scripts/test-filesystem-capability.js",
+    "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
     "test:save-lifecycle": "npm run compile-tests && node scripts/test-save-lifecycle.js",

@@ -33,6 +33,8 @@ Spreadsheet Viewer is an optional editor for these formats. To make it the defau
 
 Files opened through a VS Code file-system provider are editable only when that provider reports write support for its URI scheme. Unknown or read-only schemes open as read-only; saves also recheck provider capability and preserve the in-memory draft if writing is unavailable.
 
+The extension declares support for VS Code Restricted Mode. It reads spreadsheet contents as data and does not execute macros or workspace-provided code. The test configuration includes a separate untrusted workspace run.
+
 ## Work with data
 
 ### Sort and filter
