@@ -1,71 +1,100 @@
 # Spreadsheet Viewer
 
-Extensión de VS Code para ver y editar archivos CSV/TSV/TAB, XLSX y ODS sencillos desde una pestaña del editor. Usa **Abrir en Spreadsheet Viewer** desde el menú contextual del Explorer o de una pestaña, el botón del título del editor, la paleta de comandos o el atajo `Ctrl+Alt+Shift+O` (`Cmd+Alt+Shift+O` en macOS) cuando el recurso activo sea compatible. La vista permite cambiar entre hojas XLSX y ODS, buscar en la hoja activa, navegar a una celda por referencia y guardar las ediciones en el archivo de origen. **Recargar** vuelve a leer el archivo desde disco; si hay cambios locales pendientes, pide confirmación antes de descartarlos. Puedes redimensionar columnas desde sus divisores en los encabezados y ajustar la altura de una fila desde el borde inferior de su encabezado numerado.
+**View, search, sort, filter, and edit CSV, TSV, TAB, XLSX, and ODS files without leaving VS Code.** Spreadsheet Viewer keeps the values stored in your files visible and lets you save cell edits back to the original document.
 
-El comando también aparece en la paleta **Spreadsheet Viewer: Abrir en Spreadsheet Viewer**. Si no recibe un URI explícito, usa la pestaña o el editor activo, y muestra un mensaje si el recurso no es compatible. La asociación del editor es opcional: para abrir XLSX con esta vista de forma predeterminada, usa **Open With…** en VS Code y selecciona Spreadsheet Viewer; CSV y ODS conservan su asociación actual.
+> **Language:** The extension's interface is currently in **Spanish**. This Marketplace page is in English. English interface translations are planned for a future release.
 
-Para una vista de solo lectura usa **Spreadsheet Viewer: Vista previa de hoja** (lee desde disco), **Vista previa del buffer CSV/TSV/TAB** (sigue los cambios de texto sin guardar) o **Vista previa como CSV…** para interpretar explícitamente un archivo de texto con extensión arbitraria como CSV. Abrir el editor editable cuando existe un buffer textual modificado pide guardar, descartar o cancelar primero.
+## Highlights
 
-Las opciones de VS Code, sus valores y su efecto están documentados en [CONFIGURATION.md](CONFIGURATION.md).
+- **One table for common spreadsheet files:** open CSV, TSV, TAB, XLSX, and ODS files in an editor tab.
+- **Edit and save cells:** edit values in place or in the cell editor and save changes to the original file.
+- **Keep raw values visible:** values are not silently converted to dates, percentages, or display-formatted numbers.
+- **Find data quickly:** search the active sheet and jump to a cell by reference, such as `B54`.
+- **Sort and filter the view:** sort by multiple columns and filter by raw values or conditions. These operations do not reorder or remove data in the file.
+- **Navigate with the keyboard:** move through cells, select ranges, and begin editing by typing or pressing `F2`.
+- **Adjust the table layout:** resize columns and rows, auto-fit columns, wrap text, and freeze visible rows or columns.
+- **Remember your view:** restore selection, scroll position, search, sort, filters, and sizes per file and sheet. This can be disabled in Settings.
+- **Preview without editing:** inspect a file from disk, preview unsaved CSV/TSV/TAB text, or explicitly preview another text file as CSV.
+- **Inspect XLSX formulas:** supported formulas can be calculated for display; calculated results are never written to the workbook.
 
-## Ordenar y filtrar
+## Get started
 
-Haz clic en un encabezado para ordenar ascendente y luego descendente; el siguiente clic quita ese criterio. Un clic en otra columna reemplaza el orden actual; usa `Shift` + clic para agregarla al orden existente. Los números junto a las flechas indican prioridad. `T` indica comparación de texto y `N` numérica; `Alt` + clic cambia el modo (si la columna aún no está ordenada, inicia un orden numérico). `Ctrl` + clic (Windows/Linux) o `Cmd` + clic (macOS) quita directamente ese criterio; **Limpiar orden** quita todos y muestra un tooltip que aclara que no cambia los datos. Puedes ocultar ese botón con `spreadsheet-viewer.view.showClearSortButton` en `settings.json` (por defecto `true`). El modo numérico compara el texto decimal con precisión, sin convertirlo a un número flotante. Los vacíos y valores incompatibles quedan al final. En CSV, la fila usada como encabezado queda fija arriba.
+1. Use VS Code 1.140 or newer and install **Spreadsheet Viewer** from the Extensions view.
+2. In the Explorer, right-click a CSV, TSV, TAB, XLSX, or ODS file.
+3. Choose **Abrir en Spreadsheet Viewer** (Open in Spreadsheet Viewer).
 
-El botón de filtro `▽` junto a cada columna permite elegir valores crudos o escribir una o dos condiciones. Al abrir un filtro nuevo, la selección inicia vacía: usa **Todos** y luego desmarca valores para excluir algunos, o elige directamente los valores que quieres conservar. Puedes combinar condiciones de una columna con **Y** o **O**; los filtros de distintas columnas se combinan con **Y**. Por ejemplo, selecciona `Guatemala` en País y escribe `mayor que 1000000` en Población para ver solo las filas que cumplen ambas. En la lista de valores, **Todos** y **Ninguno** modifican la selección; el campo de búsqueda encuentra valores aunque estén en otra página. **Aplicar** confirma el borrador; **Cancelar** conserva el filtro anterior; **Limpiar** quita el filtro de esa columna. Los chips sobre la tabla muestran filtros activos y permiten quitarlos.
+You can also use the editor title button or run **Spreadsheet Viewer: Abrir en Spreadsheet Viewer** from the Command Palette. The default shortcut is `Ctrl+Alt+Shift+O` (`Cmd+Alt+Shift+O` on macOS).
 
-Los filtros solo cambian las filas visibles, nunca el archivo. Las celdas vacías y los campos ausentes se distinguen en el filtro por valores. El contador muestra las filas visibles frente al total. La búsqueda recorre las filas visibles por defecto; activa **Toda la hoja** para incluir también filas filtradas. Si una coincidencia o referencia está oculta, puedes mostrarla con **Mostrar coincidencia/celda**, que quita los filtros; presiona `Escape` para cancelar y conservar la selección. El orden y los filtros se guardan como estado de vista, separados por archivo y hoja.
+Spreadsheet Viewer is an optional editor for these formats. To make it the default for a file type, use **Open With…** in VS Code and select the extension.
 
-El planning llama **V2-07** a la etapa de ordenar, **V2-08A** al motor que evalúa filtros y **V2-08B** a los controles de filtro y su integración con búsqueda y navegación.
+## Work with data
 
-## Ajustar y navegar la tabla
+### Sort and filter
 
-En la barra sobre la tabla, elige **Primera columna** o **Todas las columnas** y pulsa **Autoajustar**. Al pasar el puntero o enfocar el botón con el teclado aparece un tooltip que recuerda que **Desactivado** no cambia los anchos. También puedes hacer doble clic en el divisor de una columna. La extensión mide el encabezado y una muestra determinista de hasta 200 filas distribuidas entre las filas visibles, con un límite de 2 millones de caracteres por acción; limita el ancho a 48–800 px y lo indica en el estado de vista. Los cambios son visuales y se guardan por hoja. El selector **Ajustar texto** envuelve el contenido y adapta la altura de las filas visibles hasta 600 px. Una altura que ajustes manualmente se conserva mientras el ajuste automático está activo.
+Click a column heading to sort ascending, descending, and then clear that sort. Click another heading to replace the sort; use `Shift` + click to add a sort column. The numbered indicators show sort priority. `T` and `N` indicate text and numeric comparison. Use `Alt` + click to switch comparison mode, or `Ctrl` + click (`Cmd` + click on macOS) to remove one sort criterion. **Limpiar orden** (Clear Sort) removes every active sort criterion.
 
-**Filas fijas** y **Columnas fijas** mantienen visibles las primeras N filas y columnas de la proyección al desplazarte (hasta 50 filas y 256 columnas). Por ejemplo, fija 1 fila y 2 columnas para mantener arriba la primera fila visible y a la izquierda las columnas A y B. Los ajustes son independientes del archivo y persisten por hoja. La selección y el desplazamiento tienen en cuenta el espacio ocupado por esas filas/columnas.
+Use the filter button beside a heading to select raw values or enter up to two conditions joined with **AND** or **OR**. Filters on separate columns are combined with **AND**. The values list can be searched and paged; **Apply**, **Cancel**, and **Clear** control the filter. Active filters appear as removable chips above the table.
 
-Haz clic y arrastra para seleccionar un rango; `Shift` + clic o `Shift` + flechas extiende la selección. `Ctrl+A` (`Cmd+A` en macOS) selecciona la tabla visible. Usa flechas, `Home`/`End`, `PageUp`/`PageDown`, `Tab`/`Shift+Tab` y `Enter`/`Shift+Enter` para navegar. `F2` o escribir inicia la edición en línea. `Enter` o `Tab` en el editor en línea confirma y avanza; `Shift+Enter` inserta un salto de línea y `Escape` cancela. La selección rectangular sigue el orden visible y omite filas filtradas; al cambiar el orden o filtros se reduce a una celda. El portapapeles todavía no forma parte de estas etapas.
+Sorting and filtering only change the visible projection. The source rows and the saved file remain in their original order. Search covers visible rows by default; choose **Toda la hoja** (Entire Sheet) to include filtered rows. If a match or cell reference is hidden, the view can reveal it by clearing the active filters.
 
-## Fidelidad y límites conocidos
+### Navigate and edit
 
-- Los valores se muestran sin formatos visuales ni conversiones inferidas. CSV conserva valores como texto; XLSX y ODS muestran los valores almacenados en XML, incluyendo seriales numéricos de fechas y decimales tal como están escritos. En ODS los valores se leen de `content.xml`; los estilos no se aplican a la tabla.
-- Las fórmulas XLSX no se pueden editar. Formualizer 0.10.1 calcula resultados para presentación cuando las pruebas verifican un resultado independiente. Nombres inválidos y errores de fórmula se muestran como errores; funciones no implementadas, derrames y casos conocidos de fechas incorrectas se muestran como **Fórmula NO compatible**. La caché original permanece visible. El resultado es solo visual: nunca se escribe en el archivo ni sustituye la fórmula o su caché. Formualizer publica el paquete bajo MIT o Apache-2.0; esto no implica compatibilidad con todas las fórmulas de Excel.
-- La tabla conserva y muestra el texto crudo del archivo. El motor convierte entradas numéricas al tipo numérico requerido para calcular, por lo que un resultado calculado puede tener la precisión normal de punto flotante; esto no cambia el valor crudo mostrado ni guardado.
-- Las fórmulas XLSX se calculan solo para mostrarlas con Formualizer. Las fórmulas ODS se muestran junto con el valor guardado en caché; no se recalculan. Las fórmulas de ambos formatos no se pueden editar.
-- El editor admite CSV UTF-8 y UTF-16 con BOM, y detecta coma, punto y coma o tabulador. Al editar reemplaza solo los campos tocados y conserva bytes de los campos no editados cuando es posible.
-- CSV, XLSX y ODS tienen un máximo de 10 MiB en disco. Los paquetes XLSX/ODS limitan la expansión ZIP a 64 MiB, 10 000 partes, 50 hojas, 50 000 filas, 256 columnas y 500 000 celdas con datos; se rechaza la carga completa si se excede un límite, sin mostrar una tabla parcial editable.
-- XLSX se edita modificando las partes XML de celdas y reempaquetando el archivo. Macros, gráficos, tablas dinámicas, vínculos externos y firmas digitales no se interpretan en la tabla; la presencia de algunas de estas características se advierte en la vista. No se promete preservación integral de características de Excel. Valida copias de libros importantes en Excel o LibreOffice antes de depender del resultado.
-- ODS se edita modificando las celdas afectadas en `content.xml` y reempaquetando el contenedor ZIP, conservando las demás partes del paquete. No se aplican estilos y las fórmulas solo se muestran con su caché. La extensión cubre hojas tabulares y no garantiza preservar cada función avanzada del estándar ODF; valida copias importantes en LibreOffice antes de depender del resultado.
-- No admite XLS, colaboración, compatibilidad completa con fórmulas Excel, gráficos, macros, tablas dinámicas ni formato avanzado. Ante cambios externos con ediciones pendientes, la extensión solicita recargar descartando cambios o guardar una copia.
+- Click and drag to select a range. `Shift` + click or `Shift` + arrow extends the selection.
+- Use arrow keys, `Home`, `End`, `PageUp`, `PageDown`, `Tab`, and `Enter` to move around the table.
+- Press `F2` or start typing to edit the selected cell. Press `Enter` or `Tab` to confirm; press `Escape` to cancel.
+- Use the cell reference field to jump to a location such as `B54`.
+- Use the search field and its previous/next controls to move through matches in the active sheet.
 
-Los límites y el comportamiento descritos corresponden a la implementación y pruebas disponibles en este repositorio. La compatibilidad con libros reales complejos requiere validación adicional.
+Range selection follows the visible order and skips filtered-out rows. Copying, pasting, and moving cell ranges are not available yet.
 
-### Registro probado de fórmulas
+### Adjust the view
 
-La suite usa dos fixtures propios de 2 KiB con sistemas de fechas 1900 y 1904 y un fixture adicional de regresión. “Probada” se limita a los casos y resultados enumerados aquí; no certifica compatibilidad completa con Excel.
+Drag the dividers in the column and row headings to resize them. **Autoajustar** (Auto Fit) can fit the first column or all columns to their headings and a deterministic sample of up to 200 visible rows. Its tooltip explains the selected scope and sample-based sizing. The width is bounded to keep the table usable. Turn on **Ajustar texto** (Wrap Text) to wrap cell contents and grow visible rows automatically; manual row heights are retained while wrapping is active.
 
-| Familia | Casos comprobados | Estado y límite conocido |
+Set **Filas fijas** (Frozen Rows) and **Columnas fijas** (Frozen Columns) to keep the first visible rows or columns in place while scrolling. These layout choices affect the view only and are remembered per sheet.
+
+## Previews
+
+The Command Palette includes these read-only options:
+
+- **Vista previa de hoja** (Preview Sheet) reads the file from disk.
+- **Vista previa del buffer CSV/TSV/TAB** (Preview Text Buffer) follows unsaved text changes in the active text editor.
+- **Vista previa como CSV…** (Preview as CSV…) explicitly interprets a text file as CSV.
+
+Opening the editable view while the text buffer has unsaved changes asks whether to save, discard, or cancel first.
+
+## Raw values and file compatibility
+
+- CSV values remain text. The editor supports UTF-8 and UTF-16 files with a byte-order mark and detects comma, semicolon, or tab separators. `.tsv` and `.tab` files use tabs.
+- XLSX and ODS values are read from their stored XML values. For example, a date-formatted XLSX number is shown as its stored serial value, not converted to a formatted date.
+- XLSX formula expressions and cached values remain distinct. Formula calculation is for display only and does not replace the original formula or cache. Unsupported formulas show their stored cache and are identified as unsupported.
+- ODS formulas are shown with their stored cached value and are not recalculated.
+- The first CSV row can be displayed as a column heading; optional header capitalization changes only the visual label. CSV comment records can be hidden from the table while remaining in the file.
+- CSV, XLSX, and ODS files are limited to 10 MiB. XLSX/ODS archives also have limits for expanded size, number of parts, sheets, rows, columns, and populated cells. Files over a limit are rejected as a whole rather than shown as a partial editable table.
+
+XLSX and ODS support focuses on tabular data. Macros, charts, pivot tables, signatures, external links, advanced formatting, and other complex workbook features are not fully supported. The extension may warn about unsupported content; it does not promise full Excel or ODF round-trip fidelity. Validate important workbooks on copies in Excel or LibreOffice before relying on saved results.
+
+## Settings
+
+All settings default to the values shown below. Add only the settings you want to override to User or Workspace `settings.json`.
+
+| Setting | Default | Purpose |
 | --- | --- | --- |
-| Aritmética y lógica | Comparación numérica, `IF`, división protegida con `IFERROR` | Calculada y verificada con valores esperados. |
-| Agregados y criterios | `SUM`, `COUNT`, `AVERAGE`, `COUNTIF`, `SUMPRODUCT` | Casos pequeños verificados con valores independientes. |
-| Texto | `TEXT` numérico, `LEN`, `LEFT`, `CONCAT`, `TEXTJOIN` | Los casos enumerados se verifican. `TEXT` de fecha con salida serial-zero conocida queda cache-only. |
-| Fechas | `DATE`, `YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `EDATE`, `EOMONTH`, `NETWORKDAYS`; sistemas 1900/1904 | Casos 1900 verificados. `EDATE`/`EOMONTH` seriales en libros 1904 quedan incompatibles porque el motor no ajusta el sistema; `TEXT` fecha con serial-zero también queda cache-only. |
-| Búsqueda y referencia | `VLOOKUP`, `HLOOKUP`, `MATCH`, `INDEX`, `INDIRECT`, `ROW`, `COLUMN`, `ADDRESS`; referencias entre hojas | Coincidencia exacta, posición, direcciones y referencias verificadas contra las celdas fuente. |
-| Errores | `NA()`, `#NAME?` por función inválida | Se distinguen error real y nombre inválido; `#N/A` no se clasifica como función no implementada. |
-| Matrices | `UNIQUE`, `SORT`, `FILTER`, `SEQUENCE`, `TRANSPOSE`, `AGGREGATE`, `LAMBDA`; `#SPILL!`, `#N/IMPL!` | El derrame no se materializa; las funciones que Formualizer no implementa y los derrames quedan explícitamente incompatibles/cache-only. |
-| Financieras | `RATE` con 12 pagos mensuales y valores conocidos | Caso verificado contra el resultado esperado `0.029228540769133535`; otras funciones financieras no certificadas. |
+| `spreadsheet-viewer.csv.commentPrefix` | `"#"` | Recognize CSV records beginning with this prefix as comments. Use `""` to disable comment detection. |
+| `spreadsheet-viewer.csv.firstRowHeader` | `true` | Use the first CSV data row as the visual column label. The row remains in the data. |
+| `spreadsheet-viewer.csv.headerCase` | `"none"` | Choose `"none"`, `"upper"`, or `"lower"` for visual CSV heading labels. |
+| `spreadsheet-viewer.view.restoreState` | `true` | Save and restore view preferences per file, sheet, and mode. |
+| `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
+| `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
 
-`npm run test:formulas` también recorre el fixture grande para detectar cambios de conteo/estado. Los resultados se consideran soporte solo cuando hay expectativas pequeñas independientes; no se usa el total de fórmulas como certificado de compatibilidad.
+For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.
 
-## Desarrollo y verificación
+## Language and support
 
-Requisitos: Node.js compatible con la versión de VS Code usada por el proyecto y npm. Instala dependencias con `npm install`.
+The current interface is Spanish-only. English UI localization is planned but is not part of this release.
 
-- `npm run compile`: comprueba tipos, lint y compila la extensión y la interfaz web.
-- `npm run package`: ejecuta las mismas comprobaciones y genera los bundles minificados de producción en `dist/`.
-- `npm test`: compila y ejecuta pruebas en Extension Host; requiere un runtime de Node compatible con las herramientas de prueba instaladas.
-- Para probar la interfaz en VS Code, abre el proyecto, ejecuta **Run Extension** con F5 y prueba el menú contextual del Explorer. Mueve la pestaña a otro grupo y sigue el checklist de verificación manual en `planning.md`.
+This is a personal project provided **as is**, without a promise of support, maintenance, or compatibility with every spreadsheet. Keep backups of important files and validate important workbooks on copies before relying on saved results.
 
-En el entorno de desarrollo actual, `npm test` todavía requiere verificación con un runtime más nuevo: Node 18.20.4 no reconoce la bandera `/v` de una dependencia usada por el lanzador de VS Code. `npm run test:save-lifecycle` también requiere acceso a la red si el runtime de VS Code debe descargarse.
+## License
 
-El paquete VSIX todavía debe generarse y comprobarse con `vsce package` en un entorno donde esté disponible `@vscode/vsce`.
+Spreadsheet Viewer is licensed under the MIT License (see `LICENSE`). Third-party components retain their own licenses, included with the packaged extension where applicable.

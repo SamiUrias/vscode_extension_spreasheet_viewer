@@ -8,7 +8,12 @@ src/**
 esbuild.js
 vsc-extension-quickstart.md
 **/tsconfig.json
+tsconfig.*.json
 **/eslint.config.mjs
 **/*.map
 **/*.ts
 **/.vscode-test.*
+scripts/**
+planning.md
+plugin_multilingue.md
+problema_actual_*.md
