@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 sigue en progreso. Hay implementación local y pruebas focalizadas hasta V2-24D (parcial), además de la corrección y pruebas locales de V2-18B. V2-16/17, V2-19A2/19A3 y V2-19B2/B3 mantienen verificaciones visuales o de Extension Host pendientes; VS Code instalado abortó con `SIGABRT` al ejecutar el harness con Node 24. V2-22A tiene una prueba real de Extension Host que abre un CSV en Restricted Mode sin alterar bytes; la matriz de proveedores y permisos aún requiere host/remotos. V2-22B requiere VS Code Web real. V2-22C ya reconoce XLSM y metadatos macro/firma con paquete y parser comprobados, pero faltan las pruebas del editor en Extension Host y revisar el archivo guardado/abierto externamente. V2-24A y 24B verifican ZIP/XML localmente; V2-24C verifica el cálculo/undo del mapa de movimiento, con Extension Host y Excel/LibreOffice pendientes; V2-24D tiene pruebas locales de estilo, combinación, pane y undo, con host/aplicación externa pendientes. V2-18B requiere también abrir el archivo en Excel o LibreOffice, cuyas aplicaciones no iniciaron en este entorno. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 sigue en progreso. Hay implementación local y pruebas focalizadas hasta V2-24D (parcial), además de la corrección y pruebas locales de V2-18B. Los runners focalizados `test:save-lifecycle` y `test:hot-exit` ya pasan con VS Code 1.141.0 y Node 24.21.0; esto cubre el ciclo del proveedor, no sustituye las verificaciones visuales/Webview, rendimiento en UI ni las pruebas externas indicadas en sus tarjetas. V2-16/17 y V2-19 mantienen verificaciones visuales o de integración Webview pendientes. V2-22A tiene una prueba real de Extension Host que abre un CSV en Restricted Mode sin alterar bytes; la matriz de proveedores y permisos aún requiere host/remotos. V2-22B requiere VS Code Web real. V2-22C ya reconoce XLSM y metadatos macro/firma con paquete y parser comprobados, pero faltan las pruebas del editor en Extension Host y revisar el archivo guardado/abierto externamente. V2-24A y 24B verifican ZIP/XML localmente; V2-24C verifica el cálculo/undo del mapa de movimiento, con prueba visual y Excel/LibreOffice pendientes; V2-24D tiene pruebas locales de estilo, combinación, pane y undo, con verificación visual/aplicación externa pendientes. V2-18B requiere también abrir el archivo en Excel o LibreOffice, que no está disponible en este entorno. Las verificaciones pendientes se mantienen indicadas en cada checklist y no detienen etapas independientes. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -640,7 +640,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 #### V2-04A — Descubrimiento y comandos
 
-**Estado:** implementación lista el 2026-10-10; pruebas en Extension Host y verificación F5 pendientes porque VS Code Test no pudo descargar VS Code en este entorno (fallo DNS).
+**Estado:** implementación lista el 2026-10-10; la apertura por comando y verificación F5 siguen pendientes. Los runners focalizados prueban el proveedor/lifecycle, pero no ejecutan la paleta/context menu ni garantizan que la pestaña movida se revele correctamente.
 
 **Depende de:** V2-03. **Archivos:** extension/editor/manifiesto/tests. **Pasos:** comando actual acepta URI o recurso activo compatible; añadir título/contexto de tab/paleta y keybinding acotado; botones/iconos locales; documentar asociación XLSX opcional sin imponerla a CSV/ODS ni cambiar viewType existente. Mantener deduplicación de aperturas.
 
@@ -916,7 +916,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Presentar formatos numéricos, fechas de sistema 1900/1904 y booleanos en una matriz derivada; preservar números largos, fórmulas, celdas sin estilo y datos originales.
 - [x] Mantener edición/copia raw sin formato y hacer que **Copiar mostrado** use la presentación activa.
 - [x] Documentar configuración, alcance y licencia; añadir `npm run test:presentation` para las cinco pruebas unitarias de presentación y tipos/lint/build.
-- [ ] La interacción del toggle y copiado en Extension Host sigue pendiente: VS Code no se descarga por `ENOTFOUND update.code.visualstudio.com`; reintentar en V2-25 cuando el runtime esté disponible.
+- [ ] Verificar manualmente el toggle **Ver libro**, la actualización del modo en paneles abiertos y **Copiar mostrado** en la UI. `test:presentation` cubre el formateo, no el flujo de interacción de la Webview.
 
 #### V2-16B — Libro visual, hojas y combinaciones
 
@@ -932,7 +932,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir tabs con scroll, navegación por flechas/Home/End, selector respaldo y etiquetas para hojas ocultas/muy ocultas.
 - [x] Aplicar anchos/altos importados y ocultar geométricamente filas/columnas colapsadas; mantener sobreescrituras de usuario y pane congelado original al restaurar/resetear.
 - [x] Corregir la fila de inicio de geometría ODS tras una fila repetida y probar límites de expansión.
-- [ ] Verificación visual y de navegación en Extension Host pendiente. Con Node 24.21, el runner necesita descargar VS Code y DNS devuelve `ENOTFOUND update.code.visualstudio.com`; los tests locales de metadata/layout sí pasan.
+- [ ] Verificación visual y de navegación pendiente: abrir un XLSX y ODS con varias hojas, cambiar hoja con mouse/teclado y revisar geometría/panes. Los tests locales de metadata/layout pasan; el ciclo focalizado de lifecycle no simula la navegación visual.
 
 ##### V2-16B2 — Estilos y celdas combinadas
 
@@ -945,7 +945,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Renderizar merges horizontales y verticales bajo virtualización manteniendo visible el ancla, sin dibujar sobre el corte de panes; covered cells llevan a su ancla.
 - [x] Pasar a vista tabular cuando el sort/filtro reordena o quita filas, mostrar la razón y restaurar merges al volver a orden original; exponer notas y destinos de hyperlinks como texto inerte.
 - [x] Exponer `spreadsheet-viewer.view.showWorkbookAppearance` (booleano, default `true`) en `settings.json`, documentarlo y actualizarlo en paneles abiertos.
-- [ ] Verificación visual de tema claro/oscuro/alto contraste y editor estrecho en Extension Host pendiente; la descarga del runtime de pruebas falla por `ENOTFOUND update.code.visualstudio.com`.
+- [ ] Verificación visual pendiente en tema claro/oscuro/alto contraste y editor estrecho; los tests no certifican contraste, legibilidad ni anclaje de merges en la UI.
 
 #### V2-17A — Estructura XLSX segura en modelo
 
@@ -957,7 +957,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Insertar/borrar filas o columnas con coordenadas XML, `dimension`, `spans` y geometría de columnas actualizadas; imponer límites de filas, columnas y celdas antes de materializar celdas nuevas.
 - [x] Guardar snapshots byte a byte en el journal de undo/redo; reconstruir los cambios estructurales desde la copia de recuperación.
 - [x] Probar inserción de filas/columnas, parts ajenas, dimensiones, spans, perfil con fórmulas y undo/redo del modelo; tipos, lint, pruebas focalizadas y paquete pasan.
-- [ ] Verificar ciclo de recuperación y undo desde Extension Host; el runner con Node 24.21 no descarga VS Code por `ENOTFOUND update.code.visualstudio.com`; los snapshots/journal se prueban localmente.
+- [ ] Verificar en Extension Host el backup/restauración y undo de una operación estructural XLSX. `test:save-lifecycle` ya cubre backup/restauración y undo de celdas/fórmulas; `test:xlsx-structure` cubre transformación estructural local, pero no su combinación con recovery dentro del host.
 
 #### V2-17B — Menú estructural XLSX
 
@@ -970,7 +970,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Deshabilitar acciones con orden/filtros activos o cuando el preflight informa una causa; host revalida archivo, revisión, límites y perfil antes de operar.
 - [x] Confirmar eliminaciones; bloquear cambios pendientes y proyectar selección; registrar cada operación en el journal de undo/redo.
 - [x] Verificar tipos, lint, paquete de producción, capability/preflight y operaciones estructurales del modelo: 41 pruebas focalizadas pasan.
-- [ ] Verificar visualmente el menú, los modales, la selección, auto-save/guardado manual y undo/redo en Extension Host; el runner con Node 24.21 no descarga VS Code por `ENOTFOUND update.code.visualstudio.com`.
+- [ ] Verificar visualmente el menú estructural, los modales y la selección, y recorrer guardar automático/manual y undo/redo desde la UI. Los tests de preflight/modelo y el lifecycle del proveedor pasan, pero no ejercitan clics ni modales de esta función.
 
 #### V2-18A — Ajuste de referencias de fórmulas
 
@@ -990,7 +990,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 **Aceptación:** pruebas automáticas confirman referencias locales/entre hojas tras insertar y borrar, invalidación de caché/calcChain y recarga correcta del XLSX por el parser de la extensión; undo restaura expresiones y cachés. La apertura sin reparación en Excel/LibreOffice queda pendiente de verificación manual. Shared/array/definedNames/table/external se bloquean explícitamente. **Fuera:** afirmar paridad estructural con libros complejos; ampliaciones requieren tarjeta específica de preflight/writer/tests.
 
-**Estado local:** referencias locales y entre hojas verificadas con el Parser/Tokenizer real; fórmulas modificadas pierden su caché y activan recálculo completo. Se corrigió `calcChain` para invalidarlo también cuando se mueve una celda con fórmula y su expresión queda igual. Tests de snapshot del paquete, fórmula sin referencias desplazada, caché conservada, parser al reabrir, y undo/redo del journal pasan; tipos, lint, build y tests focalizados también. **Verificación externa pendiente:** VS Code 1.141 aborta con `SIGABRT` al ejecutar `npm run test:save-lifecycle` incluso con Node 24; LaunchServices no puede iniciar la app instalada de LibreOffice (`kLSNoExecutableErr`, falta ejecutable). Se debe abrir un XLSX estructuralmente editado en Excel/LibreOffice cuando haya una instalación operativa; no se afirma que ese check pasó.
+**Estado local:** referencias locales y entre hojas verificadas con el Parser/Tokenizer real; fórmulas modificadas pierden su caché y activan recálculo completo. Se corrigió `calcChain` para invalidarlo también cuando se mueve una celda con fórmula y su expresión queda igual. Tests de snapshot del paquete, fórmula sin referencias desplazada, caché conservada, parser al reabrir y undo/redo del journal pasan; el runner focalizado `test:save-lifecycle` también pasa para las operaciones que cubre. **Verificación externa pendiente:** abrir un XLSX estructuralmente editado en Excel o LibreOffice para confirmar que no solicita reparación; LibreOffice no está instalado de forma ejecutable en este entorno. No se afirma que ese check pasó.
 
 - [x] Permitir únicamente fórmulas normales y referencias A1 soportadas; rechazar fórmulas shared/array y metadata no transformada.
 - [x] Actualizar referencias locales y entre hojas antes de cambiar coordenadas de la hoja, borrar cachés y eliminar calcChain al cambiar fórmulas; activar recálculo al abrir.
@@ -1012,7 +1012,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Emite delta para ediciones CSV de celdas cuando la firma del header no cambia; header y otros cambios conservan snapshot completo.
 - [x] Webview valida `baseRevision`, actualiza solo filas tocadas y solicita snapshot completo ante revisión inesperada o coordenadas no válidas.
 - [x] Añadir `npm run test:cell-deltas` para compilar y ejecutar los tests focalizados de inmutabilidad, celdas múltiples, coordenadas, revisión y documentos distintos; el benchmark registra 129 bytes para un delta frente a 1,779,673 bytes para el mensaje CSV completo.
-- [ ] Verificar la interacción real provider/Webview (selección, filtros, borrador y resync). `npm run test:save-lifecycle` se ejecutó con Node 24.21.0 y VS Code instalado, pero el proceso termina con `SIGABRT` antes de cargar las pruebas; no se marca integración como verificada.
+- [ ] Verificar la interacción real provider/Webview (selección, filtros, borrador y resync). Los tests de deltas y `test:save-lifecycle` pasan por separado; falta una prueba integrada que haga cambios en Webview y compruebe el resync del proveedor.
 
 #### V2-19A3 — Deltas de edición XLSX/ODS sin fórmulas
 
@@ -1022,7 +1022,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 - [x] Enviar deltas con valor/tipo/kind/capability solo si ninguna hoja contiene fórmulas; enviar snapshot completo si las hay.
 - [x] Aplicar deltas solo a la hoja activa, avanzar revisión de paneles en otras hojas y solicitar resync tras desfase.
-- [ ] Verificar cambios, celdas protegidas, fórmulas y metadatos en Provider/Webview dentro de Extension Host. `npm run test:save-lifecycle` con Node 24.21.0 y VS Code instalado termina con `SIGABRT` antes de cargar las pruebas; esta verificación sigue pendiente.
+- [ ] Verificar cambios, celdas protegidas, fórmulas y metadatos cruzando Provider y Webview en Extension Host. Los tests locales de delta y capability pasan; el lifecycle actual no inspecciona el render ni el resync en la Webview.
 
 #### V2-19B1 — Cache de offsets de filas proyectadas
 
@@ -1032,19 +1032,19 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 - [x] Cachear alturas y offsets por identidad de proyección y revisión de dimensiones de fila.
 - [x] Probar orden de filas, offsets acumulados y revisión tras resize.
-- [ ] Medir scroll con datos de 35 290 filas en Extension Host. El harness aborta al iniciar VS Code con Node 24.21.0 (`SIGABRT`), así que no hay medida de UI.
+- [ ] Medir scroll con datos de 35 290 filas en Extension Host y registrar p50/p95. Los tests verifican offsets y caché, pero no miden render, interacción ni rendimiento visual.
 
 #### V2-19B2 — Virtualización horizontal
 
 **Depende de:** V2-19B1. **Archivos:** grid/layout/styles/tests. **Pasos:** crear solo nodos de celdas visibles más overscan por ancho/scroll, manteniendo las pistas de columnas completas del CSS grid. Mantener encabezados, filtros y orden de las hasta 256 columnas existentes; columnas congeladas siguen renderizadas. Conservar selección, navegación, búsqueda, combinaciones y redimensionamiento.
 
-**Estado local:** implementación completada en `edf32c0`; `npm run test:grid-layout` pasa ventanas visibles, overscan, columnas congeladas, offsets de filas y merges dentro/fuera del viewport. **Pendiente de verificación:** DOM y navegación horizontal en Extension Host, incluyendo foco/IME, columnas congeladas, combinaciones y resize; el host aborta con `SIGABRT` antes de cargar pruebas. **Fuera:** worker de fórmulas.
+**Estado local:** implementación completada en `edf32c0`; `npm run test:grid-layout` pasa ventanas visibles, overscan, columnas congeladas, offsets de filas y merges dentro/fuera del viewport. **Pendiente de verificación:** inspeccionar DOM y navegación horizontal en Extension Host, incluyendo foco/IME, columnas congeladas, combinaciones y resize. La prueba de layout es de modelo y no certifica la interacción visual. **Fuera:** worker de fórmulas.
 
 #### V2-19B3 — Worker local de fórmulas
 
 **Estado:** implementación completada localmente; build de producción, tipos, lint y pruebas independientes del calculador pasan. **Archivos:** `src/webview/formula-worker.ts`, `src/webview/main.ts`, `src/editor.ts`, `esbuild.js`. Bundle del worker autocontenido con el WASM del paquete; se termina al superar 60 segundos o al reemplazarse una solicitud activa. Las respuestas viejas se descartan por generación y las nuevas se pueden volver a ejecutar en un worker nuevo.
 
-**Metas:** navegación visual <100 ms en p95 y tareas de UI sin bloqueos >50 ms sobre fixtures propios; son objetivos a medir, no resultados actuales. **Pendiente de verificación en Extension Host:** carga del WASM mediante URI de Webview, fórmula local/entre hojas correcta, descarte de resultados obsoletos, timeout y recuperación del worker, y respuesta interactiva de la cuadrícula. `npm run test:save-lifecycle` con VS Code instalado termina con `SIGABRT` antes de cargar las pruebas; no se marca aceptación integrada. **Fuera:** cálculo con datos incompletos de una sola ventana.
+**Metas:** navegación visual <100 ms en p95 y tareas de UI sin bloqueos >50 ms sobre fixtures propios; son objetivos a medir, no resultados actuales. **Pendiente de verificación en Extension Host:** carga del WASM mediante URI de Webview, fórmula local/entre hojas correcta, descarte de resultados obsoletos, timeout y recuperación del worker, y respuesta interactiva de la cuadrícula. El runner de lifecycle pasa, pero no inicia el worker ni mide su respuesta visual; estas comprobaciones quedan para un test Webview/host focalizado. **Fuera:** cálculo con datos incompletos de una sola ventana.
 
 #### V2-20A — Edición de fórmulas XLSX normales
 
@@ -1052,7 +1052,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 **Estado:** implementación local completada. El modo explícito **Editar como fórmula** se muestra por defecto (`spreadsheet-viewer.xlsx.allowFormulaEditing: true`); al seleccionar una fórmula se habilita su expresión. El parser del host valida antes del journal; el serializador guarda `<f>`, borra la caché modificada, invalida `calcChain` y solicita recálculo al abrir. La fórmula escrita aparece como fórmula en el snapshot y vuelve al worker. Los borradores identifican modo fórmula y se conservan en backup/recuperación. CSV permanece en su edición textual. Shared y array se rechazan.
 
-**Checks locales:** `npm run package`, `npm run test:formula-edits` y `npm run test:formulas -- --reference` pasan; comprueban sintaxis real del parser, serialización/reparseo, cache/calcChain, recálculo, y transacción undo/redo. **Pendiente:** el harness `npm run test:save-lifecycle` incluye edit/save/reopen/undo/redo de XLSX, pero VS Code no llega a ejecutar las suites: descarga bloqueada por DNS y app local aborta (`SIGABRT`); la apertura externa sin reparación y el modo UI requieren verificación manual/host. **Fuera:** migrar todos los caches a valores nuevos ni ODS formula editing.
+**Checks locales:** `npm run package`, `npm run test:formula-edits`, `npm run test:formulas -- --reference` y el lifecycle focalizado pasan; comprueban sintaxis real del parser, serialización/reparseo, cache/calcChain, recálculo y transacción undo/redo. **Pendiente:** la interacción visual de edición de fórmulas y abrir externamente un archivo guardado sin reparación requieren validación manual. **Fuera:** migrar todos los caches a valores nuevos ni ODS formula editing.
 
 #### V2-20B — Asistencia y estados de fórmula
 
@@ -1066,7 +1066,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 **Depende de:** V2-04B/V2-06. **Archivos:** extension/config/preview/tests/README. **Pasos:** `openStdin=false`; detectar URI/documento stdin compatible al abrir y al activar; evitar doble preview/loops. Resolver idiomas csv/tsv/csv (semicolon)/csv (pipe) sin depender de que Rainbow CSV esté instalado. Ajustes reactivos por recurso y paleta para plaintext/arbitrario mediante comando explícito.
 
-**Estado local:** implementación y documentación completadas. `spreadsheet-viewer.stdin.openStdin` es opt-in (`false` por defecto): el archivo temporal específico de `code -` abre como preview de solo lectura, y previews concurrentes se deduplican. El buffer stdin acepta Plain Text y language IDs CSV reconocidos; se respeta el idioma para separador, con `.tsv`/`.tab` prioritarios. **Pruebas locales:** `npm run package` y `npm run test:csv-dialect` pasan para mapeos, prioridad, detección temporal y rutas similares que deben rechazarse. **Pendiente:** probar el comando `code -`, cambios de idioma/configuración y documentos externos en Extension Host, que termina `SIGABRT` en este entorno. La vista previa manual de cualquier archivo de texto está disponible por **Vista previa como CSV…**.
+**Estado local:** implementación y documentación completadas. `spreadsheet-viewer.stdin.openStdin` es opt-in (`false` por defecto): el archivo temporal específico de `code -` abre como preview de solo lectura, y previews concurrentes se deduplican. El buffer stdin acepta Plain Text y language IDs CSV reconocidos; se respeta el idioma para separador, con `.tsv`/`.tab` prioritarios. **Pruebas locales:** `npm run package` y `npm run test:csv-dialect` pasan para mapeos, prioridad, detección temporal y rutas similares que deben rechazarse. **Pendiente:** ejecutar `code -`, cambiar idioma/configuración y validar documentos externos en Extension Host; el test de dialectos no dispara esos flujos de comandos. La vista previa manual de cualquier archivo de texto está disponible por **Vista previa como CSV…**.
 
 **Aceptación:** stdin opt-in, sin escritura al recurso efímero, init/reopen sin duplicados; idioma con separador respeta prioridad; config visual actualiza sin perder draft; doc externa al workspace funciona. **Fuera:** reconocimiento heurístico de cualquier archivo como spreadsheet.
 
