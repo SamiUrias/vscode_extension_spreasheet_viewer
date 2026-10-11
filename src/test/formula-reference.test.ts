@@ -65,6 +65,16 @@ async function run(): Promise<void> {
 	assert.match(bookXml, /forceFullCalc="1"/);
 	assert.doesNotMatch(new TextDecoder().decode(changedParts['xl/_rels/workbook.xml.rels']), /calcChain/);
 	assert.doesNotMatch(new TextDecoder().decode(changedParts['[Content_Types].xml']), /calcChain/);
+	assert.deepEqual(snapshot.before, original, 'the structure snapshot retains the original formula package for undo');
+
+	const movedFormula = formulaCellOnlyWorkbook();
+	const movedSnapshot = await applyXlsxStructureOperation(movedFormula, { kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 }, parser);
+	const movedParts = unzipSync(movedSnapshot.after);
+	const movedSheet = parseXlsxBytes(movedSnapshot.after).sheets[0]!;
+	assert.equal(movedSheet.rows[4]![0], '=2+3', 'formula moves with its row even when its expression does not change');
+	assert.equal(movedSheet.formulaCaches.A5, '5', 'unchanged formula cache remains available for display');
+	assert.equal(movedParts['xl/calcChain.xml'], undefined, 'calcChain is removed when formula-cell coordinates move');
+	assert.match(new TextDecoder().decode(movedParts['xl/workbook.xml']), /fullCalcOnLoad="1"/);
 }
 
 function formulaWorkbook(): Uint8Array {
@@ -76,6 +86,17 @@ function formulaWorkbook(): Uint8Array {
 		'xl/calcChain.xml': encode('<calcChain xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><c r="B2" i="1"/><c r="A1" i="2"/></calcChain>'),
 		'xl/worksheets/sheet1.xml': encode('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:B2"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="2"><c r="B2"><f>SUM(A1:A3)</f><v>6</v></c></row></sheetData></worksheet>'),
 		'xl/worksheets/sheet2.xml': encode('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:C1"/><sheetData><row r="1"><c r="A1"><f>Data!A1+Data!A2+B1</f><v>2</v></c><c r="C1"><f>Data!A1+B1</f><v>3</v></c></row></sheetData></worksheet>'),
+	});
+}
+
+function formulaCellOnlyWorkbook(): Uint8Array {
+	const encode = (value: string) => new TextEncoder().encode(value);
+	return zipSync({
+		'[Content_Types].xml': encode('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/></Types>'),
+		'xl/workbook.xml': encode('<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+		'xl/_rels/workbook.xml.rels': encode('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain" Target="calcChain.xml"/></Relationships>'),
+		'xl/calcChain.xml': encode('<calcChain xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><c r="A4" i="1"/></calcChain>'),
+		'xl/worksheets/sheet1.xml': encode('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A4"/><sheetData><row r="4"><c r="A4"><f>2+3</f><v>5</v></c></row></sheetData></worksheet>'),
 	});
 }
 

@@ -89,6 +89,9 @@ export async function applyXlsxStructureOperation(bytes: Uint8Array, operation: 
 	if (hasFormulas) {
 		if (!parser) {throw new Error('Se requiere el parser de fórmulas para cambiar la estructura de este libro.');}
 		await rewriteWorkbookFormulaReferences(files, book, rels, workbook, operation, parser);
+		// Formula cells can move even when their expressions do not change; calcChain stores
+		// formula-cell coordinates, so it must be invalidated for every structural edit.
+		invalidateFormulaCalculation(files, book, rels);
 	}
 	const selected = sheetNodes[operation.sheetIndex];
 	const relationId = selected?.getAttribute('r:id') ?? '';
@@ -141,7 +144,6 @@ async function rewriteWorkbookFormulaReferences(
 	const sheets = descendants(book, 'sheet');
 	const targetSheet = workbook.sheets[operation.sheetIndex]?.name;
 	if (!targetSheet) {throw new Error('La hoja objetivo de las fórmulas ya no existe.');}
-	let formulaChanged = false;
 	for (let index = 0; index < sheets.length; index++) {
 		const sheetNode = sheets[index]!;
 		const sheetName = workbook.sheets[index]?.name;
@@ -168,11 +170,10 @@ async function rewriteWorkbookFormulaReferences(
 			formula.textContent = result.formula.slice(1);
 			const cell = formula.parentNode as Element | null;
 			if (cell) {for (const cache of directChildren(cell, 'v')) {cell.removeChild(cache);}}
-			sheetChanged = true; formulaChanged = true;
+			sheetChanged = true;
 		}
 		if (sheetChanged) {files[part] = new TextEncoder().encode(new XMLSerializer().serializeToString(document));}
 	}
-	if (formulaChanged) {invalidateFormulaCalculation(files, book, rels);}
 }
 
 function invalidateFormulaCalculation(files: Record<string, Uint8Array>, workbook: Document, relationships: Document): void {

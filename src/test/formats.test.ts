@@ -267,6 +267,25 @@ suite('XLSX reader', () => {
 		unsafeWorksheet.documentElement?.appendChild(unsafeWorksheet.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'autoFilter'));
 		const unsafe = zipSync({ ...safeParts, 'xl/worksheets/sheet1.xml': xml(new XMLSerializer().serializeToString(unsafeWorksheet)) });
 		await assert.rejects(applyXlsxStructureOperation(unsafe, { kind: 'insertRows', sheetIndex: 0, index: 0, count: 1 }), /referencias o extensiones/);
+
+		const formulaParts = unzipSync(original);
+		const formulaSheet = new TextDecoder().decode(formulaParts['xl/worksheets/sheet1.xml']);
+		formulaParts['xl/worksheets/sheet1.xml'] = new Uint8Array(xml(formulaSheet.replace('<f>A1+1</f><v>1.25</v>', '<f>2+3</f><v>5</v>')));
+		const formulaBytes = zipSync(formulaParts);
+		const formulaSession = new SpreadsheetEditSession(undefined, parseXlsxBytes(formulaBytes), formulaBytes);
+		const noReferenceParser = {
+			parseFormula: async () => ({ type: 'number' }),
+			tokenizeFormula: async () => [],
+		} as unknown as FormulaParserService;
+		const formulaTransaction = await formulaSession.applyXlsxStructure({ kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 }, noReferenceParser);
+		const formulaEdited = formulaSession.serializeCopy();
+		assert.equal(parseXlsxBytes(formulaEdited).sheets[0]?.rows[3]?.[1], '=2+3');
+		assert.equal(parseXlsxBytes(formulaEdited).sheets[0]?.formulaCaches.B4, '5');
+		assert.equal(unzipSync(formulaEdited)['xl/calcChain.xml'], undefined);
+		assert.equal(formulaSession.undo(formulaTransaction), true);
+		assert.deepStrictEqual(formulaSession.serializeCopy(), formulaBytes, 'formula structural undo restores the original package and cache');
+		assert.equal(formulaSession.redo(formulaTransaction), true);
+		assert.deepStrictEqual(formulaSession.serializeCopy(), formulaEdited, 'formula structural redo restores the moved formula and invalidated calcChain');
 	});
 
 	test('rejects an expanded archive above the configured extraction limit', () => {
