@@ -71,6 +71,7 @@ export function serializeVisibleSelection(
 	rows: readonly (readonly string[])[], visibleRows: readonly number[],
 	selection: { readonly anchor: TsvCell; readonly focus: TsvCell }, columnCount: number,
 	headers?: readonly string[],
+	formatCell?: (sourceRow: number, column: number, rawValue: string) => string,
 ): string | undefined {
 	const anchorIndex = visibleRows.indexOf(selection.anchor.row);
 	const focusIndex = visibleRows.indexOf(selection.focus.row);
@@ -80,7 +81,11 @@ export function serializeVisibleSelection(
 	const lastColumn = Math.min(columnCount - 1, Math.max(selection.anchor.column, selection.focus.column));
 	if (firstColumn > lastColumn) {return undefined;}
 	const output = visibleRows.slice(firstVisible, lastVisible + 1).map(sourceRow =>
-		Array.from({ length: lastColumn - firstColumn + 1 }, (_, offset) => rows[sourceRow]?.[firstColumn + offset] ?? ''),
+		Array.from({ length: lastColumn - firstColumn + 1 }, (_, offset) => {
+			const column = firstColumn + offset;
+			const rawValue = rows[sourceRow]?.[column] ?? '';
+			return formatCell ? formatCell(sourceRow, column, rawValue) : rawValue;
+		}),
 	);
 	if (headers) {output.unshift(Array.from({ length: lastColumn - firstColumn + 1 }, (_, offset) => headers[firstColumn + offset] ?? ''));}
 	return serializeTsv(output);

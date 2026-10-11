@@ -639,6 +639,22 @@ textarea:focus-visible,
 	text-overflow: clip;
 }
 
+.grid-cell.xlsx-wrap-text {
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+	text-overflow: clip;
+}
+.grid-cell.merged-cell-anchor {overflow: visible; white-space: pre-wrap;}
+
+@media (forced-colors: active) {
+	.grid-cell.xlsx-styled-cell {
+		color: CanvasText !important;
+		background: Canvas !important;
+		border-color: CanvasText !important;
+	}
+}
+
 .row-header {
 	position: sticky;
 	left: 0;

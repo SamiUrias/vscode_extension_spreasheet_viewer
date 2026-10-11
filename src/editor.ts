@@ -69,6 +69,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showDisplayModeButton', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'displayModeButtonVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.csv.showRowActions', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'csvRowActionsVisibility', visible });}
@@ -319,8 +323,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				columnDimensions: xlsxColumnDimensions(document.xlsx.sheets[sheetIndex]!.metadata!),
 				rowDimensions: xlsxRowDimensions(document.xlsx.sheets[sheetIndex]!.metadata!),
 				frozenPane: document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane
+					&& ['frozen', 'frozenSplit'].includes(document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane!.state ?? '')
 					? { xSplit: document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane!.xSplit, ySplit: document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane!.ySplit } : undefined,
 				mergedRanges: document.xlsx.sheets[sheetIndex]!.metadata!.mergedRanges,
+				cellNotes: document.xlsx.sheets[sheetIndex]!.metadata!.notes,
+				cellHyperlinks: document.xlsx.sheets[sheetIndex]!.metadata!.hyperlinks,
 			} : document.ods?.sheets[sheetIndex]?.odsMetadata ? {
 				columnDimensions: odsColumnDimensions(document.ods.sheets[sheetIndex]!.odsMetadata!, sheet.columnCount),
 				rowDimensions: odsRowDimensions(document.ods.sheets[sheetIndex]!.odsMetadata!, sheet.rowCount),
@@ -345,6 +352,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const custom = document.xlsx!.styles?.customNumberFormats.find(item => item.id === style.numberFormatId);
 					return { numberFormatId: style.numberFormatId, ...(custom ? { formatCode: custom.formatCode } : {}) };
 				}),
+				cellVisualStyles: document.xlsx.styles?.cellVisualStyles,
 				date1904: document.xlsx.date1904,
 			} : {}),
 			...(document.xlsx ? { workbookBase64: this.getFormulaSnapshot(document) } : {}),
@@ -1025,6 +1033,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
 		const showCopyButtons = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showCopyButtons', true);
 		const showDisplayModeButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showDisplayModeButton', true);
+		const showWorkbookAppearance = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showWorkbookAppearance', true);
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
@@ -1138,7 +1147,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			</div>
 		</section>
 		<div id="grid-scroll" aria-label="Vista de tabla" tabindex="0">
-			<div id="grid-root"></div>
+			<div id="grid-root" data-workbook-appearance="${showWorkbookAppearance}"></div>
 		</div>
 	</main>
 	<script nonce="${nonce}">

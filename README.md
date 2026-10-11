@@ -80,7 +80,7 @@ Opening the editable view while the text buffer has unsaved changes asks whether
 
 XLSX and ODS support focuses on tabular data. Macros, charts, pivot tables, signatures, external links, advanced formatting, and other complex workbook features are not fully supported. The extension may warn about unsupported content; it does not promise full Excel or ODF round-trip fidelity. Validate important workbooks on copies in Excel or LibreOffice before relying on saved results.
 
-Workbook sheets can be switched with scrollable tabs or the sheet selector. Hidden and very hidden sheets are labeled explicitly. Imported row/column dimensions and XLSX frozen panes are used for the grid; full style and merged-cell rendering is still being completed.
+Workbook sheets can be switched with scrollable tabs or the sheet selector. Hidden and very hidden sheets are labeled explicitly. Imported row/column dimensions and XLSX frozen panes are used for the grid. Basic XLSX bold, italic, alignment, wrapping, borders, and direct RGB font/fill colors are rendered; theme/indexed colors and advanced conditional or rich-text styles are not. Merged cells render when their rows remain in source order and the merge does not cross a frozen pane. When sorting or filtering changes row positions, the grid temporarily uses tabular cells and explains why. Selecting a covered cell moves to its merge anchor. Cell notes and links appear as text and are never opened automatically.
 
 ## Settings
 
@@ -96,6 +96,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
 | `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
 | `spreadsheet-viewer.view.showDisplayModeButton` | `true` | Show or hide **Ver libro**, the XLSX raw/formatted display toggle. |
+| `spreadsheet-viewer.view.showWorkbookAppearance` | `true` | Apply basic workbook cell styles and merged-cell layout; set to `false` to use plain cells. |
 | `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. |
 
 For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.

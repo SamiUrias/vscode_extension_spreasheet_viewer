@@ -45,6 +45,7 @@ suite('Spreadsheet Viewer editor', () => {
 		assert.deepStrictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showResetButton'], { type: 'boolean', default: true, description: 'Muestra el botón para restablecer la vista de la hoja.' });
 		assert.deepStrictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showClearSortButton'], { type: 'boolean', default: true, description: 'Muestra el botón para quitar todos los criterios de orden activos.' });
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showDisplayModeButton']?.default, true);
+		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showWorkbookAppearance']?.default, true);
 		assert.ok(contributions.menus.commandPalette.some(item => item.command === 'spreadsheet-viewer.resetView' && item.when === 'true'));
 	});
 

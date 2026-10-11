@@ -60,6 +60,10 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showDisplayModeButton', true);
 					void session.panel.webview.postMessage({ type: 'displayModeButtonVisibility', visible });
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', session.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showWorkbookAppearance', true);
+					void session.panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', session.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', session.uri);
 				if (visualChanged) {this.postSnapshot(session);}
@@ -246,8 +250,11 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					columnDimensions: xlsxColumnDimensions(document.xlsx.sheets[index]!.metadata!),
 					rowDimensions: xlsxRowDimensions(document.xlsx.sheets[index]!.metadata!),
 					frozenPane: document.xlsx.sheets[index]!.metadata!.frozenPane
+						&& ['frozen', 'frozenSplit'].includes(document.xlsx.sheets[index]!.metadata!.frozenPane!.state ?? '')
 						? { xSplit: document.xlsx.sheets[index]!.metadata!.frozenPane!.xSplit, ySplit: document.xlsx.sheets[index]!.metadata!.frozenPane!.ySplit } : undefined,
 					mergedRanges: document.xlsx.sheets[index]!.metadata!.mergedRanges,
+					cellNotes: document.xlsx.sheets[index]!.metadata!.notes,
+					cellHyperlinks: document.xlsx.sheets[index]!.metadata!.hyperlinks,
 				} : document.ods?.sheets[index]?.odsMetadata ? {
 					columnDimensions: odsColumnDimensions(document.ods.sheets[index]!.odsMetadata!, sheet.columnCount),
 					rowDimensions: odsRowDimensions(document.ods.sheets[index]!.odsMetadata!, sheet.rowCount),
@@ -266,6 +273,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 						const custom = document.xlsx!.styles?.customNumberFormats.find(item => item.id === style.numberFormatId);
 						return { numberFormatId: style.numberFormatId, ...(custom ? { formatCode: custom.formatCode } : {}) };
 					}),
+					cellVisualStyles: document.xlsx.styles?.cellVisualStyles,
 					date1904: document.xlsx.date1904,
 				} : {}),
 				...(document.xlsx && session.bytes ? { workbookBase64: Buffer.from(session.bytes).toString('base64') } : {}),

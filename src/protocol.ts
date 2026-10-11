@@ -31,6 +31,7 @@ export interface InvalidCellMessage {
 export interface CopyToClipboardMessage { type: 'copyToClipboard'; text: string; }
 export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; visible: boolean; }
 export interface DisplayModeButtonVisibilityMessage { type: 'displayModeButtonVisibility'; visible: boolean; }
+export interface WorkbookAppearanceVisibilityMessage { type: 'workbookAppearanceVisibility'; visible: boolean; }
 export interface CsvRowActionsVisibilityMessage { type: 'csvRowActionsVisibility'; visible: boolean; }
 export interface FocusCellMessage { type: 'focusCell'; row: number; column: number; }
 export interface CsvRowOperationMessage {
@@ -140,6 +141,8 @@ export interface XlsxDataMessage {
 	rowDimensions?: Array<{ row: number; height?: number; hidden: boolean }>;
 	frozenPane?: { xSplit: number; ySplit: number };
 	mergedRanges?: string[];
+	cellNotes?: Array<{ reference: string; author?: string; text: string }>;
+	cellHyperlinks?: Array<{ reference: string; target?: string; location?: string }>;
 	requestId?: number;
 	rows: string[][];
 	cellKinds: string[][];
@@ -148,6 +151,7 @@ export interface XlsxDataMessage {
 	formulaCaches: Record<string, string>;
 	cellStyleIndexes?: Array<Array<number | undefined>>;
 	cellNumberFormats?: Array<{ numberFormatId: number; formatCode?: string }>;
+	cellVisualStyles?: Array<CellVisualStyle>;
 	date1904?: boolean;
 	workbookBase64?: string;
 	rowCount: number;
@@ -159,6 +163,15 @@ export interface XlsxDataMessage {
 	recoveredDraft?: RecoveredDraft;
 }
 
+export interface CellVisualStyle {
+	readonly bold?: boolean; readonly italic?: boolean; readonly fontSize?: number;
+	readonly fontColor?: string; readonly fillColor?: string;
+	readonly horizontalAlignment?: 'left' | 'center' | 'right' | 'justify' | 'distributed' | 'general';
+	readonly verticalAlignment?: 'top' | 'center' | 'bottom' | 'justify' | 'distributed';
+	readonly wrapText?: boolean;
+	readonly borders?: Partial<Record<'top' | 'right' | 'bottom' | 'left', { readonly style: string; readonly color?: string }>>;
+}
+
 export interface CellCapability {
 	readonly storedType: string;
 	readonly editable: boolean;
@@ -168,5 +181,5 @@ export interface CellCapability {
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
 export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | CsvRowActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | CsvRowActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

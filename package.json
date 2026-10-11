@@ -213,6 +213,11 @@
           "default": true,
           "description": "Muestra el botón para alternar entre valores crudos y formatos numéricos de Excel en XLSX."
         },
+        "spreadsheet-viewer.view.showWorkbookAppearance": {
+          "type": "boolean",
+          "default": true,
+          "description": "Aplica estilos básicos y celdas combinadas de XLSX/ODS en la cuadrícula."
+        },
         "spreadsheet-viewer.edit.saveOnCommit": {
           "type": "boolean",
           "default": true,

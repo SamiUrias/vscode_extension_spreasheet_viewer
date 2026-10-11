@@ -3,6 +3,8 @@ export interface CellPosition {
 	readonly column: number;
 }
 
+export interface CellRangeBounds { readonly top: number; readonly bottom: number; readonly left: number; readonly right: number; }
+
 /** Resolves an A1 reference to zero-based coordinates if it is inside the active sheet. */
 export function resolveCellReference(reference: string, rowCount: number, columnCount: number): CellPosition | undefined {
 	const match = /^\$?([A-Z]{1,3})\$?([1-9]\d*)$/i.exec(reference);
@@ -23,12 +25,17 @@ export function resolveCellReference(reference: string, rowCount: number, column
 
 /** Returns true for cells covered by a range while leaving its top-left anchor editable. */
 export function isCellCoveredByRange(range: string, row: number, column: number): boolean {
+	const bounds = parseCellRangeBounds(range);
+	return Boolean(bounds && row >= bounds.top && row <= bounds.bottom && column >= bounds.left && column <= bounds.right
+		&& (row !== bounds.top || column !== bounds.left));
+}
+
+export function parseCellRangeBounds(range: string): CellRangeBounds | undefined {
 	const parts = range.split(':');
-	if (parts.length !== 2) {return false;}
+	if (parts.length !== 2) {return undefined;}
 	const first = resolveCellReference(parts[0]!, 1_048_576, 18_278);
 	const last = resolveCellReference(parts[1]!, 1_048_576, 18_278);
-	if (!first || !last) {return false;}
-	return row >= Math.min(first.row, last.row) && row <= Math.max(first.row, last.row)
-		&& column >= Math.min(first.column, last.column) && column <= Math.max(first.column, last.column)
-		&& (row !== first.row || column !== first.column);
+	if (!first || !last) {return undefined;}
+	return { top: Math.min(first.row, last.row), bottom: Math.max(first.row, last.row),
+		left: Math.min(first.column, last.column), right: Math.max(first.column, last.column) };
 }

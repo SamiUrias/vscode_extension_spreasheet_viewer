@@ -1,6 +1,7 @@
 import type { CsvDataMessage, XlsxDataMessage, FormulaEvaluation } from '../protocol';
 import type { RowLayout } from './grid-layout';
 import type { RowProjection } from '../table-view';
+import { getRenderableMerges, mergeAnchorIntersectsViewport } from './merge-layout';
 
 export interface GridRendererState { rowsViewport: HTMLDivElement | undefined; renderedColumnCount: number; }
 export interface GridRenderContext {
@@ -18,6 +19,7 @@ export interface GridRenderContext {
 	columnName(index: number): string; isSelected(row: number, column: number): boolean; isActiveCell(row: number, column: number): boolean;
 	isFormula(row: number, column: number): boolean; getFormulaCache(row: number, column: number): string;
 	getFormulaResult(row: number, column: number): FormulaEvaluation | undefined;
+	getCellDisplayValue(row: number, column: number, raw: string): string;
 	isEditing(row: number, column: number): boolean; isActiveSearchMatch(row: number, column: number): boolean;
 	inlineEditValue: string; setInlineEditValue(value: string): void; sendDraftState(dirty: boolean, value?: string): void;
 	setInlineEditorDirty(value: boolean): void; commitInlineEdit(): void; cancelInlineEdit(): void;
@@ -26,6 +28,7 @@ export interface GridRenderContext {
 	projection: RowProjection; sortHeader(column: number, event: MouseEvent): void; sortLabel(column: number): string;
 	openFilter(column: number, button: HTMLButtonElement): void; isFiltered(column: number): boolean;
 	freezeRows: number; freezeColumns: number; wrapCells: boolean;
+	showWorkbookAppearance: boolean;
 	consumeSuppressedCellClick(): boolean;
 	autoFitColumn(column: number): void;
 }
@@ -35,9 +38,9 @@ export function renderSpreadsheetGrid(context: GridRenderContext): void {
 		getActiveColumnWidths, gridTemplateColumns, startColumnResize, resizeColumnWithKeyboard,
 		updateGridColumnSizing, getActiveRowLayout, findRowAtOffset, startRowResize,
 		resizeRowWithKeyboard, columnName, isSelected, isFormula, getFormulaCache, getFormulaResult,
-		isEditing, isActiveSearchMatch, inlineEditValue, setInlineEditValue, sendDraftState, setInlineEditorDirty,
+		isEditing, isActiveSearchMatch, getCellDisplayValue, inlineEditValue, setInlineEditValue, sendDraftState, setInlineEditorDirty,
 		commitInlineEdit, cancelInlineEdit, navigateAfterInlineEdit, selectCell, beginInlineEdit, projection, sortHeader, sortLabel, openFilter, isFiltered,
-		freezeRows, freezeColumns, wrapCells, consumeSuppressedCellClick, autoFitColumn } = context;
+		freezeRows, freezeColumns, wrapCells, showWorkbookAppearance, consumeSuppressedCellClick, autoFitColumn } = context;
 	let { rowsViewport, renderedColumnCount } = state;
 
 	if (!snapshot || snapshot.rowCount === 0 || snapshot.columnCount === 0) {
@@ -125,6 +128,8 @@ const templateColumns = gridTemplateColumns(widths);
 	updateGridColumnSizing();
 
 	const rowLayout = getActiveRowLayout();
+	const mergeRanges = showWorkbookAppearance && snapshot.type === 'xlsxData'
+		? getRenderableMerges(snapshot.mergedRanges ?? [], snapshot.rowCount, snapshot.columnCount, projection.visibleRows, freezeRows, freezeColumns) : [];
 	const projectedHeights = projection.visibleRows.map(sourceRow => rowLayout.heights[sourceRow] ?? defaultRowHeight);
 	const projectedOffsets = [0];
 	for (const height of projectedHeights) {projectedOffsets.push(projectedOffsets[projectedOffsets.length - 1]! + height);}
@@ -149,6 +154,10 @@ const templateColumns = gridTemplateColumns(widths);
 	const rowsToRender = new Set<number>();
 	for (let rowIndex = 0; rowIndex < Math.min(freezeRows, visibleRowCount); rowIndex++) {rowsToRender.add(rowIndex);}
 	for (let rowIndex = firstVisibleRow; rowIndex < endVisibleRow; rowIndex++) {rowsToRender.add(rowIndex);}
+	for (const merge of mergeRanges) {
+		const anchorVisibleIndex = projection.sourceToVisible.get(merge.top);
+		if (anchorVisibleIndex !== undefined && mergeAnchorIntersectsViewport(merge, firstViewportRow, lastViewportRow, overscan)) {rowsToRender.add(anchorVisibleIndex);}
+	}
 	for (const rowIndex of [...rowsToRender].sort((a, b) => a - b)) {
 		const sourceRow = projection.visibleRows[rowIndex]!;
 		const row = document.createElement('div');
@@ -181,17 +190,46 @@ const templateColumns = gridTemplateColumns(widths);
 
 		const values = snapshot.rows[sourceRow];
 		for (let column = 0; column < snapshot.columnCount; column++) {
+			const merge = mergeRanges.find(range => sourceRow >= range.top && sourceRow <= range.bottom && column >= range.left && column <= range.right);
+			if (merge && (sourceRow !== merge.top || column !== merge.left)) {continue;}
 			const valueCell = document.createElement('div');
 			const present = column < values.length;
-			const value = present ? values[column] : '';
+			const rawValue = present ? values[column] : '';
+			const value = getCellDisplayValue(sourceRow, column, rawValue);
 			valueCell.className = 'grid-cell';
 			valueCell.textContent = value;
-			valueCell.title = value;
+			valueCell.title = value === rawValue ? rawValue : `${value}\nValor crudo: ${rawValue}`;
 			valueCell.setAttribute('role', 'gridcell');
 			valueCell.id = `cell-${sourceRow}-${column}`;
 			valueCell.dataset.sourceRow = String(sourceRow);
 			valueCell.dataset.column = String(column);
+			valueCell.style.gridColumn = `${column + 2}${merge ? ` / span ${merge.right - merge.left + 1}` : ''}`;
+			if (merge) {
+				const mergeHeight = rowLayout.heights.slice(merge.top, merge.bottom + 1).reduce((total, height) => total + height, 0);
+				valueCell.style.height = `${mergeHeight}px`;
+				valueCell.style.alignSelf = 'start';
+				valueCell.style.zIndex = '5';
+				valueCell.classList.add('merged-cell-anchor');
+			}
 			valueCell.setAttribute('aria-selected', String(isSelected(sourceRow, column)));
+			if (snapshot.type === 'xlsxData') {
+				const styleIndex = snapshot.cellStyleIndexes?.[sourceRow]?.[column] ?? 0;
+				const cellStyle = showWorkbookAppearance ? snapshot.cellVisualStyles?.[styleIndex] : undefined;
+				if (cellStyle) {
+					valueCell.classList.add('xlsx-styled-cell');
+					if (cellStyle.bold) {valueCell.style.fontWeight = 'bold';}
+					if (cellStyle.italic) {valueCell.style.fontStyle = 'italic';}
+					if (cellStyle.fontSize) {valueCell.style.fontSize = `${cellStyle.fontSize}pt`;}
+					if (!isSelected(sourceRow, column) && cellStyle.fontColor) {valueCell.style.color = cellStyle.fontColor;}
+					if (!isSelected(sourceRow, column) && cellStyle.fillColor) {valueCell.style.backgroundColor = cellStyle.fillColor;}
+					if (cellStyle.horizontalAlignment) {valueCell.style.textAlign = cellStyle.horizontalAlignment;}
+					if (cellStyle.verticalAlignment) {valueCell.style.verticalAlign = cellStyle.verticalAlignment;}
+					if (cellStyle.wrapText) {valueCell.classList.add('xlsx-wrap-text');}
+					for (const [side, border] of Object.entries(cellStyle.borders ?? {})) {
+						if (border) {valueCell.style.setProperty(`border-${side}`, cssBorder(border.style, border.color));}
+					}
+				}
+			}
 			if (!present) {
 				valueCell.classList.add('missing-cell');
 			}
@@ -204,6 +242,7 @@ const templateColumns = gridTemplateColumns(widths);
 						: result ? `Error de cálculo: ${result.value}` : 'Fórmula calculándose…';
 				valueCell.title = `${value}\nValor almacenado en caché: ${cache}\n${calculated}`;
 			}
+			if (merge) {valueCell.title += `\nCeldas combinadas ${merge.reference}`;}
 			if (isEditing(sourceRow, column)) {
 				const inlineEditor = document.createElement('textarea');
 				inlineEditor.className = 'cell-inline-editor';
@@ -276,4 +315,11 @@ const templateColumns = gridTemplateColumns(widths);
 	}
 	state.rowsViewport = rowsViewport;
 	state.renderedColumnCount = renderedColumnCount;
+}
+
+function cssBorder(style: string, color?: string): string {
+	const width = style === 'hair' || style === 'thin' || style === 'dotted' || style === 'dashed' ? 1
+		: style === 'medium' || style === 'double' ? 2 : 3;
+	const line = style === 'dotted' ? 'dotted' : style === 'dashed' ? 'dashed' : style === 'double' ? 'double' : 'solid';
+	return `${width}px ${line} ${color ?? 'var(--panel-border)'}`;
 }

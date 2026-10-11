@@ -18,6 +18,7 @@ Ejemplo de `.vscode/settings.json`:
   "spreadsheet-viewer.view.showClearSortButton": true,
   "spreadsheet-viewer.view.showCopyButtons": true,
   "spreadsheet-viewer.view.showDisplayModeButton": true,
+  "spreadsheet-viewer.view.showWorkbookAppearance": true,
   "spreadsheet-viewer.edit.saveOnCommit": true
 }
 ```
@@ -39,6 +40,7 @@ Para probar el comportamiento de la extensión en este repositorio, `.vscode/set
 | `spreadsheet-viewer.view.showClearSortButton` | Booleano: `true` o `false` | `true` | Permite mostrar **Limpiar orden** cuando hay criterios de orden activos. Con `false` oculta el botón en el editor y las vistas previas; el orden se puede quitar haciendo clic en el encabezado o usando el comando **Restablecer vista**. El cambio se refleja en las vistas abiertas. |
 | `spreadsheet-viewer.view.showCopyButtons` | Booleano: `true` o `false` | `true` | Muestra u oculta los botones **Copiar**, **Copiar mostrado** y **Copiar con encabezados**. También habilita o deshabilita `Ctrl+C`/`Cmd+C` al tener el foco en la tabla. La preferencia se aplica a editor y vistas previas y se actualiza en paneles abiertos. |
 | `spreadsheet-viewer.view.showDisplayModeButton` | Booleano: `true` o `false` | `true` | Muestra u oculta **Ver libro** en archivos XLSX. Alterna el formato numérico visible y los valores crudos; no modifica la celda ni el archivo. También cambia lo que copia **Copiar mostrado**. La selección de modo es temporal para el panel y vuelve a crudo al abrir otro archivo. No aplica a CSV u ODS. |
+| `spreadsheet-viewer.view.showWorkbookAppearance` | Booleano: `true` o `false` | `true` | Aplica estilos básicos de celda y presenta celdas combinadas de XLSX/ODS. Con `false`, las celdas se muestran sin esos estilos ni combinaciones; los valores, anchos, altos y paneles congelados permanecen. Se actualiza en vistas abiertas y no modifica el archivo. |
 | `spreadsheet-viewer.edit.saveOnCommit` | Booleano: `true` o `false` | `true` | Con `true`, cada edición confirmada se guarda automáticamente. Con `false`, la extensión conserva los cambios como pendientes y espera el guardado de VS Code (`Ctrl+S`/`Cmd+S`). Los borradores sin confirmar se preguntan al guardar. |
 
 Ejemplo para desactivar los comentarios convencionales y la persistencia:

@@ -65,6 +65,18 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 		else if (result) {context.cellValue.textContent += `\n\nError al calcular: ${result.value}`;}
 		else {context.cellValue.textContent += '\n\nCalculando fórmula…';}
 	}
+	if (snapshot.type === 'xlsxData') {
+		const note = snapshot.cellNotes?.find(item => item.reference.toUpperCase() === reference);
+		const hyperlink = snapshot.cellHyperlinks?.find(item => item.reference.toUpperCase() === reference);
+		if (note) {
+			context.cellState.textContent += ' · Tiene una nota';
+			context.cellValue.textContent += `\n\nNota${note.author ? ` (${note.author})` : ''}\n${note.text}`;
+		}
+		if (hyperlink) {
+			context.cellState.textContent += ' · Tiene un vínculo';
+			context.cellValue.textContent += `\n\nVínculo (texto sin abrir)\n${hyperlink.target ?? ''}${hyperlink.location ? `#${hyperlink.location}` : ''}`;
+		}
+	}
 	context.cellEditor.value = exists ? values[column]! : '';
 	context.setEditorDirty(false);
 	context.cellEditor.disabled = snapshot.readonly === true

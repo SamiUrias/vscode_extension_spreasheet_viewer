@@ -1,6 +1,7 @@
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import { unzipSync, zipSync } from 'fflate';
 import { isCellCoveredByRange } from '../cell-reference';
+import type { CellVisualStyle } from '../protocol';
 
 export const MAX_XLSX_BYTES = 10 * 1024 * 1024;
 const MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
@@ -45,6 +46,7 @@ export interface XlsxSheetMetadata {
 export interface XlsxStyleMetadata {
 	readonly customNumberFormats: Array<{ readonly id: number; readonly formatCode: string }>;
 	readonly cellFormats: Array<{ readonly numberFormatId: number; readonly fontId: number; readonly fillId: number; readonly borderId: number; readonly baseFormatId: number }>;
+	readonly cellVisualStyles: CellVisualStyle[];
 	readonly fontCount: number;
 	readonly fillCount: number;
 	readonly borderCount: number;
@@ -406,6 +408,25 @@ function parseSheet(name: string, document: Document, sharedStrings: string[], a
 
 function parseStyleMetadata(document: Document): XlsxStyleMetadata {
 	const numberFormats = elements(document, 'numFmt').map(element => ({ id: parseNonNegativeInt(element.getAttribute('numFmtId')) ?? -1, formatCode: element.getAttribute('formatCode') ?? '' }));
+	const fonts = elements(document, 'fonts').flatMap(container => directChildren(container, 'font').map(font => ({
+		bold: childBoolean(font, 'b'), italic: childBoolean(font, 'i'),
+		fontSize: parseFontSize(firstChild(font, 'sz')?.getAttribute('val')),
+		fontColor: safeRgb(firstChild(font, 'color')),
+	})));
+	const fills = elements(document, 'fills').flatMap(container => directChildren(container, 'fill').map(fill => {
+		const pattern = firstChild(fill, 'patternFill');
+		return pattern?.getAttribute('patternType') === 'solid' ? safeRgb(firstChild(pattern, 'fgColor')) : undefined;
+	}));
+	const borders = elements(document, 'borders').flatMap(container => directChildren(container, 'border').map(border => {
+		const result: NonNullable<CellVisualStyle['borders']> = {};
+		for (const sideName of ['top', 'right', 'bottom', 'left'] as const) {
+			const side = firstChild(border, sideName);
+			const line = side?.getAttribute('style');
+			if (!side || !line || !['hair', 'dotted', 'dashed', 'thin', 'medium', 'thick', 'double'].includes(line)) {continue;}
+			(result as Record<string, { style: string; color?: string }>)[sideName] = { style: line, ...(safeRgb(firstChild(side, 'color')) ? { color: safeRgb(firstChild(side, 'color')) } : {}) };
+		}
+		return result;
+	}));
 	const cellFormats = elements(document, 'cellXfs').flatMap(container => Array.from(container.childNodes)
 		.filter(node => node.nodeType === 1 && localNameOf(node as Element) === 'xf').map(node => {
 			const element = node as Element;
@@ -413,11 +434,29 @@ function parseStyleMetadata(document: Document): XlsxStyleMetadata {
 				fontId: parseNonNegativeInt(element.getAttribute('fontId')) ?? 0, fillId: parseNonNegativeInt(element.getAttribute('fillId')) ?? 0,
 				borderId: parseNonNegativeInt(element.getAttribute('borderId')) ?? 0, baseFormatId: parseNonNegativeInt(element.getAttribute('xfId')) ?? 0 };
 		}));
+	const cellVisualStyles = elements(document, 'cellXfs').flatMap(container => directChildren(container, 'xf').map(element => {
+		const style: CellVisualStyle = {};
+		const font = fonts[parseNonNegativeInt(element.getAttribute('fontId')) ?? 0];
+		const fillColor = fills[parseNonNegativeInt(element.getAttribute('fillId')) ?? 0];
+		const border = borders[parseNonNegativeInt(element.getAttribute('borderId')) ?? 0];
+		const alignment = firstChild(element, 'alignment');
+		const horizontal = alignment?.getAttribute('horizontal');
+		const vertical = alignment?.getAttribute('vertical');
+		return {
+			...(font?.bold === undefined ? {} : { bold: font.bold }), ...(font?.italic === undefined ? {} : { italic: font.italic }),
+			...(font?.fontSize === undefined ? {} : { fontSize: font.fontSize }), ...(font?.fontColor ? { fontColor: font.fontColor } : {}),
+			...(fillColor ? { fillColor } : {}),
+			...(horizontal && ['left', 'center', 'right', 'justify', 'distributed', 'general'].includes(horizontal) ? { horizontalAlignment: horizontal as CellVisualStyle['horizontalAlignment'] } : {}),
+			...(vertical && ['top', 'center', 'bottom', 'justify', 'distributed'].includes(vertical) ? { verticalAlignment: vertical as CellVisualStyle['verticalAlignment'] } : {}),
+			...(alignment?.getAttribute('wrapText') === '1' ? { wrapText: true } : {}),
+			...(border && Object.keys(border).length ? { borders: border } : {}),
+		};
+	}));
 	const countChildren = (containerName: string, childName: string) => {
 		const container = elements(document, containerName)[0];
 		return container ? Array.from(container.childNodes).filter(node => node.nodeType === 1 && localNameOf(node as Element) === childName).length : 0;
 	};
-	return { customNumberFormats: numberFormats, cellFormats,
+	return { customNumberFormats: numberFormats, cellFormats, cellVisualStyles,
 		fontCount: countChildren('fonts', 'font'), fillCount: countChildren('fills', 'fill'),
 		borderCount: countChildren('borders', 'border'), namedStyleCount: countChildren('cellStyles', 'cellStyle') };
 }
@@ -492,6 +531,32 @@ function firstChild(root: Element, localName: string): Element | undefined {
 		}
 	}
 	return undefined;
+}
+
+function directChildren(root: Element, localName: string): Element[] {
+	const result: Element[] = [];
+	for (let child = root.firstChild; child; child = child.nextSibling) {
+		if (child.nodeType === 1 && localNameOf(child as Element) === localName) {result.push(child as Element);}
+	}
+	return result;
+}
+
+function childBoolean(root: Element, localName: string): boolean | undefined {
+	const child = firstChild(root, localName);
+	if (!child) {return undefined;}
+	const value = child.getAttribute('val');
+	return value !== '0' && value !== 'false';
+}
+
+function parseFontSize(value: string | null | undefined): number | undefined {
+	const size = value === undefined ? undefined : parseFiniteNumber(value);
+	return size !== undefined && size >= 6 && size <= 72 ? size : undefined;
+}
+
+function safeRgb(element: Element | undefined): string | undefined {
+	const value = element?.getAttribute('rgb');
+	if (!value || !/^(?:[0-9a-f]{6}|ff[0-9a-f]{6})$/i.test(value)) {return undefined;}
+	return `#${value.length === 8 ? value.slice(2) : value}`;
 }
 
 function localNameOf(element: Element): string {

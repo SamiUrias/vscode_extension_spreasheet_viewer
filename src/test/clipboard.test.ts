@@ -32,4 +32,11 @@ suite('spreadsheet clipboard TSV', () => {
 	test('prepends visible column labels only for the explicit header action', () => {
 		assert.equal(serializeVisibleSelection([['raw', 'x']], [0], { anchor: { row: 0, column: 0 }, focus: { row: 0, column: 1 } }, 2, ['DISPLAY', 'B']), 'DISPLAY\tB\r\nraw\tx');
 	});
+	test('formats only selected cells for displayed copy and leaves source rows unchanged', () => {
+		const rows = [['0.25', 'large'], ['0.5', 'unchanged']];
+		const copied = serializeVisibleSelection(rows, [0, 1], { anchor: { row: 0, column: 0 }, focus: { row: 0, column: 0 } }, 2,
+			undefined, (_row, column, raw) => column === 0 ? `${Number(raw) * 100}%` : raw);
+		assert.equal(copied, '25%');
+		assert.deepStrictEqual(rows[0], ['0.25', 'large']);
+	});
 });

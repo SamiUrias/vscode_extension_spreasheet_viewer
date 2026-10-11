@@ -26,5 +26,6 @@
     "spreadsheet-viewer.view.showClearSortButton": true,
     "spreadsheet-viewer.view.showCopyButtons": true,
     "spreadsheet-viewer.view.showDisplayModeButton": true,
+    "spreadsheet-viewer.view.showWorkbookAppearance": true,
     "spreadsheet-viewer.edit.saveOnCommit": true
 }

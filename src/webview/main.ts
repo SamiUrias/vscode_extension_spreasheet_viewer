@@ -1,5 +1,5 @@
-import type { CsvDataMessage, FormulaEvaluation, ReloadStateMessage, RestoreViewStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
-import { resolveCellReference } from '../cell-reference';
+import type { CellVisualStyle, CsvDataMessage, FormulaEvaluation, ReloadStateMessage, RestoreViewStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
+import { parseCellRangeBounds, resolveCellReference } from '../cell-reference';
 import { findSearchMatches } from '../search';
 import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, wrappedTextHeight, type RowLayout } from './grid-layout';
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
@@ -59,6 +59,7 @@ let showCopyButtons = !copyActions.hidden;
 const displayModeButton = requiredElement<HTMLButtonElement>('#toggle-display-mode');
 const displayModeTooltip = requiredElement<HTMLSpanElement>('#display-mode-tooltip');
 let showDisplayModeButton = !displayModeButton.hidden;
+let showWorkbookAppearance = gridRoot.dataset.workbookAppearance !== 'false';
 const csvRowActions = requiredElement<HTMLDivElement>('#csv-row-actions');
 let showCsvRowActions = !csvRowActions.hidden;
 const sortWarning = requiredElement<HTMLParagraphElement>('#sort-warning');
@@ -192,6 +193,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'displayModeButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showDisplayModeButton = event.data.visible;
 		updateDisplayModeControl();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'workbookAppearanceVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showWorkbookAppearance = event.data.visible;
+		renderGrid();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
@@ -558,7 +565,7 @@ gridScroll.addEventListener('keydown', event => {
 		event.preventDefault();
 		if (rows.length) {
 			selectionRange = { anchor: { row: rows[0]!, column: 0 }, focus: { row: rows[rows.length - 1]!, column: snapshot.columnCount - 1 } };
-			selectCell(rows[rows.length - 1]!, snapshot.columnCount - 1, true);
+			selectCell(rows[rows.length - 1]!, snapshot.columnCount - 1, true, 'allow');
 		}
 		return;
 	}
@@ -590,7 +597,7 @@ gridScroll.addEventListener('keydown', event => {
 	event.preventDefault();
 	visibleRow = Math.max(0, Math.min(rows.length - 1, visibleRow));
 	column = Math.max(0, Math.min(snapshot.columnCount - 1, column));
-	selectCell(rows[visibleRow]!, column, extend);
+	selectCell(rows[visibleRow]!, column, extend, 'skip');
 });
 
 gridScroll.addEventListener('paste', event => {
@@ -673,9 +680,9 @@ async function copySelection(mode: 'raw' | 'displayed' | 'headers'): Promise<voi
 	// Formula calculations are metadata only; raw copy preserves the formula expression.
 	const headers = mode === 'headers' ? Array.from({ length: snapshot.columnCount }, (_, column) => snapshot!.type === 'csvData'
 		? snapshot!.headerLabels?.[column] ?? columnName(column) : columnName(column)) : undefined;
-	const rows = mode === 'displayed' && snapshot.type === 'xlsxData' && cellPresentation === 'book'
-		? presentedRows(snapshot) : snapshot.rows;
-	const text = serializeVisibleSelection(rows, projection.visibleRows, { anchor: start, focus: end }, snapshot.columnCount, headers);
+	const formatCell = mode === 'displayed' && snapshot.type === 'xlsxData' && cellPresentation === 'book'
+		? (row: number, column: number, raw: string) => presentXlsxCell(snapshot as XlsxDataMessage, row, column, raw, 'book') : undefined;
+	const text = serializeVisibleSelection(snapshot.rows, projection.visibleRows, { anchor: start, focus: end }, snapshot.columnCount, headers, formatCell);
 	if (text === undefined) {return;}
 	if (text.length > 50 * 1024 * 1024) {
 		saveStatus.textContent = 'La selección supera el límite de 50 MiB y no se copió.';
@@ -740,21 +747,22 @@ gridScroll.addEventListener('wheel', event => {
 
 function renderGrid(): void {
 	if (editingCell && gridRoot.querySelector('.cell-inline-editor') === document.activeElement) {return;}
-	const renderedSnapshot = snapshot?.type === 'xlsxData' && cellPresentation === 'book'
-		? { ...snapshot, rows: presentedRows(snapshot) } : snapshot;
 	gridRendererState.rowsViewport = rowsViewport;
 	gridRendererState.renderedColumnCount = renderedColumnCount;
 	renderSpreadsheetGrid({
-		snapshot: renderedSnapshot, state: gridRendererState, gridScroll, gridRoot,
+		snapshot, state: gridRendererState, gridScroll, gridRoot,
 		defaultRowHeight, headingHeight, rowHeaderWidth, overscan,
-		freezeRows, freezeColumns, wrapCells,
+		freezeRows, freezeColumns, wrapCells, showWorkbookAppearance,
 		consumeSuppressedCellClick: () => {const value = suppressNextCellClick; suppressNextCellClick = false; return value;},
 		autoFitColumn,
 		getActiveColumnWidths, gridTemplateColumns: widths => gridTemplateColumns(widths, rowHeaderWidth),
 		startColumnResize, resizeColumnWithKeyboard, updateGridColumnSizing, getActiveRowLayout,
 		findRowAtOffset, startRowResize, resizeRowWithKeyboard, columnName, isSelected,
 		isActiveCell: (row, column) => selectedCell?.row === row && selectedCell.column === column, isFormula,
-		getFormulaCache, getFormulaResult, isEditing, isActiveSearchMatch, inlineEditValue,
+		getFormulaCache, getFormulaResult, isEditing, isActiveSearchMatch,
+		getCellDisplayValue: (row, column, raw) => snapshot?.type === 'xlsxData'
+			? presentXlsxCell(snapshot, row, column, raw, cellPresentation) : raw,
+		inlineEditValue,
 		setInlineEditValue: value => {inlineEditValue = value;},
 		sendDraftState, setInlineEditorDirty: value => {inlineEditorDirty = value;},
 		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit,
@@ -764,7 +772,7 @@ function renderGrid(): void {
 			const index = projection.sourceToVisible.get(selectedCell.row) ?? 0;
 			const total = projection.visibleRows.length * snapshot.columnCount;
 			const position = Math.max(0, Math.min(total - 1, (index + rowDelta) * snapshot.columnCount + selectedCell.column + columnDelta));
-			selectCell(projection.visibleRows[Math.floor(position / snapshot.columnCount)]!, position % snapshot.columnCount);
+			selectCell(projection.visibleRows[Math.floor(position / snapshot.columnCount)]!, position % snapshot.columnCount, false, 'skip');
 		},
 		projection: getRowProjection(),
 		openFilter: openColumnFilter,
@@ -796,13 +804,8 @@ function renderGrid(): void {
 	if (selectedCell && gridRoot.querySelector(`#cell-${selectedCell.row}-${selectedCell.column}`)) {
 		gridScroll.setAttribute('aria-activedescendant', `cell-${selectedCell.row}-${selectedCell.column}`);
 	} else {gridScroll.removeAttribute('aria-activedescendant');}
-	if (wrapCells) {updateWrappedVisibleRowHeights();}
+	if (wrapCells || (snapshot?.type === 'xlsxData' && snapshot.cellVisualStyles?.some(style => style.wrapText))) {updateWrappedVisibleRowHeights();}
 	updateCsvRowActions();
-}
-
-function presentedRows(current: XlsxDataMessage): string[][] {
-	return current.rows.map((row, rowIndex) => row.map((value, columnIndex) =>
-		presentXlsxCell(current, rowIndex, columnIndex, value, 'book')));
 }
 
 function updateDisplayModeControl(): void {
@@ -813,7 +816,23 @@ function updateDisplayModeControl(): void {
 		? 'Aplica los formatos numéricos de Excel a la cuadrícula sin modificar los valores guardados.'
 		: 'Muestra los valores almacenados sin formato; el archivo permanece intacto.';
 }
-function selectCell(row: number, column: number, extend = false): void {
+function selectCell(row: number, column: number, extend = false, coveredMode: 'snap' | 'skip' | 'allow' = 'snap'): void {
+	if (showWorkbookAppearance && snapshot?.type === 'xlsxData' && coveredMode !== 'allow') {
+		let attempts = 0;
+		while (attempts++ < 8) {
+			const range = (snapshot.mergedRanges ?? []).map(parseCellRangeBounds).find(bounds => bounds
+				&& row >= bounds.top && row <= bounds.bottom && column >= bounds.left && column <= bounds.right
+				&& (row !== bounds.top || column !== bounds.left));
+			if (!range) {break;}
+			if (coveredMode === 'snap') {row = range.top; column = range.left; break;}
+			const rowDelta = selectedCell ? row - selectedCell.row : 0;
+			const columnDelta = selectedCell ? column - selectedCell.column : 0;
+			if (Math.abs(rowDelta) >= Math.abs(columnDelta) && rowDelta !== 0) {row = rowDelta > 0 ? range.bottom + 1 : range.top - 1;}
+			else {column = columnDelta >= 0 ? range.right + 1 : range.left - 1;}
+			row = Math.max(0, Math.min(snapshot.rowCount - 1, row));
+			column = Math.max(0, Math.min(snapshot.columnCount - 1, column));
+		}
+	}
 	if (!showComments && snapshot?.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
 		showComments = true;
 		selectionRange = undefined;
@@ -1158,9 +1177,13 @@ function getRowProjection() {
 	cachedProjectionComments = showComments;
 	cachedProjectionFilters = columnFilters;
 	clearSortButton.hidden = !showClearSortButton || sortCriteria.length === 0;
-	sortWarning.textContent = cachedProjection.incompatibleColumns.length
-		? `Orden numérico: valores no numéricos se colocan al final en las columnas ${cachedProjection.incompatibleColumns.map(columnName).join(', ')}.`
-		: '';
+	const warnings = cachedProjection.incompatibleColumns.length
+		? [`Orden numérico: valores no numéricos se colocan al final en las columnas ${cachedProjection.incompatibleColumns.map(columnName).join(', ')}.`] : [];
+	if (snapshot?.type === 'xlsxData' && snapshot.mergedRanges?.length
+		&& (cachedProjection.visibleRows.length !== snapshot.rowCount || cachedProjection.visibleRows.some((sourceRow, index) => sourceRow !== index))) {
+		warnings.push('Vista tabular temporal: las combinaciones se ocultan mientras el orden o los filtros cambian el orden o la posición de las filas.');
+	}
+	sortWarning.textContent = warnings.join(' ');
 	return cachedProjection;
 }
 
@@ -1700,17 +1723,25 @@ function updateWrappedVisibleRowHeights(): void {
 	const lineHeight = Number.parseFloat(style.lineHeight) || 18;
 	let changed = false;
 	const projection = getRowProjection();
+	const visualStyles = snapshot.type === 'xlsxData' ? snapshot.cellVisualStyles : undefined;
 	for (const element of rowsViewport.querySelectorAll<HTMLDivElement>(':scope > .grid-row')) {
 		const sourceRow = Number(element.dataset.sourceRow);
 		const visibleIndex = Number(element.dataset.visibleIndex);
 		if (!Number.isInteger(sourceRow) || manual.has(sourceRow)) {continue;}
 		const baseHeight = workbookRowHeight(snapshot, sourceRow);
 		if (baseHeight <= 1) {if (layout.heights[sourceRow] !== baseHeight) {layout.heights[sourceRow] = baseHeight; changed = true;} element.style.height = `${baseHeight}px`; continue;}
+		const rowStyleWrap = snapshot.type === 'xlsxData' && snapshot.cellStyleIndexes?.[sourceRow]?.some(styleIndex =>
+			visualStyles?.[styleIndex ?? 0]?.wrapText === true) === true;
+		if (!wrapCells && !rowStyleWrap) {
+			if (layout.heights[sourceRow] !== baseHeight) {layout.heights[sourceRow] = baseHeight; changed = true;}
+			element.style.height = `${baseHeight}px`;
+			continue;
+		}
 		const rowValues = snapshot.rows[sourceRow] ?? [];
 		const displayedValues = snapshot.type === 'xlsxData' && cellPresentation === 'book'
 			? rowValues.map((value, column) => presentXlsxCell(snapshot as XlsxDataMessage, sourceRow, column, value, 'book')) : rowValues;
 		const height = wrappedTextHeight(displayedValues, widths, value => ctx.measureText(value).width,
-			lineHeight, defaultRowHeight, maximumRowHeight);
+			lineHeight, wrapCells ? defaultRowHeight : baseHeight, maximumRowHeight);
 		if (layout.heights[sourceRow] !== height) {layout.heights[sourceRow] = height; changed = true;}
 		element.style.height = `${height}px`;
 	}
@@ -1940,6 +1971,7 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 			&& candidate.cellNumberFormats.every(item => typeof item === 'object' && item !== null
 				&& 'numberFormatId' in item && Number.isInteger(item.numberFormatId)
 				&& (!('formatCode' in item) || typeof item.formatCode === 'string')))
+		&& (candidate.cellVisualStyles === undefined || Array.isArray(candidate.cellVisualStyles) && candidate.cellVisualStyles.every(isCellVisualStyle))
 		&& (candidate.sheetStates === undefined || Array.isArray(candidate.sheetStates)
 			&& candidate.sheetStates.length === candidate.sheetNames.length
 			&& candidate.sheetStates.every(state => ['visible', 'hidden', 'veryHidden'].includes(String(state))))
@@ -1956,7 +1988,35 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 			&& 'xSplit' in candidate.frozenPane && Number.isInteger(candidate.frozenPane.xSplit)
 			&& 'ySplit' in candidate.frozenPane && Number.isInteger(candidate.frozenPane.ySplit))
 		&& (candidate.mergedRanges === undefined || Array.isArray(candidate.mergedRanges) && candidate.mergedRanges.every(item => typeof item === 'string'))
+		&& (candidate.cellNotes === undefined || Array.isArray(candidate.cellNotes) && candidate.cellNotes.every(item => typeof item === 'object' && item !== null
+			&& 'reference' in item && typeof item.reference === 'string' && 'text' in item && typeof item.text === 'string'
+			&& (!('author' in item) || item.author === undefined || typeof item.author === 'string')))
+		&& (candidate.cellHyperlinks === undefined || Array.isArray(candidate.cellHyperlinks) && candidate.cellHyperlinks.every(item => typeof item === 'object' && item !== null
+			&& 'reference' in item && typeof item.reference === 'string'
+			&& (!('target' in item) || item.target === undefined || typeof item.target === 'string')
+			&& (!('location' in item) || item.location === undefined || typeof item.location === 'string')))
 		&& Array.isArray(candidate.warnings);
+}
+
+function isCellVisualStyle(value: unknown): value is CellVisualStyle {
+	if (typeof value !== 'object' || value === null) {return false;}
+	const style = value as Record<string, unknown>;
+	const color = (candidate: unknown) => typeof candidate === 'string' && /^#[0-9a-f]{6}$/i.test(candidate);
+	if (style.bold !== undefined && typeof style.bold !== 'boolean' || style.italic !== undefined && typeof style.italic !== 'boolean'
+		|| style.wrapText !== undefined && typeof style.wrapText !== 'boolean'
+		|| style.fontSize !== undefined && (typeof style.fontSize !== 'number' || style.fontSize < 6 || style.fontSize > 72)
+		|| style.fontColor !== undefined && !color(style.fontColor) || style.fillColor !== undefined && !color(style.fillColor)) {return false;}
+	if (style.horizontalAlignment !== undefined && !['left', 'center', 'right', 'justify', 'distributed', 'general'].includes(String(style.horizontalAlignment))) {return false;}
+	if (style.verticalAlignment !== undefined && !['top', 'center', 'bottom', 'justify', 'distributed'].includes(String(style.verticalAlignment))) {return false;}
+	if (style.borders !== undefined) {
+		if (typeof style.borders !== 'object' || style.borders === null) {return false;}
+		for (const [side, border] of Object.entries(style.borders)) {
+			if (!['top', 'right', 'bottom', 'left'].includes(side) || typeof border !== 'object' || border === null
+				|| !('style' in border) || !['hair', 'dotted', 'dashed', 'thin', 'medium', 'thick', 'double'].includes(String(border.style))
+				|| 'color' in border && border.color !== undefined && !color(border.color)) {return false;}
+		}
+	}
+	return true;
 }
 
 function isFormula(row: number, column: number): boolean {
