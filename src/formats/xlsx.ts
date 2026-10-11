@@ -15,17 +15,46 @@ export type XlsxStoredType = 'number' | 'sharedString' | 'inlineString' | 'strin
 
 export interface XlsxSheet {
 	readonly name: string;
+	readonly state?: 'visible' | 'hidden' | 'veryHidden';
 	readonly rows: string[][];
 	readonly cellKinds: XlsxCellKind[][];
 	readonly cellTypes: XlsxStoredType[][];
+	readonly cellStyleIndexes?: Array<Array<number | undefined>>;
 	readonly formulaCaches: Record<string, string>;
+	readonly metadata?: XlsxSheetMetadata;
 	readonly rowCount: number;
 	readonly columnCount: number;
+}
+
+export interface XlsxSheetMetadata {
+	readonly mergedRanges: string[];
+	readonly frozenPane?: { readonly xSplit: number; readonly ySplit: number; readonly topLeftCell?: string; readonly state?: string };
+	readonly protected: boolean;
+	readonly columns: Array<{ readonly min: number; readonly max: number; readonly width?: number; readonly hidden: boolean; readonly style?: number }>;
+	readonly rows: Array<{ readonly row: number; readonly height?: number; readonly hidden: boolean; readonly style?: number }>;
+	readonly hyperlinkCount: number;
+	readonly tableCount: number;
+	readonly hasNotes: boolean;
+	readonly hasDrawings: boolean;
+}
+
+export interface XlsxStyleMetadata {
+	readonly customNumberFormats: Array<{ readonly id: number; readonly formatCode: string }>;
+	readonly cellFormats: Array<{ readonly numberFormatId: number; readonly fontId: number; readonly fillId: number; readonly borderId: number; readonly baseFormatId: number }>;
+	readonly fontCount: number;
+	readonly fillCount: number;
+	readonly borderCount: number;
+	readonly namedStyleCount: number;
 }
 
 export interface XlsxWorkbook {
 	readonly sheets: XlsxSheet[];
 	readonly warnings: string[];
+	readonly date1904?: boolean;
+	readonly definedNames?: string[];
+	readonly hasExternalReferences?: boolean;
+	readonly hasTheme?: boolean;
+	readonly styles?: XlsxStyleMetadata;
 }
 
 export interface XlsxCellEdit {
@@ -69,7 +98,8 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 		const id = relationship.getAttribute('Id') ?? '';
 		const target = relationship.getAttribute('Target') ?? '';
 		const type = relationship.getAttribute('Type') ?? '';
-		if (id && target && type.endsWith('/worksheet')) {
+		const targetMode = relationship.getAttribute('TargetMode') ?? '';
+		if (id && target && type.endsWith('/worksheet') && targetMode.toLowerCase() !== 'external') {
 			targets.set(id, resolveWorkbookTarget(target));
 		}
 	}
@@ -101,14 +131,24 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 			throw new Error(`No se pudo leer la hoja «${name}»: falta su parte XML o su relación.`);
 		}
 		const parsedSheet = parseSheet(name, parseXml(files[target], target), sharedStrings);
+		const state = sheetNode.getAttribute('state');
+		const sheet: XlsxSheet = { ...parsedSheet, state: state === 'hidden' || state === 'veryHidden' ? state : 'visible' };
 		workbookPresentCells += parsedSheet.cellKinds.reduce(
 			(total, row) => total + row.filter(kind => kind !== 'missing').length, 0);
 		if (workbookPresentCells > MAX_PRESENT_CELLS) {
 			throw new Error(`El XLSX excede el límite de ${MAX_PRESENT_CELLS.toLocaleString()} celdas con datos.`);
 		}
-		return parsedSheet;
+		return sheet;
 	});
-	return { sheets, warnings };
+	const workbookProperties = elements(workbook, 'workbookPr')[0];
+	const definedNames = elements(workbook, 'definedName').map(node => node.getAttribute('name') ?? '').filter(Boolean);
+	const styleBytes = files['xl/styles.xml'];
+	return {
+		sheets, warnings, date1904: workbookProperties?.getAttribute('date1904') === '1' || workbookProperties?.getAttribute('date1904') === 'true',
+		definedNames, hasExternalReferences: elements(workbook, 'externalReference').length > 0,
+		hasTheme: Object.keys(files).some(name => /^xl\/theme\/theme\d+\.xml$/i.test(name)),
+		...(styleBytes ? { styles: parseStyleMetadata(parseXml(styleBytes, 'xl/styles.xml')) } : {}),
+	};
 }
 
 /** Returns a modified archive copy; callers retain responsibility for persistence. */
@@ -192,7 +232,7 @@ function columnName(column: number): string {
 }
 
 function parseSheet(name: string, document: Document, sharedStrings: string[]): XlsxSheet {
-	const cells = new Map<number, Map<number, { value: string; kind: XlsxCellKind; type: XlsxStoredType; cache?: string; ref: string }>>();
+	const cells = new Map<number, Map<number, { value: string; kind: XlsxCellKind; type: XlsxStoredType; style?: number; cache?: string; ref: string }>>();
 	let maxRow = 0;
 	let maxColumn = 0;
 	let presentCount = 0;
@@ -210,6 +250,8 @@ function parseSheet(name: string, document: Document, sharedStrings: string[]): 
 		const inline = firstChild(cell, 'is');
 		const rawValue = valueNode?.textContent ?? '';
 		const type = cell.getAttribute('t');
+		const rawStyle = cell.getAttribute('s');
+		const style = rawStyle !== null && /^\d+$/.test(rawStyle) ? Number(rawStyle) : undefined;
 		const storedType = formula ? 'formula' : resolveStoredType(type, valueNode, inline);
 		let value = rawValue;
 		let kind: XlsxCellKind = valueNode || inline ? 'value' : 'empty';
@@ -240,6 +282,7 @@ function parseSheet(name: string, document: Document, sharedStrings: string[]): 
 			value,
 			kind,
 			type: storedType,
+			...(style === undefined ? {} : { style }),
 			...(formula ? { cache: rawValue } : {}),
 			ref: ref.toUpperCase(),
 		});
@@ -254,16 +297,19 @@ function parseSheet(name: string, document: Document, sharedStrings: string[]): 
 	const cellKinds: XlsxCellKind[][] = [];
 	const cellTypes: XlsxStoredType[][] = [];
 	const formulaCaches: Record<string, string> = {};
+	const cellStyleIndexes: Array<Array<number | undefined>> = [];
 	for (let rowIndex = 1; rowIndex <= maxRow; rowIndex++) {
 		const row: string[] = [];
 		const kinds: XlsxCellKind[] = [];
 		const types: XlsxStoredType[] = [];
+		const styles: Array<number | undefined> = [];
 		const sourceRow = cells.get(rowIndex);
 		for (let column = 1; column <= maxColumn; column++) {
 			const cell = sourceRow?.get(column);
 			row.push(cell?.value ?? '');
 			kinds.push(cell?.kind ?? 'missing');
 			types.push(cell?.type ?? 'missing');
+			styles.push(cell?.style);
 			if (cell?.kind === 'formula') {
 				formulaCaches[cell.ref] = cell.cache ?? '';
 			}
@@ -271,9 +317,58 @@ function parseSheet(name: string, document: Document, sharedStrings: string[]): 
 		rows.push(row);
 		cellKinds.push(kinds);
 		cellTypes.push(types);
+		cellStyleIndexes.push(styles);
 	}
-	return { name, rows, cellKinds, cellTypes, formulaCaches, rowCount: maxRow, columnCount: maxColumn };
+	const pane = elements(document, 'pane')[0];
+	const mergedRanges = elements(document, 'mergeCell').map(element => element.getAttribute('ref') ?? '').filter(Boolean);
+	const columns = elements(document, 'col').map(element => ({
+		min: parsePositiveInt(element.getAttribute('min')), max: parsePositiveInt(element.getAttribute('max')),
+		...(parseFiniteNumber(element.getAttribute('width')) === undefined ? {} : { width: parseFiniteNumber(element.getAttribute('width')) }),
+		hidden: element.getAttribute('hidden') === '1',
+		...(parseNonNegativeInt(element.getAttribute('style')) === undefined ? {} : { style: parseNonNegativeInt(element.getAttribute('style')) }),
+	}));
+	const rowsMetadata = elements(document, 'row').map(element => ({
+		row: parsePositiveInt(element.getAttribute('r')),
+		...(parseFiniteNumber(element.getAttribute('ht')) === undefined ? {} : { height: parseFiniteNumber(element.getAttribute('ht')) }),
+		hidden: element.getAttribute('hidden') === '1',
+		...(parseNonNegativeInt(element.getAttribute('s')) === undefined ? {} : { style: parseNonNegativeInt(element.getAttribute('s')) }),
+	}));
+	return { name, rows, cellKinds, cellTypes, cellStyleIndexes, formulaCaches, rowCount: maxRow, columnCount: maxColumn,
+		metadata: {
+			mergedRanges,
+			...(pane ? { frozenPane: { xSplit: parseNonNegativeInt(pane.getAttribute('xSplit')) ?? 0,
+				ySplit: parseNonNegativeInt(pane.getAttribute('ySplit')) ?? 0,
+				...(pane.getAttribute('topLeftCell') ? { topLeftCell: pane.getAttribute('topLeftCell')! } : {}),
+				...(pane.getAttribute('state') ? { state: pane.getAttribute('state')! } : {}) } } : {}),
+			protected: elements(document, 'sheetProtection').length > 0, columns, rows: rowsMetadata,
+			hyperlinkCount: elements(document, 'hyperlink').length, tableCount: elements(document, 'tablePart').length,
+			hasNotes: elements(document, 'legacyDrawing').length > 0 || elements(document, 'legacyDrawingHF').length > 0,
+			hasDrawings: elements(document, 'drawing').length > 0,
+		},
+	};
 }
+
+function parseStyleMetadata(document: Document): XlsxStyleMetadata {
+	const numberFormats = elements(document, 'numFmt').map(element => ({ id: parseNonNegativeInt(element.getAttribute('numFmtId')) ?? -1, formatCode: element.getAttribute('formatCode') ?? '' }));
+	const cellFormats = elements(document, 'cellXfs').flatMap(container => Array.from(container.childNodes)
+		.filter(node => node.nodeType === 1 && localNameOf(node as Element) === 'xf').map(node => {
+			const element = node as Element;
+			return { numberFormatId: parseNonNegativeInt(element.getAttribute('numFmtId')) ?? 0,
+				fontId: parseNonNegativeInt(element.getAttribute('fontId')) ?? 0, fillId: parseNonNegativeInt(element.getAttribute('fillId')) ?? 0,
+				borderId: parseNonNegativeInt(element.getAttribute('borderId')) ?? 0, baseFormatId: parseNonNegativeInt(element.getAttribute('xfId')) ?? 0 };
+		}));
+	const countChildren = (containerName: string, childName: string) => {
+		const container = elements(document, containerName)[0];
+		return container ? Array.from(container.childNodes).filter(node => node.nodeType === 1 && localNameOf(node as Element) === childName).length : 0;
+	};
+	return { customNumberFormats: numberFormats, cellFormats,
+		fontCount: countChildren('fonts', 'font'), fillCount: countChildren('fills', 'fill'),
+		borderCount: countChildren('borders', 'border'), namedStyleCount: countChildren('cellStyles', 'cellStyle') };
+}
+
+function parsePositiveInt(value: string | null): number {return parseNonNegativeInt(value) ?? 0;}
+function parseNonNegativeInt(value: string | null): number | undefined {if (value === null || !/^\d+$/.test(value)) {return undefined;} return Number(value);}
+function parseFiniteNumber(value: string | null): number | undefined {if (value === null || value.trim() === '') {return undefined;} const number = Number(value); return Number.isFinite(number) ? number : undefined;}
 
 function resolveStoredType(type: string | null, value: Element | undefined, inline: Element | undefined): XlsxStoredType {
 	if (!value && !inline) {

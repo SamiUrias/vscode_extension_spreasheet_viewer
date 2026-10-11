@@ -231,6 +231,36 @@ suite('XLSX reader', () => {
 		assert.strictEqual(parseXlsxBytes(session.serializeCopy()).sheets[0].rows[0][1], '45292.000000000000001');
 		assert.throws(() => serializeXlsxEdits(original, [{ sheetIndex: 0, row: 0, column: 0, value: 'x', type: 'number' }]), /Número XLSX inválido/);
 	});
+	test('reads XLSX workbook, sheet, style, geometry, merge, pane, and protection metadata without expanding the value matrix', () => {
+		const files: Record<string, Uint8Array> = unzipSync(createXlsxFixture());
+		files['xl/workbook.xml'] = xml('<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr date1904="1"/><sheets><sheet name="Datos" sheetId="1" state="veryHidden" r:id="rId1"/><sheet name="Vacia" sheetId="2" state="hidden" r:id="rId2"/></sheets><definedNames><definedName name="MyRange">Datos!$A$1</definedName></definedNames><externalReferences><externalReference r:id="external1"/></externalReferences></workbook>');
+		files['xl/styles.xml'] = xml('<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts><numFmt numFmtId="165" formatCode="0.000%"/></numFmts><fonts><font/><font/></fonts><fills><fill/></fills><borders><border/></borders><cellStyles><cellStyle name="Normal"/></cellStyles><cellXfs><xf numFmtId="165" fontId="1" fillId="0" borderId="0" xfId="0"/><xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>');
+		files['xl/theme/theme1.xml'] = xml('<?xml version="1.0"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office"/>');
+		files['xl/worksheets/sheet1.xml'] = xml('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView><pane xSplit="2" ySplit="1" topLeftCell="C2" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="2" width="18.5" customWidth="1" hidden="1" style="1"/></cols><sheetData><row r="1" ht="28" customHeight="1" s="0"><c r="A1" s="1"><v>0.25</v></c></row></sheetData><mergeCells><mergeCell ref="A1:B1"/></mergeCells><sheetProtection sheet="1"/><hyperlinks><hyperlink ref="A1" r:id="externalHyperlink"/></hyperlinks><tableParts count="1"><tablePart r:id="table1"/></tableParts><legacyDrawing r:id="vml1"/><drawing r:id="drawing1"/></worksheet>');
+		const workbook = parseXlsxBytes(zipSync(files));
+		assert.equal(workbook.date1904, true);
+		assert.deepStrictEqual(workbook.definedNames, ['MyRange']);
+		assert.equal(workbook.hasExternalReferences, true);
+		assert.equal(workbook.styles?.customNumberFormats[0]?.formatCode, '0.000%');
+		assert.deepStrictEqual(workbook.styles?.cellFormats[0], { numberFormatId: 165, fontId: 1, fillId: 0, borderId: 0, baseFormatId: 0 });
+		assert.equal(workbook.styles?.fontCount, 2);
+		assert.equal(workbook.styles?.fillCount, 1);
+		assert.equal(workbook.styles?.borderCount, 1);
+		assert.equal(workbook.styles?.namedStyleCount, 1);
+		assert.equal(workbook.hasTheme, true);
+		assert.deepStrictEqual(workbook.sheets.map(sheet => sheet.state), ['veryHidden', 'hidden']);
+		assert.deepStrictEqual(workbook.sheets[0]?.cellStyleIndexes?.[0], [1]);
+		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.frozenPane, { xSplit: 2, ySplit: 1, topLeftCell: 'C2', state: 'frozen' });
+		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.mergedRanges, ['A1:B1']);
+		assert.equal(workbook.sheets[0]?.metadata?.protected, true);
+		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.columns[0], { min: 1, max: 2, width: 18.5, hidden: true, style: 1 });
+		assert.equal(workbook.sheets[0]?.metadata?.rows[0]?.height, 28);
+		assert.equal(workbook.sheets[0]?.metadata?.hyperlinkCount, 1);
+		assert.equal(workbook.sheets[0]?.metadata?.tableCount, 1);
+		assert.equal(workbook.sheets[0]?.metadata?.hasNotes, true);
+		assert.equal(workbook.sheets[0]?.metadata?.hasDrawings, true);
+		assert.equal(workbook.sheets[0]?.rowCount, 1, 'style/merge geometry must not expand the value matrix');
+	});
 });
 
 suite('ODS reader', () => {
@@ -245,7 +275,6 @@ suite('ODS reader', () => {
 		assert.strictEqual(sheet.cellKinds[1][0], 'formula');
 		assert.strictEqual(workbook.sheets[1].rowCount, 0);
 	});
-
 	test('edits ODS raw values while retaining formulas and untouched package parts', () => {
 		const original = createOdsFixture();
 		const originalParts = unzipSync(original);

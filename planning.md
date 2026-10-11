@@ -863,6 +863,13 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Aceptación:** fixtures propios con cada metadata; styles/themes/cellXfs mapping correcto; unknown parts preservadas y clasificadas; hidden/veryHidden no se confunden; protección/merge bloquean celda que corresponda; límite visual aplicado antes de expansión. **Fuera:** renderer nuevo o writer general de estilos. **Checks:** metadata unit + formatos.
 
+- [x] Leer sistema de fechas 1900/1904, nombres definidos, referencias externas, visibilidad `visible`/`hidden`/`veryHidden` y estilos del libro.
+- [x] Asociar índice de estilo a cada celda con valor y extraer `cellXfs`, formatos numéricos, fuentes/rellenos/bordes por conteo, estilos nombrados y presencia de theme.
+- [x] Extraer merges, panes congelados, protección, geometría de filas/columnas, conteos de hyperlinks/tablas y presencia de notas/drawings sin expandir la matriz por geometría.
+- [x] Ignorar relaciones worksheet externas y probar con fixture XLSX que el rango crudo no se expande por merges/estilos.
+- [ ] Resolver metadata de tablas, hipervínculos, notas y relaciones internas a identificadores/targets completos; aplicar capacidades de protección/merge a controles de edición. Por ahora este inventario no habilita formatos ni acciones en UI.
+- [x] Ejecutar 21 pruebas focalizadas de formatos, tipos, lint y build de producción.
+
 #### V2-15B — Metadata ODS y límites visibles
 
 **Depende de:** V2-15A. **Archivos:** ods/model/protocol/tests. **Pasos:** exponer equivalentes mínimos de identidad/visibilidad/protección/covered/merges y repeticiones. Capabilities declara qué se puede presentar/escribir; mantener formulas cache-only y duración `office:time-value` diferenciada de fecha ISO para no permitir edición que pierde semántica.
