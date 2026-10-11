@@ -496,7 +496,7 @@ Búsqueda por defecto en filas visibles y valores crudos; opción “Toda la hoj
 
 `spreadsheet-viewer.view.showResetButton` permite ocultar el botón de restablecimiento, está activada por defecto y actualiza vistas abiertas. El tooltip explica el alcance del restablecimiento sin afectar archivo o borrador; definición, efecto y texto documentados en `CONFIGURATION.md`.
 
-`spreadsheet-viewer.view.showClearSortButton` permite ocultar **Limpiar orden**, está activada por defecto y actualiza vistas abiertas. El botón muestra un tooltip que aclara que quita todos los criterios activos sin cambiar los datos del archivo; definición, efecto y texto documentados en `CONFIGURATION.md`.
+`spreadsheet-viewer.view.showClearSortButton` permite ocultar **Limpiar orden**, está activada por defecto y actualiza vistas abiertas. El botón muestra un tooltip visible al pasar el puntero o enfocar con el teclado; aclara que quita todos los criterios activos sin cambiar los datos del archivo. Definición, efecto y texto están documentados en `CONFIGURATION.md`.
 
 `ViewStateV1`: versión 1, URI completa, modo, firma de esquema, hoja activa y mapa por sheetId. Cada hoja guarda consulta/ámbito, selección fuente, scroll/anchor, sort/filter, anchos y alturas **solo modificados**, freeze y presentación. Debounce 250 ms; flush al cerrar/cambiar de hoja. Propuesta de cotas: 256 KiB por archivo, 100 archivos con LRU por workspace; purgar preferencias viejas, nunca backups. Persistir en workspaceState; `getState/setState` guarda solo contexto efímero del panel. No incluir libros, matrices, cache de cálculo ni drafts en preferencias.
 

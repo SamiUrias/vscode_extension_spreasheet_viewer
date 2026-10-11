@@ -748,7 +748,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				</div>
 				<div id="header-actions">
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
-					<button id="clear-sort" type="button" title="Quita todos los criterios de orden activos. No modifica los datos del archivo." data-setting-enabled="${showClearSortButton}" hidden>Limpiar orden</button>
+					<span id="clear-sort-control">
+						<button id="clear-sort" type="button" data-setting-enabled="${showClearSortButton}" aria-describedby="clear-sort-tooltip" hidden>Limpiar orden</button>
+						<span id="clear-sort-tooltip" role="tooltip">Quita todos los criterios de orden activos. No modifica los datos del archivo.</span>
+					</span>
 					<span id="reset-view-control">
 						<button id="reset-view" type="button"${showResetButton ? '' : ' hidden'} aria-describedby="reset-view-tooltip">Restablecer vista</button>
 						<span id="reset-view-tooltip" role="tooltip">Borra búsqueda, orden y filtros, y restaura selección y tamaños. No modifica el archivo ni descarta el borrador.</span>
