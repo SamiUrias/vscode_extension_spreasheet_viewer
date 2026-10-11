@@ -12,6 +12,7 @@ import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewSta
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
 import { isCellCoveredByRange } from './cell-reference';
+import { createMoveRangeEdits } from './move-range';
 import { transformFormulaReferences, validateFormulaExpression } from './formula-reference';
 import { serializeXlsxEdits } from './formats/xlsx';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
@@ -71,6 +72,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {
 						void panel.webview.postMessage({ type: 'copyButtonVisibility', visible });
 					}
+				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showMoveActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showMoveActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'moveActionsVisibility', visible });}
 				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showDisplayModeButton', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showDisplayModeButton', true);
@@ -284,6 +289,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isXlsxSheetOperationMessage(message)) {
 				void this.applyXlsxSheetOperation(document, panel, message);
+				return;
+			}
+			if (isMoveCellsMessage(message)) {
+				void this.moveCells(document, panel, message);
 				return;
 			}
 			if (isDraftStateMessage(message)) {
@@ -836,6 +845,56 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const messageText = errorMessage(error);
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
 			void vscode.window.showErrorMessage(`No se pudo gestionar la hoja XLSX: ${messageText}`);
+		}
+	}
+
+	private async moveCells(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'moveCells' }>): Promise<void> {
+		try {
+			if (document.isReadOnly || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex) || !message.token) {throw new Error('El movimiento quedó desactualizado o el documento no es editable.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showMoveActions', true)) {return;}
+			if (document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('Guarda o deshaz los cambios pendientes antes de mover celdas.');}
+			if (document.xlsx) {
+				if (document.isXlsm || document.xlsx.sheets.some(sheet => sheet.cellTypes.some(row => row.includes('formula')))) {throw new Error('Mover valores XLSX requiere un libro sin fórmulas ni macros en esta etapa.');}
+				if (!document.xlsxStructureCapability.allowed) {throw new Error(`El libro XLSX no cumple el perfil seguro: ${document.xlsxStructureCapability.reason ?? 'estructura no compatible'}`);}
+			}
+			if (document.ods?.sheets.some(sheet => sheet.cellTypes.some(row => row.includes('formula')))) {throw new Error('Mover valores ODS requiere un libro sin fórmulas en esta etapa.');}
+			if (!document.xlsx && !document.ods && !document.csv || document.csv && message.sheetIndex !== 0) {throw new Error('El movimiento requiere una hoja CSV, XLSX u ODS válida.');}
+			const sheet = document.xlsx?.sheets[message.sheetIndex] ?? document.ods?.sheets[message.sheetIndex];
+			if (sheet?.metadata?.protected || document.ods?.sheets[message.sheetIndex]?.odsMetadata?.protected) {throw new Error('La hoja está protegida.');}
+			const { row, column, height, width } = message.source;
+			const rows = sheet?.rowCount ?? document.csv?.rowCount ?? 0;
+			const columns = sheet?.columnCount ?? document.csv?.columnCount ?? 0;
+			if (!Number.isSafeInteger(height * width) || height * width > 100_000 || row + height > rows || column + width > columns
+				|| message.destination.row + height > rows || message.destination.column + width > columns) {throw new Error('El movimiento sale de la hoja o supera el límite de 100 000 celdas.');}
+			if ((sheet?.metadata?.mergedRanges.length ?? 0) > 0 || (document.ods?.sheets[message.sheetIndex]?.odsMetadata?.mergedRanges.length ?? 0) > 0) {throw new Error('Esta etapa no mueve rangos en hojas con celdas combinadas.');}
+			if (document.csv && (row < 0 || column < 0 || row + height > rows || document.csv.rowKinds.slice(row, row + height).includes('comment'))) {throw new Error('El rango de origen no es editable.');}
+			const values = Array.from({ length: height }, (_, r) => Array.from({ length: width }, (_, c) => {
+				const sourceRow = row + r, sourceColumn = column + c;
+				if (sheet?.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, sourceRow, sourceColumn))
+					|| document.ods?.sheets[message.sheetIndex]?.odsMetadata?.mergedRanges.some(range => isCellCoveredByRange(range, sourceRow, sourceColumn))) {throw new Error('El rango cruza celdas combinadas.');}
+				const cell = document.editSession.getCell(message.sheetIndex, sourceRow, sourceColumn);
+				if (['formula', 'error', 'unsupported', 'duration'].includes(cell.storedType)) {throw new Error('El rango contiene fórmulas u otras celdas no compatibles.');}
+				return { value: cell.value, type: cell.type === 'formula' ? 'string' as const : cell.type };
+			}));
+			const edits = createMoveRangeEdits(values, { row, column }, message.destination, height, width, rows, columns);
+			for (const edit of edits) {
+				if (document.csv?.rowKinds[edit.row] === 'comment') {throw new Error('El rango de destino incluye un comentario CSV.');}
+				if (sheet?.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, edit.row, edit.column))
+					|| document.ods?.sheets[message.sheetIndex]?.odsMetadata?.mergedRanges.some(range => isCellCoveredByRange(range, edit.row, edit.column))) {throw new Error('El rango de destino cruza celdas combinadas.');}
+			}
+			const answer = await vscode.window.showWarningMessage(`Mover ${height} × ${width} valores dentro de la misma hoja. Esta acción se puede deshacer.`, { modal: true }, 'Mover');
+			if (answer !== 'Mover') {void panel.webview.postMessage({ type: 'clearMoveCut', token: message.token, success: false, message: 'Movimiento cancelado; los datos quedaron intactos.' }); return;}
+			if (message.revision !== document.revision || document.isDisposed || document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('El documento cambió durante la confirmación; vuelve a iniciar el movimiento.');}
+			if (!this.applyEditBatch(document, message, edits.map(edit => ({ ...edit, ...(document.csv ? { targetType: 'string' as const } : {}), sheetIndex: message.sheetIndex })), true)) {
+				void panel.webview.postMessage({ type: 'clearMoveCut', token: message.token, success: false, message: 'No se aplicó ningún cambio.' }); return;
+			}
+			void panel.webview.postMessage({ type: 'clearMoveCut', token: message.token });
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
+			void panel.webview.postMessage({ type: 'clearMoveCut', token: message.token, success: false, message: 'Movimiento cancelado: ' + messageText });
+			void vscode.window.showErrorMessage(`No se pudo mover el rango: ${messageText}`);
 		}
 	}
 
@@ -1411,6 +1470,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showResetButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showResetButton', true);
 		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
 		const showCopyButtons = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showCopyButtons', true);
+		const showMoveActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showMoveActions', true);
 		const showDisplayModeButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showDisplayModeButton', true);
 		const showXlsxStructureActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showStructureActions', true);
 		const showWorkbookAppearance = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showWorkbookAppearance', true);
@@ -1450,6 +1510,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">Copiar mostrado</button><span id="copy-displayed-tooltip" role="tooltip">Copia los valores tal como aparecen en la cuadrícula con la presentación actual.</span></span>
 						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
 					</div>
+					<div id="move-actions" data-setting-visible="${showMoveActions}"${showMoveActions ? '' : ' hidden'} aria-label="Mover celdas"><span class="copy-control"><button id="cut-range" type="button" aria-describedby="cut-range-tooltip">Cortar rango</button><span id="cut-range-tooltip" role="tooltip">Marca el rango seleccionado para moverlo dentro de esta hoja; copiar al portapapeles nunca borra el origen.</span></span><span class="copy-control"><button id="move-range" type="button" aria-describedby="move-range-tooltip" hidden>Pegar movimiento</button><span id="move-range-tooltip" role="tooltip">Mueve el rango marcado a la celda seleccionada después de confirmar; puedes deshacerlo.</span></span><output id="move-status" aria-live="polite"></output></div>
 					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">Rellenar rango</button><span id="fill-range-tooltip" role="tooltip">Repite los valores o extiende una serie numérica en el rango seleccionado. Muestra una vista previa antes de aplicar; se puede deshacer.</span></span>
 					<div id="formula-fill-actions" data-setting-visible="${showFormulaFillActions}"${showFormulaFillActions ? '' : ' hidden'}><span class="copy-control"><button id="fill-formulas-down" type="button" aria-describedby="fill-formulas-down-tooltip">Rellenar fórmulas abajo</button><span id="fill-formulas-down-tooltip" role="tooltip">Copia las fórmulas de la primera fila seleccionada hacia abajo y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span><span class="copy-control"><button id="fill-formulas-right" type="button" aria-describedby="fill-formulas-right-tooltip">Rellenar fórmulas derecha</button><span id="fill-formulas-right-tooltip" role="tooltip">Copia las fórmulas de la primera columna seleccionada hacia la derecha y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span></div>
 					<span id="table-actions-control" data-setting-visible="${showTableActions}"${showTableActions ? '' : ' hidden'} class="copy-control"><button id="create-xlsx-table" type="button" aria-describedby="create-xlsx-table-tooltip">Crear tabla XLSX</button><span id="create-xlsx-table-tooltip" role="tooltip">Crea una tabla nativa de Excel en el rango seleccionado si sus encabezados y el libro pasan la validación. No cambia los valores.</span></span>
@@ -1705,6 +1766,18 @@ function isXlsxSheetOperationMessage(message: unknown): message is Extract<Webvi
 	const value = message as Record<string, unknown>;
 	return typeof value.documentId === 'string' && Number.isInteger(value.revision) && typeof value.sheetId === 'string'
 		&& Number.isInteger(value.sheetIndex) && Number(value.sheetIndex) >= 0 && ['add', 'rename', 'delete'].includes(String(value.kind));
+}
+
+function isMoveCellsMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'moveCells' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'moveCells') {return false;}
+	const value = message as Record<string, unknown>;
+	const source = value.source as Record<string, unknown> | undefined, destination = value.destination as Record<string, unknown> | undefined;
+	return typeof value.documentId === 'string' && Number.isSafeInteger(value.revision) && typeof value.sheetId === 'string'
+		&& Number.isSafeInteger(value.sheetIndex) && Number(value.sheetIndex) >= 0 && typeof value.token === 'string' && value.token.length > 0
+		&& Boolean(source && Number.isSafeInteger(source.row) && Number(source.row) >= 0 && Number.isSafeInteger(source.column) && Number(source.column) >= 0
+			&& Number.isSafeInteger(source.height) && Number(source.height) > 0 && Number.isSafeInteger(source.width) && Number(source.width) > 0)
+		&& Boolean(destination && Number.isSafeInteger(destination.row) && Number(destination.row) >= 0
+			&& Number.isSafeInteger(destination.column) && Number(destination.column) >= 0);
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {

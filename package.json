@@ -252,6 +252,11 @@
           "default": true,
           "description": "Muestra los controles para copiar la selección como TSV."
         },
+        "spreadsheet-viewer.view.showMoveActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra las acciones para cortar y mover rangos dentro de la hoja."
+        },
         "spreadsheet-viewer.view.showFillActions": {
           "type": "boolean",
           "default": true,
@@ -295,6 +300,7 @@
     "test:fill": "npm run compile-tests && node scripts/test-fill.js",
     "test:xlsx-tables": "npm run compile-tests && node scripts/test-xlsx-tables.js",
     "test:xlsx-sheets": "npm run compile-tests && node scripts/test-xlsx-sheets.js",
+    "test:move-range": "npm run compile-tests && node scripts/test-move-range.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",

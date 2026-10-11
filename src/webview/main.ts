@@ -60,6 +60,13 @@ const clearSortButton = requiredElement<HTMLButtonElement>('#clear-sort');
 let showClearSortButton = clearSortButton.dataset.settingEnabled !== 'false';
 const copyActions = requiredElement<HTMLDivElement>('#copy-actions');
 let showCopyButtons = !copyActions.hidden;
+const moveActions = requiredElement<HTMLDivElement>('#move-actions');
+const cutRangeButton = requiredElement<HTMLButtonElement>('#cut-range');
+const moveRangeButton = requiredElement<HTMLButtonElement>('#move-range');
+const moveStatus = requiredElement<HTMLOutputElement>('#move-status');
+let showMoveActions = moveActions.dataset.settingVisible === 'true';
+let pendingMoveCut: { token: string; documentId: string; revision: number; sheetId: string; sheetIndex: number; row: number; column: number; height: number; width: number } | undefined;
+let moveAwaitingToken: string | undefined;
 const displayModeButton = requiredElement<HTMLButtonElement>('#toggle-display-mode');
 const displayModeTooltip = requiredElement<HTMLSpanElement>('#display-mode-tooltip');
 let showDisplayModeButton = !displayModeButton.hidden;
@@ -222,6 +229,19 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		showCopyButtons = event.data.visible;
 		copyActions.hidden = !showCopyButtons;
 		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'moveActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showMoveActions = event.data.visible;
+		moveActions.dataset.settingVisible = String(showMoveActions);
+		if (!showMoveActions) {clearPendingMoveCut('Las acciones de movimiento se desactivaron en la configuración.');}
+		updateMoveActions();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'clearMoveCut'
+		&& 'token' in event.data && pendingMoveCut?.token === event.data.token) {
+		clearPendingMoveCut('success' in event.data && event.data.success === false && 'message' in event.data && typeof event.data.message === 'string'
+			? event.data.message : 'Movimiento aplicado.'); return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'displayModeButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
@@ -455,6 +475,9 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		sheetControl.hidden = true;
 	}
 	updateSheetActions();
+	if (pendingMoveCut && !moveAwaitingToken && (pendingMoveCut.documentId !== snapshot.documentId || pendingMoveCut.revision !== snapshot.revision
+		|| pendingMoveCut.sheetId !== snapshot.sheetId)) {clearPendingMoveCut('El documento cambió; se canceló el corte pendiente.');}
+	updateMoveActions();
 	if (selectedCell && (selectedCell.row >= snapshot.rowCount || selectedCell.column >= snapshot.columnCount)) {
 		selectedCell = undefined;
 	}
@@ -759,7 +782,8 @@ gridScroll.addEventListener('scroll', () => {
 
 window.addEventListener('pagehide', () => flushViewState());
 window.addEventListener('keydown', event => {
-	if (event.key === 'Escape' && !filterPopover.hidden) {closeFilterPopup(true); event.preventDefault();}
+	if (event.key === 'Escape' && pendingMoveCut) {clearPendingMoveCut('Corte cancelado.'); event.preventDefault();}
+	else if (event.key === 'Escape' && !filterPopover.hidden) {closeFilterPopup(true); event.preventDefault();}
 	else if (event.key === 'Escape' && pendingHiddenCell) {pendingHiddenCell = undefined; revealHiddenMatchButton.hidden = true; filterStatus.textContent = '';}
 });
 document.addEventListener('pointerdown', event => {
@@ -829,6 +853,7 @@ gridScroll.addEventListener('keydown', event => {
 
 gridScroll.addEventListener('paste', event => {
 	if (event.target !== gridScroll || !snapshot || !selectedCell || snapshot.readonly) {return;}
+	if (pendingMoveCut) {clearPendingMoveCut('El texto externo se pegará como copia; el origen permanece intacto.');}
 	const text = event.clipboardData?.getData('text/plain');
 	if (text === undefined) {return;}
 	event.preventDefault();
@@ -974,6 +999,70 @@ function updateTableActionsControl(): void {
 	tableActionsControl.hidden = !visible;
 	createXlsxTableButton.disabled = !visible || !selectionRange || editorDirty;
 }
+
+function updateMoveActions(): void {
+	moveActions.hidden = !showMoveActions || !snapshot || snapshot.readonly === true;
+	const editable = showMoveActions && Boolean(snapshot && !snapshot.readonly && selectedCell && !editorDirty && !inlineEditorDirty)
+		&& !sortCriteria.length && !columnFilters.length && !searchInput.value;
+	cutRangeButton.disabled = !editable || !snapshot || !selectedCell || Boolean(pendingMoveCut);
+	moveRangeButton.hidden = !pendingMoveCut;
+	moveRangeButton.disabled = !editable || !pendingMoveCut || pendingMoveCut.documentId !== snapshot?.documentId
+		|| pendingMoveCut.revision !== snapshot?.revision || pendingMoveCut.sheetId !== snapshot?.sheetId;
+}
+
+function selectedRectangle(): { row: number; column: number; height: number; width: number } | undefined {
+	if (!selectedCell) {return undefined;}
+	const firstRow = selectionRange ? Math.min(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+	const lastRow = selectionRange ? Math.max(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+	const firstColumn = selectionRange ? Math.min(selectionRange.anchor.column, selectionRange.focus.column) : selectedCell.column;
+	const lastColumn = selectionRange ? Math.max(selectionRange.anchor.column, selectionRange.focus.column) : selectedCell.column;
+	return { row: firstRow, column: firstColumn, height: lastRow - firstRow + 1, width: lastColumn - firstColumn + 1 };
+}
+
+function clearPendingMoveCut(message: string): void {
+	if (!pendingMoveCut) {return;}
+	pendingMoveCut = undefined;
+	moveAwaitingToken = undefined;
+	moveStatus.textContent = message;
+	renderGrid();
+	updateMoveActions();
+}
+
+function beginMoveCut(): void {
+	if (!snapshot || snapshot.readonly || !selectedCell || !showMoveActions || editorDirty || inlineEditorDirty) {return;}
+	const current = snapshot;
+	if (sortCriteria.length || columnFilters.length || searchInput.value) {moveStatus.textContent = 'Quita orden, filtros y búsqueda antes de cortar.'; return;}
+	const source = selectedRectangle();
+	if (!source || source.height * source.width > 100_000) {moveStatus.textContent = 'Selecciona un rango de hasta 100 000 celdas.'; return;}
+	if (current.type === 'csvData' && Array.from({ length: source.height }, (_, offset) => current.rowKinds?.[source.row + offset]).includes('comment')) {
+		moveStatus.textContent = 'Los comentarios CSV no se pueden mover como celdas.'; return;
+	}
+	if (current.type === 'xlsxData' && Array.from({ length: source.height }, (_, r) => Array.from({ length: source.width }, (_, c) => current.cellTypes[source.row + r]?.[source.column + c])).flat().some(type => ['formula', 'error', 'unsupported', 'duration'].includes(type ?? ''))) {
+		moveStatus.textContent = 'El rango contiene fórmulas u otras celdas no compatibles.'; return;
+	}
+	const token = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	pendingMoveCut = { token, ...snapshotIdentity(current), ...source };
+	moveStatus.textContent = 'Rango marcado. Selecciona la celda destino y pulsa “Pegar movimiento”.';
+	void copySelection('raw');
+	renderGrid();
+	updateMoveActions();
+}
+
+function snapshotIdentity(current: CsvDataMessage | XlsxDataMessage): { documentId: string; revision: number; sheetId: string; sheetIndex: number } {
+	return { documentId: current.documentId, revision: current.revision, sheetId: current.sheetId, sheetIndex: current.type === 'xlsxData' ? current.activeSheetIndex : 0 };
+}
+
+function requestMoveToSelection(): void {
+	if (!pendingMoveCut || !snapshot || !selectedCell || moveRangeButton.disabled) {return;}
+	const destination = { row: selectedCell.row, column: selectedCell.column };
+	if (destination.row === pendingMoveCut.row && destination.column === pendingMoveCut.column) {clearPendingMoveCut('El rango ya está en esa posición.'); return;}
+	vscodeApi.postMessage({ type: 'moveCells', ...snapshotIdentity(snapshot), token: pendingMoveCut.token,
+		source: { row: pendingMoveCut.row, column: pendingMoveCut.column, height: pendingMoveCut.height, width: pendingMoveCut.width }, destination });
+	moveAwaitingToken = pendingMoveCut.token;
+}
+
+cutRangeButton.addEventListener('click', beginMoveCut);
+moveRangeButton.addEventListener('click', requestMoveToSelection);
 
 function updateSheetActions(): void {
 	const enabled = showSheetActions && snapshot?.type === 'xlsxData' && snapshot.readonly !== true;
@@ -1164,7 +1253,9 @@ function renderGrid(): void {
 		getActiveColumnWidths, gridTemplateColumns: widths => gridTemplateColumns(widths, rowHeaderWidth),
 		startColumnResize, resizeColumnWithKeyboard, updateGridColumnSizing, getActiveRowLayout,
 		findRowAtOffset, startRowResize, resizeRowWithKeyboard, columnName, isSelected,
-		isActiveCell: (row, column) => selectedCell?.row === row && selectedCell.column === column, isFormula,
+		isActiveCell: (row, column) => selectedCell?.row === row && selectedCell.column === column,
+		isCutCell: (row, column) => Boolean(pendingMoveCut && row >= pendingMoveCut.row && row < pendingMoveCut.row + pendingMoveCut.height
+			&& column >= pendingMoveCut.column && column < pendingMoveCut.column + pendingMoveCut.width), isFormula,
 		getFormulaCache, getFormulaResult, isEditing, isActiveSearchMatch,
 		getCellDisplayValue: (row, column, raw) => snapshot?.type === 'xlsxData'
 			? presentXlsxCell(snapshot, row, column, raw, cellPresentation) : raw,
@@ -1403,6 +1494,7 @@ function sendDraftState(
 		value,
 		...(formulaEditMode.checked ? { formula: true } : {}),
 	});
+	updateMoveActions();
 }
 
 function isRecoveredDraft(value: unknown): value is { sheetIndex: number; row: number; column: number; value: string; formula?: boolean } {

@@ -21,6 +21,7 @@ export interface GridRenderContext {
 	startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElement): void;
 	resizeRowWithKeyboard(event: KeyboardEvent, row: number): void;
 	columnName(index: number): string; isSelected(row: number, column: number): boolean; isActiveCell(row: number, column: number): boolean;
+	isCutCell?(row: number, column: number): boolean;
 	isFormula(row: number, column: number): boolean; getFormulaCache(row: number, column: number): string;
 	getFormulaResult(row: number, column: number): FormulaEvaluation | undefined;
 	getCellDisplayValue(row: number, column: number, raw: string): string;
@@ -212,6 +213,7 @@ const templateColumns = gridTemplateColumns(widths);
 			const rawValue = present ? values[column] : '';
 			const value = getCellDisplayValue(sourceRow, column, rawValue);
 			valueCell.className = 'grid-cell';
+			if (context.isCutCell?.(sourceRow, column)) {valueCell.classList.add('cut-source-cell');}
 			valueCell.textContent = value;
 			valueCell.title = value === rawValue ? rawValue : `${value}\nValor crudo: ${rawValue}`;
 			valueCell.setAttribute('role', 'gridcell');

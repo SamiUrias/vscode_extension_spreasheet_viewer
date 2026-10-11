@@ -67,6 +67,11 @@ export interface XlsxSheetOperationMessage {
 	type: 'xlsxSheetOperation'; documentId: string; revision: number; sheetId: string; sheetIndex: number;
 	kind: 'add' | 'rename' | 'delete';
 }
+export interface MoveCellsMessage {
+	type: 'moveCells'; documentId: string; revision: number; sheetId: string; sheetIndex: number; token: string;
+	source: { row: number; column: number; height: number; width: number };
+	destination: { row: number; column: number };
+}
 export interface RecoveredDraft { sheetIndex: number; row: number; column: number; value: string; formula?: boolean; }
 export interface RestoreCellDraftMessage { type: 'restoreCellDraft'; draft: RecoveredDraft; }
 export interface DiscardCellDraftMessage { type: 'discardCellDraft'; }
@@ -123,7 +128,7 @@ export interface DraftStateMessage {
 export interface DraftCaptureResultMessage { type: 'draftCaptureResult'; requestId: number; draft?: RecoveredDraft; }
 export interface CaptureDraftMessage { type: 'captureDraft'; requestId: number; }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | CreateXlsxTableMessage | XlsxSheetOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | CreateXlsxTableMessage | XlsxSheetOperationMessage | MoveCellsMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';

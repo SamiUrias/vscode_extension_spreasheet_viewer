@@ -11,6 +11,7 @@
 - **Fill relative formulas:** copy normal XLSX formulas down or right with adjusted A1 references, review the generated formulas, and apply or undo the full range as one operation.
 - **Create native XLSX tables:** turn a safe rectangular range into a named Excel table with filters and a built-in style; the operation preserves cell values and can be undone.
 - **Manage simple XLSX sheets:** add, rename, or delete sheets in reference-free workbooks, with undo and validation before changing the package.
+- **Move cell ranges safely:** mark a range and move it to a selected cell in the same sheet after a confirmation. External clipboard pastes remain copies; formulas, merged cells, protected sheets, and sorted or filtered views are excluded.
 - **Manage CSV records:** insert or append an empty row, or delete selected rows with confirmation. These actions can be undone and are configurable in Settings.
 - **Fill selected ranges:** repeat a value pattern or extend an explicitly chosen numeric series, review a preview, and undo the single resulting operation. Formulas and filtered/sorted views are excluded.
 - **Choose when changes are written:** automatic saving after confirming an edit is on by default; it can be disabled to save with `Ctrl+S` (`Cmd+S` on macOS).
@@ -110,6 +111,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
 | `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
+| `spreadsheet-viewer.view.showMoveActions` | `true` | Show or hide the range cut and in-sheet move controls. |
 | `spreadsheet-viewer.view.showFillActions` | `true` | Show or hide range fill for repeated values and explicit numeric series. |
 | `spreadsheet-viewer.view.showDisplayModeButton` | `true` | Show or hide **Ver libro**, the XLSX raw/formatted display toggle. |
 | `spreadsheet-viewer.xlsx.showStructureActions` | `true` | Show or hide XLSX row and column insertion/deletion actions for compatible workbooks. |

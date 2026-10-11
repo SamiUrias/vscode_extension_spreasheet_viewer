@@ -6,6 +6,7 @@ import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { applyXlsxStructureOperation, getXlsxStructureCapability } from '../formats/xlsx-structure';
 import { applyXlsxTableOperation } from '../formats/xlsx-tables';
 import { applyXlsxSheetOperation } from '../formats/xlsx-sheets';
+import { createMoveRangeEdits } from '../move-range';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
 import type { FormulaParserService } from '../formula-reference';
@@ -157,6 +158,44 @@ function encodeUtf16(text: string, littleEndian: boolean): Buffer {
 }
 
 suite('XLSX reader', () => {
+	test('value move preflights rectangular ranges and handles overlap from a captured source', () => {
+		const source = [[{ value: '1', type: 'number' as const }, { value: '2', type: 'number' as const }], [{ value: '3', type: 'number' as const }, { value: '4', type: 'number' as const }]];
+		assert.deepStrictEqual(createMoveRangeEdits(source, { row: 0, column: 0 }, { row: 1, column: 1 }, 2, 2, 4, 4), [
+			{ row: 0, column: 0, value: '', targetType: 'string' }, { row: 0, column: 1, value: '', targetType: 'string' },
+			{ row: 1, column: 0, value: '', targetType: 'string' }, { row: 1, column: 1, value: '1', targetType: 'number' },
+			{ row: 1, column: 2, value: '2', targetType: 'number' }, { row: 2, column: 1, value: '3', targetType: 'number' },
+			{ row: 2, column: 2, value: '4', targetType: 'number' },
+		]);
+		assert.deepStrictEqual(createMoveRangeEdits([[{ value: 'x', type: 'string' }]], { row: 0, column: 0 }, { row: 0, column: 0 }, 1, 1, 1, 1), [
+			{ row: 0, column: 0, value: 'x', targetType: 'string' },
+		]);
+		assert.throws(() => createMoveRangeEdits(source, { row: 0, column: 0 }, { row: 3, column: 3 }, 2, 2, 4, 4), /sale de la hoja/);
+		const csv = parseCsvBytes(new TextEncoder().encode('A,B,C,D\r\n1,2,3,4\r\n5,6,7,8\r\n9,10,11,12'));
+		const session = new SpreadsheetEditSession(csv);
+		const move = createMoveRangeEdits(source, { row: 0, column: 0 }, { row: 1, column: 1 }, 2, 2, 4, 4);
+		const transaction = session.editCells(move.map(edit => ({ sheetIndex: 0, ...edit, targetType: 'string' as const })));
+		assert.notEqual(transaction, undefined);
+		assert.equal(session.getCell(0, 0, 0).value, '');
+		assert.equal(session.getCell(0, 1, 1).value, '1');
+		assert.equal(session.undo(transaction!), true);
+		assert.equal(session.getCell(0, 0, 0).value, 'A');
+		assert.equal(session.redo(transaction!), true);
+		assert.equal(session.getCell(0, 1, 1).value, '1');
+		const xlsxBytes = createXlsxTableFixture();
+		const xlsxWorkbook = parseXlsxBytes(xlsxBytes);
+		const xlsxSession = new SpreadsheetEditSession(undefined, xlsxWorkbook, xlsxBytes);
+		const xlsxMove = createMoveRangeEdits([[{ value: '1', type: 'number' }, { value: 'One', type: 'string' }]], { row: 1, column: 0 }, { row: 2, column: 1 }, 1, 2, 5, 5);
+		const xlsxTransaction = xlsxSession.editCells(xlsxMove.map(edit => ({ sheetIndex: 0, ...edit })));
+		assert.equal(xlsxSession.getCell(0, 2, 1).value, '1');
+		assert.equal(xlsxSession.getCell(0, 2, 1).type, 'number');
+		assert.equal(xlsxSession.getCell(0, 2, 2).value, 'One');
+		assert.equal(xlsxSession.getCell(0, 1, 0).value, '');
+		assert.equal(xlsxSession.undo(xlsxTransaction!), true);
+		assert.equal(xlsxSession.getCell(0, 1, 0).value, '1');
+		assert.equal(xlsxSession.redo(xlsxTransaction!), true);
+		assert.equal(xlsxSession.getCell(0, 2, 1).type, 'number');
+	});
+
 	test('detects macro-enabled workbooks, VBA payloads, and signatures without executing them', () => {
 		const parts: Record<string, Uint8Array> = { ...unzipSync(createXlsxFixture()) };
 		parts['[Content_Types].xml'] = xml('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml"/></Types>');

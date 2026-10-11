@@ -664,6 +664,7 @@ textarea:focus-visible,
 .column-header.frozen-column {z-index: 7;}
 .grid-cell.range-selected {background-color: var(--vscode-list-inactiveSelectionBackground);}
 .grid-cell.selected-cell {background-color: var(--vscode-list-activeSelectionBackground);}
+.grid-cell.cut-source-cell {outline: 2px dashed var(--vscode-focusBorder); outline-offset: -2px; opacity: 0.72;}
 
 .wrap-cells .grid-cell {
 	white-space: pre-wrap;

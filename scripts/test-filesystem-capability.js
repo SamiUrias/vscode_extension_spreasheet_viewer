@@ -4,7 +4,7 @@ const { isDocumentMutationMessageType, isWritableFileSystem } = require('../out/
 assert.equal(isWritableFileSystem(true), true);
 assert.equal(isWritableFileSystem(false), false);
 assert.equal(isWritableFileSystem(undefined), false, 'unknown schemes fail closed');
-for (const type of ['editCell', 'editFormula', 'editCells', 'csvRowOperation', 'xlsxStructureOperation', 'history', 'draftState']) {
+for (const type of ['editCell', 'editFormula', 'editCells', 'csvRowOperation', 'xlsxStructureOperation', 'moveCells', 'history', 'draftState']) {
 	assert.equal(isDocumentMutationMessageType(type), true, `${type} mutates document state`);
 }
 for (const type of ['ready', 'copyToClipboard', 'selectSheet', 'setSort', 'persistViewState', 'requestSnapshot', 'reloadFile']) {
