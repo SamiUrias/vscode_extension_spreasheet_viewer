@@ -92,7 +92,19 @@ Opening the editable view while the text buffer has unsaved changes asks whether
 - The first CSV row can be displayed as a column heading; optional header capitalization changes only the visual label. CSV comment records can be hidden from the table while remaining in the file.
 - CSV, XLSX, and ODS files are limited to 10 MiB. XLSX/ODS archives also have limits for expanded size, number of parts, sheets, rows, columns, and populated cells. Files over a limit are rejected as a whole rather than shown as a partial editable table.
 
-XLSX and ODS support focuses on tabular data. Macros, charts, pivot tables, signatures, external links, advanced formatting, and other complex workbook features are not fully supported. The extension may warn about unsupported content; it does not promise full Excel or ODF round-trip fidelity. Validate important workbooks on copies in Excel or LibreOffice before relying on saved results.
+XLSX and ODS support focuses on tabular data. Editing actions use narrower profiles than viewing; a workbook that opens successfully may still be rejected by a particular action. The host rechecks each operation and reports why it is unavailable. Current limits include:
+
+| Content or operation | Current behavior |
+| --- | --- |
+| XLSM, VBA, or digitally signed workbook | Opens read-only; macros never run and the package is not rewritten. |
+| Insert/delete XLSX rows or columns | Rejected for defined names, external references, unknown package parts, protected or merged sheets, tables, drawings/notes, filters, hyperlinks, validations, conditional formatting, extensions, and shared/array/extended formulas. Ordinary formulas require the reference parser so their references can be updated. |
+| Add/rename/delete XLSX sheets | Limited to a reference-free simple workbook profile. Formulas, names, external references, unknown parts, protected/merged sheets, tables, drawings/notes, hyperlinks, or sheet relationships block the action. |
+| Basic XLSX formatting, merge, or freeze | Rejects unsupported package/worksheet structures such as tables, hyperlinks, validations, extensions, conditional formatting, rich text, protected sheets, or multiple views where the writer cannot preserve semantics. Merge additionally requires empty covered cells and no formulas or defined names in the workbook. |
+| Move/cut a range | Limited to the same sheet and supported plain values; formulas, protected/merged cells, unsupported workbook content, or a range whose dependencies cannot be preserved block the move. |
+| ODS structural edits and full style editing | Not supported. ODS cell editing preserves other package parts, but complex ODF round-trip behavior is not certified. ODS formulas keep their stored cache and are not recalculated. |
+| Charts, pivot tables, advanced formatting, external links, and other complex workbook features | Not fully supported as spreadsheet features. Cell notes and links are displayed as text and never opened automatically. |
+
+These are tested conservative boundaries, not a guarantee of complete Excel or ODF round-trip fidelity. Validate important workbooks on copies in Excel or LibreOffice before relying on saved results. New support must name the package parts, relationships, and references it updates, include a writer and reference transformation where needed, and be checked against an independent application or fixture oracle.
 
 Workbook sheets can be switched with scrollable tabs or the sheet selector. Hidden and very hidden sheets are labeled explicitly. Imported row/column dimensions and XLSX frozen panes are used for the grid. Basic XLSX bold, italic, alignment, wrapping, borders, and direct RGB font/fill colors are rendered; theme/indexed colors and advanced conditional or rich-text styles are not. Merged cells render when their rows remain in source order and the merge does not cross a frozen pane. When sorting or filtering changes row positions, the grid temporarily uses tabular cells and explains why. Selecting a covered cell moves to its merge anchor. Cell notes and links appear as text and are never opened automatically.
 

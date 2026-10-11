@@ -377,6 +377,11 @@ suite('XLSX reader', () => {
 			parseFormula: async () => ({ type: 'number' }),
 			tokenizeFormula: async () => [],
 		} as unknown as FormulaParserService;
+		const sharedFormulaParts = unzipSync(original);
+		const sharedFormulaSheet = new TextDecoder().decode(sharedFormulaParts['xl/worksheets/sheet1.xml']);
+		sharedFormulaParts['xl/worksheets/sheet1.xml'] = xml(sharedFormulaSheet.replace('<f>A1+1</f>', '<f t="shared" si="0" ref="B2:B3">A1+1</f>'));
+		const sharedFormulaBytes = zipSync(sharedFormulaParts);
+		await assert.rejects(applyXlsxStructureOperation(sharedFormulaBytes, { kind: 'insertRows', sheetIndex: 0, index: 0, count: 1 }, noReferenceParser), /fórmulas no compatibles|fórmula compartida/);
 		const formulaTransaction = await formulaSession.applyXlsxStructure({ kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 }, noReferenceParser);
 		const formulaEdited = formulaSession.serializeCopy();
 		assert.equal(parseXlsxBytes(formulaEdited).sheets[0]?.rows[3]?.[1], '=2+3');

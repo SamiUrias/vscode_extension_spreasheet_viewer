@@ -305,6 +305,7 @@
     "test:fill": "npm run compile-tests && node scripts/test-fill.js",
     "test:xlsx-tables": "npm run compile-tests && node scripts/test-xlsx-tables.js",
     "test:xlsx-sheets": "npm run compile-tests && node scripts/test-xlsx-sheets.js",
+    "test:xlsx-structure": "npm run compile-tests && node scripts/test-xlsx-structure.js",
     "test:move-range": "npm run compile-tests && node scripts/test-move-range.js",
     "test:xlsx-styles": "npm run compile-tests && node scripts/test-xlsx-styles.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
