@@ -849,6 +849,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Validar estructura reparseando el resultado; impedir borrar comentarios, índices inválidos, inserciones fuera de límite y registros de ancho incorrecto.
 - [x] Integrar la operación con el journal: los edits previos se rebasan sobre una copia de trabajo en memoria; el cambio estructural forma una transacción con undo/redo y deja el disco intacto.
 - [x] Probar inserción/eliminación con preámbulo, comentarios, CRLF, comillas, multilinea, rebase y orden de undo/redo; suites de formato, tipos y lint pasan.
+- [x] Añadir `npm run test:csv-row-operations` para correr directamente los fixtures byte-level y de journal de esta fase.
 - [ ] Las acciones de usuario se añaden en V2-14B; la validación de save lifecycle de VS Code sigue pendiente mientras falle el runner Extension Host.
 
 **Aceptación:** borrar última/primera/multilinea/discontinuas; añadir con/sin salto final; insertar sin tocar comments; UTF-16 ambos endian; undo restaura bytes originales; tabla vacía admite primer registro con ancho elegido. **Fuera:** estructura XLSX/ODS ni UI todavía. **Checks:** byte-level fixtures propios y unit.
@@ -861,7 +862,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir setting booleano `spreadsheet-viewer.csv.showRowActions`, default `true`, y documentar valores/efecto en README y CONFIGURATION.md.
 - [x] Desactivar acciones si hay proyección por orden/filtro/búsqueda; recoger borradores antes de modificar filas y deshacer/rehacer con el journal.
 - [x] Tras insertar, enfocar la primera celda del registro nuevo; tras borrar, enfocar la fila vecina cuando aún existe.
-- [ ] Verificar foco, selección y ciclo save/undo en Extension Host. El runner sigue bloqueado por Node 18.20.4 y dependencia `/v`.
+- [ ] Verificar foco, selección y ciclo save/undo en Extension Host. El runtime de VS Code no se pudo descargar por `ENOTFOUND update.code.visualstudio.com`; su handler puede validarse con el runner local.
 
 **Aceptación:** borrar tras sort borra registros seleccionados, no primeros N; undo reconstruye proyección; comentarios/header no eliminados por selección de datos accidental; límites antes de mutar; no autosave por cada fila. **Fuera:** columnas CSV; se planifican por separado en V4.
 
