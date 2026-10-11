@@ -858,7 +858,9 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Integrar la operación con el journal: los edits previos se rebasan sobre una copia de trabajo en memoria; el cambio estructural forma una transacción con undo/redo y deja el disco intacto.
 - [x] Probar inserción/eliminación con preámbulo, comentarios, CRLF, comillas, multilinea, rebase y orden de undo/redo; suites de formato, tipos y lint pasan.
 - [x] Añadir `npm run test:csv-row-operations` para correr directamente los fixtures byte-level y de journal de esta fase.
-- [ ] Las acciones de usuario se añaden en V2-14B; la validación de save lifecycle de VS Code sigue pendiente mientras falle el runner Extension Host.
+- [x] Confirmar el save lifecycle en VS Code 1.141.0 local: inserción/undo/redo CSV a través del proveedor, junto al guardado y la reapertura de otros formatos.
+
+**Estado V2-14A:** serializador, rebase/journal y ciclo de guardado implementados y probados (`test:csv-row-operations`, `test:save-lifecycle`). Siguen sin fixture estructural específica los bytes UTF-16LE/BE y el caso de CSV sin columnas donde el usuario elige ancho para el primer registro; registrar como pruebas/decisión pendiente y avanzar con V2-14B. Esto no bloquea las tareas independientes.
 
 **Aceptación:** borrar última/primera/multilinea/discontinuas; añadir con/sin salto final; insertar sin tocar comments; UTF-16 ambos endian; undo restaura bytes originales; tabla vacía admite primer registro con ancho elegido. **Fuera:** estructura XLSX/ODS ni UI todavía. **Checks:** byte-level fixtures propios y unit.
 
