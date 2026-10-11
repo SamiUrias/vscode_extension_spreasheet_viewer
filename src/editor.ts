@@ -92,6 +92,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showFormulaFillActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'formulaFillActionsVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showTableActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showTableActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'tableActionsVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });}
@@ -268,6 +272,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isFillFormulaRangeMessage(message)) {
 				void this.applyFormulaFill(document, panel, message);
+				return;
+			}
+			if (isCreateXlsxTableMessage(message)) {
+				void this.createXlsxTable(document, panel, message);
 				return;
 			}
 			if (isDraftStateMessage(message)) {
@@ -747,6 +755,33 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const messageText = errorMessage(error);
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
 			void vscode.window.showErrorMessage(`No se pudieron rellenar las fórmulas: ${messageText}`);
+		}
+	}
+
+	private async createXlsxTable(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'createXlsxTable' }>): Promise<void> {
+		try {
+			if (document.isReadOnly || !document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('La selección XLSX quedó desactualizada o no es editable.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showTableActions', true)) {return;}
+			if (document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('Guarda o deshaz los cambios pendientes antes de crear una tabla.');}
+			const name = await vscode.window.showInputBox({
+				prompt: 'Nombre único de la tabla de Excel (sin espacios; por ejemplo, SalesData).',
+				value: 'Table1',
+				validateInput: value => /^[A-Za-z_][A-Za-z0-9_.]*$/.test(value) && !/^[A-Za-z]{1,3}\d+$/.test(value) && !/^R\d+C\d+$/i.test(value) ? undefined : 'Usa letras, números, guion bajo o punto; no empieces con una referencia A1 o R1C1.',
+			});
+			if (!name) {return;}
+			if (message.revision !== document.revision || document.isDisposed || document.hasUnsavedChanges) {throw new Error('El archivo cambió mientras se ingresaba el nombre; vuelve a seleccionar el rango.');}
+			const transactionId = document.applyXlsxTable({ sheetIndex: message.sheetIndex, startRow: message.startRow, startColumn: message.startColumn,
+				endRow: message.endRow, endColumn: message.endColumn, name });
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({ document, label: `Crear tabla ${name}`, undo: () => {if (document.undo(transactionId)) {update();}}, redo: () => {if (document.redo(transactionId)) {update();}} });
+			this.postDocument(document);
+			this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			if (this.saveOnCommit(document)) {this.scheduleSave(document);}
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
+			void vscode.window.showErrorMessage(`No se pudo crear la tabla XLSX: ${messageText}`);
 		}
 	}
 
@@ -1315,6 +1350,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showFormulaEditing = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('allowFormulaEditing', true);
 		const showFormulaAssistance = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaAssistance', true);
 		const showFormulaFillActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaFillActions', true);
+		const showTableActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showTableActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
@@ -1346,6 +1382,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					</div>
 					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">Rellenar rango</button><span id="fill-range-tooltip" role="tooltip">Repite los valores o extiende una serie numérica en el rango seleccionado. Muestra una vista previa antes de aplicar; se puede deshacer.</span></span>
 					<div id="formula-fill-actions" data-setting-visible="${showFormulaFillActions}"${showFormulaFillActions ? '' : ' hidden'}><span class="copy-control"><button id="fill-formulas-down" type="button" aria-describedby="fill-formulas-down-tooltip">Rellenar fórmulas abajo</button><span id="fill-formulas-down-tooltip" role="tooltip">Copia las fórmulas de la primera fila seleccionada hacia abajo y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span><span class="copy-control"><button id="fill-formulas-right" type="button" aria-describedby="fill-formulas-right-tooltip">Rellenar fórmulas derecha</button><span id="fill-formulas-right-tooltip" role="tooltip">Copia las fórmulas de la primera columna seleccionada hacia la derecha y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span></div>
+					<span id="table-actions-control" data-setting-visible="${showTableActions}"${showTableActions ? '' : ' hidden'} class="copy-control"><button id="create-xlsx-table" type="button" aria-describedby="create-xlsx-table-tooltip">Crear tabla XLSX</button><span id="create-xlsx-table-tooltip" role="tooltip">Crea una tabla nativa de Excel en el rango seleccionado si sus encabezados y el libro pasan la validación. No cambia los valores.</span></span>
 					<span class="copy-control"><button id="toggle-display-mode" type="button"${showDisplayModeButton ? '' : ' hidden'} aria-describedby="display-mode-tooltip">Ver libro</button><span id="display-mode-tooltip" role="tooltip">Alterna entre valores crudos y su formato numérico de presentación. No modifica el archivo.</span></span>
 					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="Acciones de registros CSV">
 						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>
@@ -1577,6 +1614,16 @@ function isFillFormulaRangeMessage(message: unknown): message is Extract<Webview
 	const value = message as Record<string, unknown>;
 	return typeof value.documentId === 'string' && Number.isInteger(value.revision) && typeof value.sheetId === 'string'
 		&& Number.isInteger(value.sheetIndex) && (value.direction === 'down' || value.direction === 'right')
+		&& Number.isInteger(value.startRow) && Number(value.startRow) >= 0 && Number.isInteger(value.startColumn) && Number(value.startColumn) >= 0
+		&& Number.isInteger(value.endRow) && Number(value.endRow) >= Number(value.startRow)
+		&& Number.isInteger(value.endColumn) && Number(value.endColumn) >= Number(value.startColumn);
+}
+
+function isCreateXlsxTableMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'createXlsxTable' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'createXlsxTable') {return false;}
+	const value = message as Record<string, unknown>;
+	return typeof value.documentId === 'string' && Number.isInteger(value.revision) && typeof value.sheetId === 'string'
+		&& Number.isInteger(value.sheetIndex) && Number(value.sheetIndex) >= 0
 		&& Number.isInteger(value.startRow) && Number(value.startRow) >= 0 && Number.isInteger(value.startColumn) && Number(value.startColumn) >= 0
 		&& Number.isInteger(value.endRow) && Number(value.endRow) >= Number(value.startRow)
 		&& Number.isInteger(value.endColumn) && Number(value.endColumn) >= Number(value.startColumn);

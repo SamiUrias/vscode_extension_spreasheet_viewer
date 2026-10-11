@@ -4,6 +4,7 @@ import { unzipSync, zipSync } from 'fflate';
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation } from '../formats/csv';
 import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { applyXlsxStructureOperation, getXlsxStructureCapability } from '../formats/xlsx-structure';
+import { applyXlsxTableOperation } from '../formats/xlsx-tables';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
 import type { FormulaParserService } from '../formula-reference';
@@ -381,6 +382,42 @@ suite('XLSX reader', () => {
 		assert.equal(session.getCell(0, 0, 0).value, '=2+2');
 	});
 
+	test('XLSX tables add isolated OOXML parts and support non-overlapping tables', () => {
+		const original = createXlsxTableFixture();
+		const originalParts = unzipSync(original);
+		const first = applyXlsxTableOperation(original, { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 4, endColumn: 2, name: 'SalesData' });
+		const afterFirst = parseXlsxBytes(first.after);
+		assert.deepStrictEqual(afterFirst.sheets[0]?.metadata?.tables, [{ name: 'SalesData', displayName: 'SalesData', reference: 'A1:C5' }]);
+		const firstParts = unzipSync(first.after);
+		const tableXml = new TextDecoder().decode(firstParts['xl/tables/table1.xml']);
+		assert.match(tableXml, /name="SalesData" displayName="SalesData" ref="A1:C5"/);
+		assert.match(tableXml, /<autoFilter ref="A1:C5"/);
+		assert.match(tableXml, /<tableColumn id="1" name="ID"/);
+		assert.match(tableXml, /<tableStyleInfo name="TableStyleMedium2"/);
+		assert.match(new TextDecoder().decode(firstParts['[Content_Types].xml']), /PartName="\/xl\/tables\/table1\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.table\+xml"/);
+		assert.match(new TextDecoder().decode(firstParts['xl/worksheets/_rels/sheet1.xml.rels']), /Target="\.\.\/tables\/table1\.xml"/);
+		assert.deepStrictEqual(firstParts['xl/sharedStrings.xml'], originalParts['xl/sharedStrings.xml']);
+		assert.deepStrictEqual(parseXlsxBytes(first.after).sheets[0]?.rows, parseXlsxBytes(original).sheets[0]?.rows, 'table creation must not change cell values');
+		const second = applyXlsxTableOperation(first.after, { sheetIndex: 0, startRow: 0, startColumn: 3, endRow: 2, endColumn: 4, name: 'Scores' });
+		assert.equal(parseXlsxBytes(second.after).sheets[0]?.metadata?.tables.length, 2);
+		assert.deepStrictEqual(unzipSync(second.after)['xl/sharedStrings.xml'], originalParts['xl/sharedStrings.xml']);
+		assert.throws(() => applyXlsxTableOperation(second.after, { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 2, endColumn: 2, name: 'ThirdTable' }), /solapa/);
+		assert.throws(() => applyXlsxTableOperation(second.after, { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'salesdata' }), /Ya existe/);
+		assert.throws(() => applyXlsxTableOperation(original, { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'A1' }), /nombre debe ser válido/);
+		const duplicateHeaderParts: Record<string, Uint8Array> = unzipSync(original);
+		duplicateHeaderParts['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(duplicateHeaderParts['xl/worksheets/sheet1.xml']).replace('<t>Name</t>', '<t>ID</t>'));
+		assert.throws(() => applyXlsxTableOperation(zipSync(duplicateHeaderParts), { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'DuplicateHeaders' }), /encabezado/);
+		const mergedParts: Record<string, Uint8Array> = unzipSync(original);
+		mergedParts['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(mergedParts['xl/worksheets/sheet1.xml']).replace('</sheetData>', '</sheetData><mergeCells count="1"><mergeCell ref="B1:C1"/></mergeCells>'));
+		assert.throws(() => applyXlsxTableOperation(zipSync(mergedParts), { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'MergedHeaders' }), /combinadas/);
+		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);
+		const transaction = session.applyXlsxTable({ sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 4, endColumn: 2, name: 'UndoTable' });
+		assert.equal(session.undo(transaction), true);
+		assert.equal(parseXlsxBytes(session.serializeCopy()).sheets[0]?.metadata?.tables.length, 0);
+		assert.equal(session.redo(transaction), true);
+		assert.equal(parseXlsxBytes(session.serializeCopy()).sheets[0]?.metadata?.tables[0]?.name, 'UndoTable');
+	});
+
 	test('XLSX rejects an invalid edit without changing the source value and preserves date-formatted raw numbers', () => {
 		const original = createXlsxFixture();
 		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);
@@ -524,6 +561,17 @@ function createXlsxFixture(): Uint8Array {
 		'xl/styles.xml': xml('<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts><numFmt numFmtId="9" formatCode="0%"/><numFmt numFmtId="14" formatCode="mm-dd-yy"/></numFmts></styleSheet>'),
 		'xl/worksheets/sheet1.xml': xml('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" s="1"><v>0.25</v></c><c r="B1" s="2"><v>45292.123456789012345</v></c><c r="C1" t="inlineStr"><is><t>2026-02-04</t></is></c></row><row r="2"><c r="A2" t="b"><v>1</v></c><c r="C2" t="s"><v>0</v></c><c r="D2" t="inlineStr"><is><r><t>texto </t></r><r><t>en línea</t></r></is></c></row><row r="3"><c r="B3"><f>A1+1</f><v>1.25</v></c></row></sheetData></worksheet>'),
 		'xl/worksheets/sheet2.xml': xml('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>'),
+	};
+	return zipSync(entries);
+}
+
+function createXlsxTableFixture(): Uint8Array {
+	const entries: Record<string, Uint8Array> = {
+		'[Content_Types].xml': xml('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'),
+		'xl/workbook.xml': xml('<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Datos" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+		'xl/_rels/workbook.xml.rels': xml('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
+		'xl/worksheets/sheet1.xml': xml('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>ID</t></is></c><c r="B1" t="inlineStr"><is><t>Name</t></is></c><c r="C1" t="inlineStr"><is><t>Value</t></is></c><c r="D1" t="inlineStr"><is><t>Other</t></is></c><c r="E1" t="inlineStr"><is><t>Score</t></is></c></row><row r="2"><c r="A2"><v>1</v></c><c r="B2" t="inlineStr"><is><t>One</t></is></c><c r="C2"><v>10</v></c><c r="D2" t="inlineStr"><is><t>A</t></is></c><c r="E2"><v>3</v></c></row><row r="3"><c r="A3"><v>2</v></c><c r="B3" t="inlineStr"><is><t>Two</t></is></c><c r="C3"><v>20</v></c><c r="D3" t="inlineStr"><is><t>B</t></is></c><c r="E3"><v>4</v></c></row><row r="4"><c r="A4"><v>3</v></c><c r="B4" t="inlineStr"><is><t>Three</t></is></c><c r="C4"><v>30</v></c></row><row r="5"><c r="A5"><v>4</v></c><c r="B5" t="inlineStr"><is><t>Four</t></is></c><c r="C5"><v>40</v></c></row></sheetData></worksheet>'),
+		'xl/sharedStrings.xml': xml('<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>untouched package part</t></si></sst>'),
 	};
 	return zipSync(entries);
 }

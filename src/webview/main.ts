@@ -81,6 +81,8 @@ const fillRangeButton = requiredElement<HTMLButtonElement>('#fill-range');
 const formulaFillActions = requiredElement<HTMLDivElement>('#formula-fill-actions');
 const fillFormulasDownButton = requiredElement<HTMLButtonElement>('#fill-formulas-down');
 const fillFormulasRightButton = requiredElement<HTMLButtonElement>('#fill-formulas-right');
+const tableActionsControl = requiredElement<HTMLSpanElement>('#table-actions-control');
+const createXlsxTableButton = requiredElement<HTMLButtonElement>('#create-xlsx-table');
 const autoFitMode = requiredElement<HTMLSelectElement>('#auto-fit-mode');
 const autoFitButton = requiredElement<HTMLButtonElement>('#auto-fit-columns');
 const wrapCellsInput = requiredElement<HTMLInputElement>('#wrap-cells');
@@ -249,6 +251,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'formulaFillActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		formulaFillActions.dataset.settingVisible = String(event.data.visible);
 		updateFormulaFillControls();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'tableActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		tableActionsControl.dataset.settingVisible = String(event.data.visible);
+		updateTableActionsControl();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'focusCell'
@@ -659,6 +667,8 @@ cellEditor.addEventListener('input', () => {
 	editorDirty = true;
 	sendDraftState(true);
 	updateFormulaCompletions();
+	updateFormulaFillControls();
+	updateTableActionsControl();
 });
 formulaEditMode.addEventListener('change', () => {
 	if (editorDirty) {formulaEditMode.checked = !formulaEditMode.checked; return;}
@@ -931,6 +941,26 @@ function updateFormulaFillControls(): void {
 	fillFormulasRightButton.disabled = !enabled || !hasRange || editorDirty;
 }
 
+createXlsxTableButton.addEventListener('click', () => {
+	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.fileFormat !== 'xlsx' || snapshot.readonly || !selectionRange || editorDirty) {
+		showFillMessage('Selecciona un rango XLSX editable y aplica o descarta los borradores pendientes.'); return;
+	}
+	if (sortCriteria.length || columnFilters.length || searchInput.value) {showFillMessage('Quita orden, filtros y búsqueda antes de crear la tabla.'); return;}
+	const startRow = Math.min(selectionRange.anchor.row, selectionRange.focus.row);
+	const startColumn = Math.min(selectionRange.anchor.column, selectionRange.focus.column);
+	const endRow = Math.max(selectionRange.anchor.row, selectionRange.focus.row);
+	const endColumn = Math.max(selectionRange.anchor.column, selectionRange.focus.column);
+	vscodeApi.postMessage({ type: 'createXlsxTable', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetId: snapshot.sheetId, sheetIndex: snapshot.activeSheetIndex, startRow, startColumn, endRow, endColumn });
+});
+
+function updateTableActionsControl(): void {
+	const visible = tableActionsControl.dataset.settingVisible !== 'false' && snapshot?.type === 'xlsxData'
+		&& snapshot.fileFormat === 'xlsx' && snapshot.readonly !== true;
+	tableActionsControl.hidden = !visible;
+	createXlsxTableButton.disabled = !visible || !selectionRange || editorDirty;
+}
+
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
 displayModeButton.addEventListener('click', () => {
 	cellPresentation = cellPresentation === 'raw' ? 'book' : 'raw';
@@ -1193,6 +1223,7 @@ function selectCell(row: number, column: number, extend = false, coveredMode: 's
 	formulaEditMode.checked = snapshot?.type === 'xlsxData' && snapshot.cellTypes[row]?.[column] === 'formula';
 	updateFormulaEditorControls();
 	updateFormulaFillControls();
+	updateTableActionsControl();
 	schedulePersistViewState();
 }
 

@@ -6,6 +6,7 @@ import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
 import { getXlsxStructureCapability, type XlsxStructureCapability, type XlsxStructureOperation } from './formats/xlsx-structure';
+import type { XlsxTableOperation } from './formats/xlsx-tables';
 import type { FormulaParserService } from './formula-reference';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 import { isWritableFileSystem } from './filesystem-capability';
@@ -183,13 +184,29 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return transactionId;
 	}
 
+	applyXlsxTable(operation: XlsxTableOperation): number {
+		const transactionId = this.editSession.applyXlsxTable(operation);
+		this.xlsx = this.editSession.xlsxWorkbook;
+		this.xlsxStructureCapability = getXlsxStructureCapability(this.editSession.serializeCopy());
+		this.revision++;
+		return transactionId;
+	}
+
 	undo(transactionId?: number): boolean {
-		if (this.editSession.undo(transactionId)) {this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook; this.revision++; return true;}
+		if (this.editSession.undo(transactionId)) {
+			this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook;
+			this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(this.editSession.serializeCopy()) : { allowed: false, reason: 'El documento no es XLSX.' };
+			this.revision++; return true;
+		}
 		return false;
 	}
 
 	redo(transactionId?: number): boolean {
-		if (this.editSession.redo(transactionId)) {this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook; this.revision++; return true;}
+		if (this.editSession.redo(transactionId)) {
+			this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook;
+			this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(this.editSession.serializeCopy()) : { allowed: false, reason: 'El documento no es XLSX.' };
+			this.revision++; return true;
+		}
 		return false;
 	}
 

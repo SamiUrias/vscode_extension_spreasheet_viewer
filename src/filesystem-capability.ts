@@ -4,5 +4,5 @@ export function isWritableFileSystem(capability: boolean | undefined): boolean {
 }
 
 export function isDocumentMutationMessageType(type: string): boolean {
-	return ['editCell', 'editFormula', 'editCells', 'csvRowOperation', 'xlsxStructureOperation', 'fillFormulaRange', 'history', 'draftState'].includes(type);
+	return ['editCell', 'editFormula', 'editCells', 'csvRowOperation', 'xlsxStructureOperation', 'fillFormulaRange', 'createXlsxTable', 'history', 'draftState'].includes(type);
 }

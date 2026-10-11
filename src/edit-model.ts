@@ -1,6 +1,7 @@
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { parseXlsxBytes, serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
 import { applyXlsxStructureOperation, type XlsxStructureOperation } from './formats/xlsx-structure';
+import { applyXlsxTableOperation, type XlsxTableOperation } from './formats/xlsx-tables';
 import { validateFormulaExpression, type FormulaParserService } from './formula-reference';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 import { isCellCoveredByRange } from './cell-reference';
@@ -58,6 +59,19 @@ export class SpreadsheetEditSession {
 		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La operación estructural solo está disponible para XLSX.');}
 		if (this.edits.size) {throw new Error('Guarda o deshaz las ediciones de celdas antes de cambiar la estructura XLSX.');}
 		const result = await applyXlsxStructureOperation(this.xlsxBytes, operation, parser);
+		const before: XlsxStructureState = { workbook: this.xlsx, bytes: result.before };
+		const after: XlsxStructureState = { workbook: parseXlsxBytes(result.after), bytes: result.after };
+		this.restoreXlsxStructure(after);
+		const id = this.nextTransactionId++;
+		this.undoStack.push({ id, structureBefore: before, structureAfter: after });
+		this.redoStack.length = 0;
+		return id;
+	}
+
+	applyXlsxTable(operation: XlsxTableOperation): number {
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La creación de tablas solo está disponible para XLSX.');}
+		if (this.edits.size) {throw new Error('Guarda o deshaz los cambios pendientes antes de crear una tabla XLSX.');}
+		const result = applyXlsxTableOperation(this.xlsxBytes, operation);
 		const before: XlsxStructureState = { workbook: this.xlsx, bytes: result.before };
 		const after: XlsxStructureState = { workbook: parseXlsxBytes(result.after), bytes: result.after };
 		this.restoreXlsxStructure(after);
