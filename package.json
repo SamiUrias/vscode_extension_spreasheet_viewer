@@ -252,6 +252,7 @@
     "test:formulas": "node scripts/test-formulas.js",
     "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
     "test:cell-deltas": "npm run compile-tests && node scripts/test-cell-deltas.js",
+    "test:grid-layout": "npm run compile-tests && node scripts/test-grid-layout.js",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
     "test:save-lifecycle": "npm run compile-tests && node scripts/test-save-lifecycle.js",

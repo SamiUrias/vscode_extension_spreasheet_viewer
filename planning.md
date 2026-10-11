@@ -1010,19 +1010,19 @@ Las tarjetas V2-00A a V2-20A tienen implementación local; desde V2-16A siguen p
 
 - [x] Cachear alturas y offsets por identidad de proyección y revisión de dimensiones de fila.
 - [x] Probar orden de filas, offsets acumulados y revisión tras resize.
-- [ ] Medir scroll con datos de 35 290 filas en Extension Host; el runner no pudo descargar VS Code en esta sesión.
+- [ ] Medir scroll con datos de 35 290 filas en Extension Host. El harness aborta al iniciar VS Code con Node 24.21.0 (`SIGABRT`), así que no hay medida de UI.
 
 #### V2-19B2 — Virtualización horizontal
 
 **Depende de:** V2-19B1. **Archivos:** grid/layout/styles/tests. **Pasos:** crear solo nodos de celdas visibles más overscan por ancho/scroll, manteniendo las pistas de columnas completas del CSS grid. Mantener encabezados, filtros y orden de las hasta 256 columnas existentes; columnas congeladas siguen renderizadas. Conservar selección, navegación, búsqueda, combinaciones y redimensionamiento.
 
-**Estado:** implementación completada en `edf32c0`; pruebas unitarias de ventana visible y build pasan. **Pendiente de verificación:** DOM y navegación horizontal en Extension Host, incluyendo foco/IME, columnas congeladas, combinaciones y resize; el runner actual no inicia sin descargar VS Code. **Fuera:** worker de fórmulas.
+**Estado local:** implementación completada en `edf32c0`; `npm run test:grid-layout` pasa ventanas visibles, overscan, columnas congeladas, offsets de filas y merges dentro/fuera del viewport. **Pendiente de verificación:** DOM y navegación horizontal en Extension Host, incluyendo foco/IME, columnas congeladas, combinaciones y resize; el host aborta con `SIGABRT` antes de cargar pruebas. **Fuera:** worker de fórmulas.
 
 #### V2-19B3 — Worker local de fórmulas
 
 **Estado:** implementación completada localmente; build de producción, tipos, lint y pruebas independientes del calculador pasan. **Archivos:** `src/webview/formula-worker.ts`, `src/webview/main.ts`, `src/editor.ts`, `esbuild.js`. Bundle del worker autocontenido con el WASM del paquete; se termina al superar 60 segundos o al reemplazarse una solicitud activa. Las respuestas viejas se descartan por generación y las nuevas se pueden volver a ejecutar en un worker nuevo.
 
-**Metas:** navegación visual <100 ms en p95 y tareas de UI sin bloqueos >50 ms sobre fixtures propios; son objetivos a medir, no resultados actuales. **Pendiente de verificación en Extension Host:** carga del WASM mediante URI de Webview, fórmula local/entre hojas correcta, descarte de resultados obsoletos, timeout y recuperación del worker, y respuesta interactiva de la cuadrícula. La descarga requerida para ejecutar el runner falló con `ENOTFOUND update.code.visualstudio.com`; no se marca aceptación integrada. **Fuera:** cálculo con datos incompletos de una sola ventana.
+**Metas:** navegación visual <100 ms en p95 y tareas de UI sin bloqueos >50 ms sobre fixtures propios; son objetivos a medir, no resultados actuales. **Pendiente de verificación en Extension Host:** carga del WASM mediante URI de Webview, fórmula local/entre hojas correcta, descarte de resultados obsoletos, timeout y recuperación del worker, y respuesta interactiva de la cuadrícula. `npm run test:save-lifecycle` con VS Code instalado termina con `SIGABRT` antes de cargar las pruebas; no se marca aceptación integrada. **Fuera:** cálculo con datos incompletos de una sola ventana.
 
 #### V2-20A — Edición de fórmulas XLSX normales
 
