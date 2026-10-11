@@ -1,3 +1,5 @@
+import type { ViewMode, ViewStateV1 } from './view-state';
+
 export interface FormulaEvaluation {
 	readonly status: 'calculated' | 'unsupported' | 'error';
 	readonly value: string;
@@ -46,6 +48,12 @@ export interface SetSortMessage {
 	type: 'setSort'; documentId: string; sheetId: string; criteria: Array<{ column: number; direction: 'asc' | 'desc'; mode: 'text' | 'number' }>;
 }
 
+export interface PersistViewStateMessage {
+	type: 'persistViewState'; mode: ViewMode;
+	state: Pick<ViewStateV1, 'schema' | 'activeSheetId' | 'sheets'>;
+}
+export interface ResetViewMessage { type: 'resetView'; mode: ViewMode; }
+
 export interface DraftStateMessage {
 	type: 'draftState';
 	dirty: boolean;
@@ -58,7 +66,7 @@ export interface DraftStateMessage {
 	value: string;
 }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | EditCellMessage | HistoryMessage | DraftStateMessage | SetSortMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | EditCellMessage | HistoryMessage | DraftStateMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';
@@ -67,6 +75,7 @@ export interface ReloadStateMessage {
 }
 
 export interface SortStateMessage { type: 'sortState'; criteria: Array<{ column: number; direction: 'asc' | 'desc'; mode: 'text' | 'number' }>; }
+export interface RestoreViewStateMessage { type: 'restoreViewState'; mode: ViewMode; state?: ViewStateV1; corrupted?: boolean; reset?: boolean; }
 
 export interface SaveStateMessage {
 	type: 'saveState';
@@ -81,6 +90,11 @@ export interface CsvDataMessage {
 	revision: number;
 	fileName: string;
 	rows: string[][];
+	rowKinds?: Array<'data' | 'comment'>;
+	physicalLines?: number[];
+	rowComments?: Array<string | undefined>;
+	headerLabels?: string[];
+	formatSchema?: string;
 	rowCount: number;
 	columnCount: number;
 	readonly?: boolean;
@@ -120,5 +134,5 @@ export interface CellCapability {
 	readonly reason?: string;
 }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage;
 

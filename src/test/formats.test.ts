@@ -32,6 +32,16 @@ suite('CSV reader', () => {
 		assert.deepStrictEqual(table.rows, [['a', 'b'], ['1', '2']]);
 	});
 
+	test('recognizes comment records without parsing their quotes and retains source line mapping', () => {
+		const table = parseCsvBytes(Buffer.from('name,value\n# text,;| "without closing\n"#dato",1\n# final note'), { commentPrefix: '#' });
+		assert.deepStrictEqual(table.rows, [['name', 'value'], [''], ['#dato', '1'], ['']]);
+		assert.deepStrictEqual(table.rowKinds, ['data', 'comment', 'data', 'comment']);
+		assert.deepStrictEqual(table.physicalLines, [1, 2, 3, 4]);
+		assert.deepStrictEqual(table.rowComments, [undefined, '# text,;| "without closing', undefined, '# final note']);
+		assert.deepStrictEqual(parseCsvBytes(serializeCsvEdits(table, [{ row: 2, column: 1, value: '2' }]), { commentPrefix: '#' }).rows,
+			[['name', 'value'], [''], ['#dato', '2'], ['']]);
+	});
+
 	test('supports comma and tab separators and doubled quote escapes', () => {
 		const comma = parseUtf8('text,value\n"say ""hello""",0.25');
 		assert.strictEqual(comma.delimiter, ',');
@@ -56,8 +66,9 @@ suite('CSV reader', () => {
 
 	test('treats an empty file as a sheet with zero rows and columns', () => {
 		assert.deepStrictEqual(parseCsvBytes(new Uint8Array()), {
-			rows: [], rowCount: 0, columnCount: 0, delimiter: ',', quoteChar: '"', quotes: true, preamble: '', persistDelimiter: false, encoding: 'utf-8',
+			rows: [], rowCount: 0, columnCount: 0, delimiter: ',', commentPrefix: undefined, quoteChar: '"', quotes: true, preamble: '', persistDelimiter: false, encoding: 'utf-8',
 			sourceText: '', sourceBytes: new Uint8Array(), bom: new Uint8Array(), fieldSpans: [],
+			rowKinds: [], physicalLines: [], rowComments: [],
 		});
 	});
 

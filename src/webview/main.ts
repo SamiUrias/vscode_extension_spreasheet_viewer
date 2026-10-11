@@ -1,10 +1,11 @@
-import type { CsvDataMessage, FormulaEvaluation, ReloadStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
+import type { CsvDataMessage, FormulaEvaluation, ReloadStateMessage, RestoreViewStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
 import { resolveCellReference } from '../cell-reference';
 import { findSearchMatches } from '../search';
 import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, type RowLayout } from './grid-layout';
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell } from './selection';
 import { cycleSort, projectRows, type SortCriterion } from '../table-view';
+import type { SheetViewState, ViewMode } from '../view-state';
 
 window.addEventListener('error', event => {
 	const detail = event.target instanceof HTMLScriptElement
@@ -47,6 +48,8 @@ const cellValue = requiredElement<HTMLPreElement>('#cell-value');
 const formatNote = requiredElement<HTMLParagraphElement>('#format-note');
 const saveStatus = requiredElement<HTMLParagraphElement>('#save-status');
 const reloadFileButton = requiredElement<HTMLButtonElement>('#reload-file');
+const toggleCommentsButton = requiredElement<HTMLButtonElement>('#toggle-comments');
+const resetViewButton = requiredElement<HTMLButtonElement>('#reset-view');
 const sheetControl = requiredElement<HTMLLabelElement>('#sheet-control');
 const sheetSelector = requiredElement<HTMLSelectElement>('#sheet-selector');
 const cellReferenceInput = requiredElement<HTMLInputElement>('#cell-reference-input');
@@ -93,6 +96,14 @@ let inlineEditorDirty = false;
 let inlineEditValue = '';
 let editingCell: { row: number; column: number } | undefined;
 let sortCriteria: SortCriterion[] = [];
+let showComments = false;
+let viewMode: ViewMode = 'edit';
+let pendingViewRestore: RestoreViewStateMessage | undefined;
+let persistViewTimer: number | undefined;
+let applyingViewRestore = false;
+const viewSheets: Record<string, SheetViewState> = {};
+let restoreScrollAfterSelection: { top: number; left: number } | undefined;
+let viewStateNotice = '';
 
 gridScroll.tabIndex = 0;
 gridScroll.setAttribute('role', 'grid');
@@ -104,6 +115,16 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		sortCriteria = event.data.criteria as SortCriterion[];
 		gridRendererState.rowsViewport = undefined;
 		renderGrid();
+		return;
+	}
+	if (isRestoreViewStateMessage(event.data)) {
+		pendingViewRestore = event.data;
+		viewMode = event.data.mode;
+		if (event.data.corrupted) {viewStateNotice = 'Se ignoró un estado de vista dañado; se abrió la vista predeterminada.';}
+		if (event.data.reset && snapshot) {
+			pendingViewRestore = undefined;
+			resetCurrentView(snapshot);
+		}
 		return;
 	}
 	if (isReloadStateMessage(event.data)) {
@@ -131,19 +152,26 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	}
 	const previousSheetIndex = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : undefined;
 	const previousRevision = snapshot?.revision;
+	if (snapshot && snapshot.documentId !== event.data.documentId) {
+		showComments = false;
+		toggleCommentsButton.textContent = 'Mostrar comentarios';
+	}
 	if (startupDataTimer !== undefined) {
 		window.clearTimeout(startupDataTimer);
 		startupDataTimer = undefined;
 	}
 	snapshot = event.data;
 	formulaResults = {};
+	const restoredView = restoreViewForSnapshot(snapshot);
 	const changedContent = previousRevision !== undefined && previousRevision !== snapshot.revision;
 	dimensions.textContent = `${snapshot.rowCount.toLocaleString()} filas · ${snapshot.columnCount.toLocaleString()} columnas`;
+	toggleCommentsButton.hidden = snapshot.type !== 'csvData' || snapshot.rowKinds?.includes('comment') !== true;
 	formatNote.textContent = snapshot.type === 'xlsxData'
 		? snapshot.fileFormat === 'ods'
 			? `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos visuales de ODS; las fórmulas muestran su expresión y valor almacenado, sin recalcularse.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
 			: `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos de Excel; Formualizer calcula fórmulas solo para mostrarlas y no se pueden editar ni guardar sus resultados.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
 		: '';
+	if (viewStateNotice) {formatNote.textContent = `${formatNote.textContent} ${viewStateNotice}`.trim(); viewStateNotice = '';}
 	if (snapshot.readonly) {
 		cellEditorGroup.hidden = true;
 		cellEditor.disabled = true;
@@ -169,15 +197,15 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (selectedCell && (selectedCell.row >= snapshot.rowCount || selectedCell.column >= snapshot.columnCount)) {
 		selectedCell = undefined;
 	}
-	if (changedSheet) {
+	if (changedSheet && !restoredView) {
 		gridScroll.scrollTop = 0;
 		gridScroll.scrollLeft = 0;
 		selectedCell = undefined;
 	}
 	if (snapshot.rowCount > 0 && snapshot.columnCount > 0) {
-		if (changedSheet || !selectedCell) {
+		if ((changedSheet && !restoredView) || !selectedCell) {
 			selectCell(0, 0);
-		} else if (changedContent) {
+		} else if (changedContent || restoredView) {
 			selectCell(selectedCell.row, selectedCell.column);
 		} else {
 			renderGrid();
@@ -194,7 +222,13 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		applyCellEditButton.disabled = true;
 		renderGrid();
 	}
-	if (changedSheet || changedContent) {
+	if (restoredView && restoreScrollAfterSelection) {
+		gridScroll.scrollTop = restoreScrollAfterSelection.top;
+		gridScroll.scrollLeft = restoreScrollAfterSelection.left;
+		restoreScrollAfterSelection = undefined;
+		renderGrid();
+	}
+	if (changedSheet || changedContent || restoredView) {
 		scheduleSearch();
 	}
 	if (snapshot.type === 'xlsxData' && snapshot.fileFormat !== 'ods' && snapshot.workbookBase64 && snapshot.cellKinds.some(row => row.includes('formula'))) {
@@ -251,6 +285,14 @@ reloadFileButton.addEventListener('click', () => {
 	vscodeApi.postMessage({ type: 'reloadFile' });
 });
 
+toggleCommentsButton.addEventListener('click', () => {
+	showComments = !showComments;
+	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
+	renderGrid();
+	schedulePersistViewState();
+});
+resetViewButton.addEventListener('click', () => {if (snapshot) {resetCurrentView(snapshot);}});
+
 sheetSelector.addEventListener('change', () => {
 	if (snapshot?.type !== 'xlsxData') {
 		return;
@@ -264,6 +306,7 @@ sheetSelector.addEventListener('change', () => {
 		return;
 	}
 	const requestId = ++sheetRequestId;
+	flushViewState(snapshot.sheetIds[sheetIndex]!);
 	pendingSheetRequestId = requestId;
 	pendingSheetIndex = sheetIndex;
 	invalidateSearch();
@@ -302,11 +345,12 @@ cellReferenceInput.addEventListener('keydown', event => {
 	}
 });
 
-searchInput.addEventListener('input', scheduleSearch);
+searchInput.addEventListener('input', () => {scheduleSearch(); schedulePersistViewState();});
 previousMatchButton.addEventListener('click', () => navigateSearch(-1));
 nextMatchButton.addEventListener('click', () => navigateSearch(1));
 
 gridScroll.addEventListener('scroll', () => {
+	schedulePersistViewState();
 	if (renderScheduled) {
 		return;
 	}
@@ -316,6 +360,8 @@ gridScroll.addEventListener('scroll', () => {
 		renderGrid();
 	});
 });
+
+window.addEventListener('pagehide', () => flushViewState());
 
 gridScroll.addEventListener('keydown', event => {
 	if (event.target !== gridScroll || !snapshot || !selectedCell) {
@@ -365,7 +411,7 @@ function renderGrid(): void {
 		setInlineEditValue: value => {inlineEditValue = value;},
 		sendDraftState, setInlineEditorDirty: value => {inlineEditorDirty = value;},
 		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit,
-		projection: projectRows(snapshot?.rows ?? [], sortCriteria),
+		projection: getRowProjection(),
 		sortHeader: (column, event) => {
 		if (event.altKey) {
 			const existing = sortCriteria.find(item => item.column === column);
@@ -376,6 +422,7 @@ function renderGrid(): void {
 			sortCriteria = cycleSort(sortCriteria, column, { shift: event.shiftKey, remove: event.ctrlKey || event.metaKey });
 		}
 		if (snapshot) {vscodeApi.postMessage({ type: 'setSort', documentId: snapshot.documentId, sheetId: snapshot.sheetId, criteria: sortCriteria });}
+		schedulePersistViewState();
 			gridRendererState.rowsViewport = undefined;
 			renderGrid();
 		},
@@ -388,12 +435,17 @@ function renderGrid(): void {
 	renderedColumnCount = gridRendererState.renderedColumnCount;
 }
 function selectCell(row: number, column: number): void {
+	if (!showComments && snapshot?.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
+		showComments = true;
+		toggleCommentsButton.textContent = 'Ocultar comentarios';
+	}
 	selectGridCell({
 		snapshot, selectedCell, setSelectedCell: position => {selectedCell = position;}, commitSelectedEdit,
 		columnName, getFormulaResult, getFormulaCache, cellReference, cellReferenceInput, cellState, cellValue,
 		cellEditor, applyCellEditButton, setEditorDirty: value => {editorDirty = value;},
 		ensureSelectionVisible, renderGrid,
 	}, row, column);
+	schedulePersistViewState();
 }
 
 function commitSelectedEdit(): void {
@@ -591,9 +643,12 @@ function isActiveSearchMatch(row: number, column: number): boolean {
 
 function ensureSelectionVisible(row: number, column: number): void {
 	const rowLayout = getActiveRowLayout();
-	const visibleRow = projectRows(snapshot?.rows ?? [], sortCriteria).sourceToVisible.get(row) ?? row;
-	const cellTop = headingHeight + (rowLayout.offsets[visibleRow] ?? 0);
-	const cellBottom = headingHeight + (rowLayout.offsets[visibleRow + 1] ?? ((rowLayout.offsets[visibleRow] ?? 0) + defaultRowHeight));
+	const projection = getRowProjection();
+	const visibleRow = projection.sourceToVisible.get(row) ?? row;
+	const visibleOffsets = [0];
+	for (const sourceRow of projection.visibleRows) {visibleOffsets.push(visibleOffsets[visibleOffsets.length - 1]! + (rowLayout.heights[sourceRow] ?? defaultRowHeight));}
+	const cellTop = headingHeight + (visibleOffsets[visibleRow] ?? 0);
+	const cellBottom = headingHeight + (visibleOffsets[visibleRow + 1] ?? ((visibleOffsets[visibleRow] ?? 0) + defaultRowHeight));
 	const visibleTop = gridScroll.scrollTop + headingHeight;
 	const visibleBottom = gridScroll.scrollTop + gridScroll.clientHeight;
 	if (cellTop < visibleTop) {
@@ -612,6 +667,122 @@ function ensureSelectionVisible(row: number, column: number): void {
 		gridScroll.scrollLeft = cellLeft + selectedColumnWidth - gridScroll.clientWidth;
 	}
 }
+
+function getRowProjection() {
+	const hidden = new Set<number>();
+	const rowKinds = snapshot?.type === 'csvData' ? snapshot.rowKinds : undefined;
+	for (let row = 0; !showComments && row < (rowKinds?.length ?? 0); row++) {
+		if (rowKinds?.[row] === 'comment') {hidden.add(row);}
+	}
+	return projectRows(snapshot?.rows ?? [], sortCriteria, hidden);
+}
+
+function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage): boolean {
+	const message = pendingViewRestore;
+	pendingViewRestore = undefined;
+	if (!message || message.mode !== viewMode || !message.state) {return false;}
+	const saved = message.state;
+	if (saved.schema !== viewSchema(current)) {
+		viewStateNotice = 'Cambió el formato del archivo; se abrió la vista predeterminada.';
+		resetSheetView(current);
+		return true;
+	}
+	Object.assign(viewSheets, saved.sheets);
+	const sheetState = saved.sheets[current.sheetId];
+	if (!sheetState) {resetSheetView(current); return true;}
+	applyingViewRestore = true;
+	const columnCount = current.columnCount;
+	const rowCount = current.rowCount;
+	const sheetIndex = current.type === 'xlsxData' ? current.activeSheetIndex : 0;
+	const columnWidths = Array.from({ length: columnCount }, (_, column) => Number(sheetState.columnWidths[String(column)]) || columnWidth);
+	columnWidthsBySheet.set(sheetIndex, columnWidths);
+	const rowLayout = { heights: Array.from({ length: rowCount }, (_, row) => Number(sheetState.rowHeights[String(row)]) || defaultRowHeight), offsets: [] as number[] };
+	const selection = sheetState.selection && rowCount && columnCount
+		? { row: Math.min(sheetState.selection.row, rowCount - 1), column: Math.min(sheetState.selection.column, columnCount - 1) }
+		: undefined;
+	const columnSchemaChanged = sheetState.schema !== sheetSchema(current);
+	sortCriteria = columnSchemaChanged ? sheetState.sort.filter(item => item.column < columnCount) : [...sheetState.sort];
+	if (columnSchemaChanged) {
+		for (const key of Object.keys(sheetState.columnWidths)) {if (Number(key) >= columnCount) {delete sheetState.columnWidths[key];}}
+	}
+	searchInput.value = sheetState.query;
+	showComments = sheetState.showComments;
+	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
+	rowLayoutsBySheet.set(sheetIndex, rowLayout);
+	rebuildRowOffsets(rowLayout);
+	selectedCell = selection;
+	restoreScrollAfterSelection = sheetState.scroll;
+	applyingViewRestore = false;
+	return true;
+}
+
+function resetCurrentView(current: CsvDataMessage | XlsxDataMessage): void {
+	applyingViewRestore = true;
+	const keepDraftCell = editorDirty || inlineEditorDirty || editingCell !== undefined;
+	const draftSelection = selectedCell;
+	for (const key of Object.keys(viewSheets)) {delete viewSheets[key];}
+	sortCriteria = [];
+	searchInput.value = '';
+	showComments = false;
+	resetSheetView(current);
+	gridScroll.scrollTop = 0;
+	gridScroll.scrollLeft = 0;
+	invalidateSearch();
+	applyingViewRestore = false;
+	if (keepDraftCell && draftSelection) {selectedCell = draftSelection; renderGrid();}
+	else if (current.rowCount && current.columnCount) {selectedCell = undefined; selectCell(0, 0);}
+	else {renderGrid();}
+	if (persistViewTimer !== undefined) {window.clearTimeout(persistViewTimer); persistViewTimer = undefined;}
+	void vscodeApi.postMessage({ type: 'resetView', mode: viewMode });
+}
+
+function resetSheetView(current: CsvDataMessage | XlsxDataMessage): void {
+	const sheetIndex = current.type === 'xlsxData' ? current.activeSheetIndex : 0;
+	columnWidthsBySheet.delete(sheetIndex);
+	rowLayoutsBySheet.delete(sheetIndex);
+	selectedCell = undefined;
+	sortCriteria = [];
+	searchInput.value = '';
+	showComments = false;
+	toggleCommentsButton.textContent = 'Mostrar comentarios';
+	gridScroll.scrollTop = 0;
+	gridScroll.scrollLeft = 0;
+}
+
+function schedulePersistViewState(): void {
+	if (applyingViewRestore || !snapshot) {return;}
+	if (persistViewTimer !== undefined) {window.clearTimeout(persistViewTimer);}
+	persistViewTimer = window.setTimeout(() => {persistViewTimer = undefined; flushViewState();}, 250);
+}
+
+function flushViewState(activeSheetOverride?: string): void {
+	if (persistViewTimer !== undefined) {window.clearTimeout(persistViewTimer); persistViewTimer = undefined;}
+	if (applyingViewRestore || !snapshot) {return;}
+	const sheetId = snapshot.sheetId;
+	const sheetIndex = snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
+	const widths = getActiveColumnWidths();
+	const layout = getActiveRowLayout();
+	const columnWidthOverrides: Record<string, number> = {};
+	widths.forEach((width, index) => {if (width !== columnWidth) {columnWidthOverrides[String(index)] = width;}});
+	const rowHeightOverrides: Record<string, number> = {};
+	layout.heights.forEach((height, index) => {if (height !== defaultRowHeight) {rowHeightOverrides[String(index)] = height;}});
+	viewSheets[sheetId] = {
+		schema: sheetSchema(snapshot), query: searchInput.value.slice(0, 2048),
+		...(selectedCell ? { selection: { ...selectedCell } } : {}),
+		scroll: { top: Math.max(0, gridScroll.scrollTop), left: Math.max(0, gridScroll.scrollLeft) },
+		sort: [...sortCriteria], columnWidths: columnWidthOverrides, rowHeights: rowHeightOverrides, showComments,
+	};
+	const sheets = Object.fromEntries(Object.entries(viewSheets).slice(-256));
+	void vscodeApi.postMessage({ type: 'persistViewState', mode: viewMode, state: {
+		schema: viewSchema(snapshot), activeSheetId: activeSheetOverride ?? sheetId, sheets,
+	} });
+}
+
+function viewSchema(current: CsvDataMessage | XlsxDataMessage): string {
+	return current.type === 'csvData' ? `csv-v1:${current.formatSchema ?? 'unknown'}` : `${current.fileFormat ?? 'xlsx'}-v1`;
+}
+
+function sheetSchema(current: CsvDataMessage | XlsxDataMessage): string {return `columns:${current.columnCount}`;}
 
 function getActiveColumnWidths(): number[] {
 	if (!snapshot) {return [];}
@@ -659,6 +830,7 @@ function startColumnResize(event: PointerEvent, column: number, handle: HTMLSpan
 		handle.removeEventListener('pointermove', onMove);
 		handle.removeEventListener('pointerup', finish);
 		handle.removeEventListener('pointercancel', finish);
+		schedulePersistViewState();
 	};
 	handle.addEventListener('pointermove', onMove);
 	handle.addEventListener('pointerup', finish);
@@ -674,6 +846,7 @@ function resizeColumnWithKeyboard(event: KeyboardEvent, column: number): void {
 	const direction = event.key === 'ArrowRight' ? 1 : -1;
 	widths[column] = Math.max(minimumColumnWidth, Math.min(maximumColumnWidth, (widths[column] ?? columnWidth) + direction * amount));
 	updateGridColumnSizing();
+	schedulePersistViewState();
 }
 
 function getActiveRowLayout(): { heights: number[]; offsets: number[] } {
@@ -713,6 +886,7 @@ function startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElemen
 		handle.removeEventListener('pointermove', onMove);
 		handle.removeEventListener('pointerup', finish);
 		handle.removeEventListener('pointercancel', finish);
+		schedulePersistViewState();
 	};
 	handle.addEventListener('pointermove', onMove);
 	handle.addEventListener('pointerup', finish);
@@ -740,6 +914,7 @@ function resizeRowWithKeyboard(event: KeyboardEvent, row: number): void {
 	layout.heights[row] = Math.max(minimumRowHeight, Math.min(maximumRowHeight, (layout.heights[row] ?? defaultRowHeight) + direction * amount));
 	rebuildRowOffsets(layout);
 	updateGridRowSizing(layout);
+	schedulePersistViewState();
 }
 
 function isSelected(row: number, column: number): boolean {
@@ -776,6 +951,14 @@ function isCsvDataMessage(value: unknown): value is CsvDataMessage {
 	return candidate.rows.every(row => Array.isArray(row)
 		&& row.length <= (candidate.columnCount as number)
 		&& row.every(cell => typeof cell === 'string'));
+}
+
+function isRestoreViewStateMessage(value: unknown): value is RestoreViewStateMessage {
+	return typeof value === 'object' && value !== null && 'type' in value && value.type === 'restoreViewState'
+		&& 'mode' in value && (value.mode === 'edit' || value.mode === 'preview')
+		&& (!('state' in value) || value.state === undefined || (typeof value.state === 'object' && value.state !== null))
+		&& (!('corrupted' in value) || typeof value.corrupted === 'boolean')
+		&& (!('reset' in value) || typeof value.reset === 'boolean');
 }
 
 function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
@@ -826,6 +1009,7 @@ function isFormula(row: number, column: number): boolean {
 function canEditCell(row: number, column: number): boolean {
 	if (!snapshot) {return false;}
 	if (snapshot.readonly) {return false;}
+	if (snapshot.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {return false;}
 	return snapshot.type !== 'xlsxData' || snapshot.cellCapabilities[row]?.[column]?.editable === true;
 }
 

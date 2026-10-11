@@ -678,11 +678,29 @@ Las tarjetas V2-00A, V2-00B, V2-01A, V2-01B, V2-02A, V2-02B y V2-03 están **imp
 
 **Aceptación:** comentario `# texto "sin cierre` válido como comentario cuando prefijo habilitado; `"#dato"` es dato; no borrar comments/blank al guardar; encabezados duplicados/vacíos mantienen columnas; editar header modifica su fuente; B54 sigue B54 después de ocultar; reset recupera filas. **Fuera:** ordenar/filtrar todavía. **Checks:** proyección/formatos puros + host.
 
+**Estado:** implementación lista; pendiente verificación manual en Extension Host.
+
+- [x] Clasificar comentarios durante parseo y conservar índice de registro/línea física.
+- [x] Ocultar/mostrar comentarios por proyección sin cambiar referencias fuente; bloquear edición de registros de comentario.
+- [x] Añadir configuración de prefijo, encabezado visual y capitalización.
+- [x] Mostrar etiqueta de encabezado y detalle del registro original.
+- [x] Añadir cobertura de parseo y preservación de comentarios al compilar pruebas.
+- [ ] Ejecutar pruebas de Extension Host y verificar visualmente ocultar/mostrar, referencia B54 y edición de encabezados.
+
 #### V2-06 — Estado persistente y configuración
 
 **Depende de:** V2-05. **Archivos:** view-state/extension/editor/webview/manifiesto/tests. **Pasos:** almacenar ViewStateV1 con reglas 15.7; inyectar workspaceState al proveedor; restaurar tras metadata lista y antes de primer scroll útil; guardar por hoja/mode/URI; comando restablecer; handlers de configuración distinguen parse/view/save. Añadir LRU y cotas.
 
 **Aceptación:** reabrir/reiniciar/restaurar panel conserva selección/scroll/tamaños/consulta por hoja; dos homónimos separados; estado corrupto se ignora con mensaje; cambiar columnas invalida criterios apropiados; restablecer no pierde draft ni reescribe archivo. **Fuera:** elevar retainContextWhenHidden como sustituto de persistencia. **Checks:** tests puros de almacenamiento/validación; manual reinicio Host.
+
+**Estado:** implementación lista; pendiente verificación manual en Extension Host.
+
+- [x] Guardar estado versionado por URI, modo y hoja con límites de tamaño y LRU.
+- [x] Restaurar selección, scroll, búsqueda, orden, comentarios visibles y tamaños de filas/columnas.
+- [x] Mantener preferencias de edición y vista previa separadas; permitir desactivar persistencia.
+- [x] Añadir comando y control de interfaz para restablecer la vista sin tocar el documento ni su draft.
+- [x] Añadir pruebas para validación, aislamiento de modos, corrupción, tamaño y LRU.
+- [ ] Verificar en Extension Host reapertura, cambio de hoja, restablecimiento y recuperación tras reiniciar VS Code.
 
 #### V2-07 — Ordenamiento multicolumna y comparaciones
 

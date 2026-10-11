@@ -15,9 +15,9 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	editSession: SpreadsheetEditSession;
 	revision = 0;
 	private disposed = false;
-	private readonly csvOptions: CsvParseOptions;
+	private csvOptions: CsvParseOptions;
 
-	sheetId(sheetIndex: number): string { return `${this.documentId}:sheet:${sheetIndex}`; }
+	sheetId(sheetIndex: number): string { return `${this.uri.toString()}:sheet:${sheetIndex}`; }
 
 	private constructor(readonly uri: vscode.Uri, bytes: Uint8Array, baselineBytes = bytes, csvOptions: CsvParseOptions = optionsForUri(uri)) {
 		this.csvOptions = csvOptions;
@@ -76,7 +76,8 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		if (this.editSession.redo()) {this.revision++;}
 	}
 
-	replaceSavedBytes(bytes: Uint8Array): void {
+	replaceSavedBytes(bytes: Uint8Array, csvOptions?: CsvParseOptions): void {
+		if (csvOptions) {this.csvOptions = { ...csvOptions };}
 		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(this.uri, bytes, this.csvOptions));
 		this.sourceBytes = bytes.slice();
 		this.editSession = new SpreadsheetEditSession(this.csv, this.xlsx, this.xlsx ? bytes : undefined, this.ods, this.ods ? bytes : undefined);
@@ -98,13 +99,17 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	}
 
 	get isDisposed(): boolean { return this.disposed; }
+	get currentCsvOptions(): CsvParseOptions { return { ...this.csvOptions }; }
+	updateCsvOptions(options: CsvParseOptions): void { this.csvOptions = { ...options }; }
 
 	dispose(): void { this.disposed = true; }
 }
 
 function optionsForUri(uri: vscode.Uri): CsvParseOptions {
 	const extension = path.posix.extname(uri.path).toLowerCase();
-	return ['.tsv', '.tab'].includes(extension) ? { delimiter: '\t' } : {};
+	const configuration = vscode.workspace.getConfiguration('spreadsheet-viewer.csv');
+	const commentPrefix = configuration.get<string>('commentPrefix', '#');
+	return { ...(['.tsv', '.tab'].includes(extension) ? { delimiter: '\t' } : {}), commentPrefix: commentPrefix || undefined };
 }
 
 function parseDocument(uri: vscode.Uri, bytes: Uint8Array, csvOptions: CsvParseOptions = optionsForUri(uri)): { csv: CsvTable | undefined; xlsx: XlsxWorkbook | undefined; ods: OdsWorkbook | undefined } {

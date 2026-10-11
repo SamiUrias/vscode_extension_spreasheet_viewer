@@ -63,7 +63,17 @@ const templateColumns = gridTemplateColumns(widths);
 			const heading = document.createElement('div');
 			heading.className = 'column-header';
 			heading.setAttribute('role', 'columnheader');
-			heading.append(`${columnName(column)}${sortLabel(column)}`);
+			const ordinal = document.createElement('span');
+			ordinal.className = 'column-ordinal';
+			ordinal.textContent = `${columnName(column)}${sortLabel(column)}`;
+			heading.append(ordinal);
+			const label = snapshot.type === 'csvData' ? snapshot.headerLabels?.[column] : undefined;
+			if (label) {
+				const headerLabel = document.createElement('span');
+				headerLabel.className = 'column-label';
+				headerLabel.textContent = label;
+				heading.append(headerLabel);
+			}
 			heading.title = 'Click: ordenar; Shift+click: añadir criterio; Ctrl/Cmd+click: quitar criterio; Alt+click: alternar texto/número';
 			heading.addEventListener('click', event => sortHeader(column, event));
 			const resizeHandle = document.createElement('span');
@@ -88,19 +98,24 @@ const templateColumns = gridTemplateColumns(widths);
 	updateGridColumnSizing();
 
 	const rowLayout = getActiveRowLayout();
-	const firstViewportRow = findRowAtOffset(rowLayout.offsets, Math.max(0, gridScroll.scrollTop - headingHeight));
-	const lastViewportRow = findRowAtOffset(rowLayout.offsets, Math.max(0, gridScroll.scrollTop + gridScroll.clientHeight - headingHeight));
+	const projectedHeights = projection.visibleRows.map(sourceRow => rowLayout.heights[sourceRow] ?? defaultRowHeight);
+	const projectedOffsets = [0];
+	for (const height of projectedHeights) {projectedOffsets.push(projectedOffsets[projectedOffsets.length - 1]! + height);}
+	const visibleRowCount = projection.visibleRows.length;
+	gridScroll.setAttribute('aria-rowcount', String(visibleRowCount + 1));
+	const firstViewportRow = findRowAtOffset(projectedOffsets, Math.max(0, gridScroll.scrollTop - headingHeight));
+	const lastViewportRow = findRowAtOffset(projectedOffsets, Math.max(0, gridScroll.scrollTop + gridScroll.clientHeight - headingHeight));
 	const firstVisibleRow = Math.max(0, firstViewportRow - overscan);
-	const endVisibleRow = Math.min(snapshot.rowCount, lastViewportRow + overscan + 1);
-	rowsViewport.style.height = `${rowLayout.offsets[snapshot.rowCount] ?? 0}px`;
+	const endVisibleRow = Math.min(visibleRowCount, lastViewportRow + overscan + 1);
+	rowsViewport.style.height = `${projectedOffsets[visibleRowCount] ?? 0}px`;
 	rowsViewport.replaceChildren();
 	for (let rowIndex = firstVisibleRow; rowIndex < endVisibleRow; rowIndex++) {
-		const sourceRow = projection.visibleRows[rowIndex] ?? rowIndex;
+		const sourceRow = projection.visibleRows[rowIndex]!;
 		const row = document.createElement('div');
 		row.className = 'grid-row';
 		row.style.gridTemplateColumns = templateColumns;
-		row.style.top = `${rowLayout.offsets[rowIndex] ?? 0}px`;
-		row.style.height = `${rowLayout.heights[rowIndex] ?? defaultRowHeight}px`;
+		row.style.top = `${projectedOffsets[rowIndex] ?? 0}px`;
+		row.style.height = `${projectedHeights[rowIndex] ?? defaultRowHeight}px`;
 		row.dataset.rowIndex = String(rowIndex);
 		row.setAttribute('role', 'row');
 		row.setAttribute('aria-rowindex', String(rowIndex + 2));
@@ -108,6 +123,9 @@ const templateColumns = gridTemplateColumns(widths);
 		rowHeader.className = 'row-header';
 		rowHeader.setAttribute('role', 'rowheader');
 		rowHeader.textContent = String(sourceRow + 1);
+		if (snapshot.type === 'csvData' && snapshot.physicalLines?.[sourceRow]) {
+			rowHeader.title = `Registro ${sourceRow + 1} · línea física ${snapshot.physicalLines[sourceRow]}`;
+		}
 		const rowResizeHandle = document.createElement('span');
 		rowResizeHandle.className = 'row-resize-handle';
 		rowResizeHandle.setAttribute('role', 'separator');

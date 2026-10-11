@@ -5,6 +5,7 @@ import { SpreadsheetDocument } from './document';
 import { CsvDelimiterAmbiguityError } from './formats/csv';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
+import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -28,9 +29,28 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private readonly panelDrafts = new Map<vscode.WebviewPanel, Extract<WebviewToExtensionMessage, { type: 'draftState' }>>();
 	private readonly panelListeners = new Map<vscode.WebviewPanel, vscode.Disposable[]>();
 	private readonly watcherListeners = new Map<string, vscode.Disposable[]>();
+	private readonly documents = new Map<string, SpreadsheetDocument>();
+	private readonly configurationListener: vscode.Disposable;
 	private readonly output = vscode.window.createOutputChannel('Spreadsheet Viewer');
+	private readonly viewStates: ViewStateRepository;
+	private lastViewStateWasCorrupt = false;
+	private warnedCorruptViewState = false;
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly workspaceState: vscode.Memento) {}
+	constructor(private readonly extensionUri: vscode.Uri, private readonly workspaceState: vscode.Memento) {
+		this.viewStates = new ViewStateRepository(workspaceState);
+		this.configurationListener = vscode.workspace.onDidChangeConfiguration(event => {
+			for (const document of this.documents.values()) {
+				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', document.uri)
+					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', document.uri);
+				if (visualChanged) {this.postDocument(document);}
+				if (document.csv && event.affectsConfiguration('spreadsheet-viewer.csv.commentPrefix', document.uri)) {
+					const prefix = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<string>('commentPrefix', '#');
+					document.updateCsvOptions({ ...document.currentCsvOptions, commentPrefix: prefix || undefined });
+					void this.reloadFromDisk(document);
+				}
+			}
+		});
+	}
 
 	dispose(): void {
 		for (const timer of this.saveTimers.values()) {clearTimeout(timer);}
@@ -40,6 +60,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		this.saveTimers.clear(); this.externalTimers.clear(); this.watchers.clear(); this.watcherListeners.clear(); this.panelListeners.clear();
 		this.automaticSaveInFlight.clear(); this.automaticSaveQueued.clear();
 		this.automaticSaveCallbacks.clear();
+		this.configurationListener.dispose();
+		this.documents.clear();
 		this.emitter.dispose(); this.output.dispose();
 	}
 
@@ -54,12 +76,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				description: `Separador ${JSON.stringify(value)}`, value,
 			})), { title: 'Elige el separador del archivo', placeHolder: 'El archivo admite más de una interpretación.' });
 			if (!delimiter) {throw new Error('Se canceló la selección del dialecto CSV.');}
-			return SpreadsheetDocument.open(uri, backup, { delimiter: delimiter.value, persistDelimiter: true });
+			const commentPrefix = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<string>('commentPrefix', '#');
+			return SpreadsheetDocument.open(uri, backup, { delimiter: delimiter.value, persistDelimiter: true, commentPrefix: commentPrefix || undefined });
 		}
 	}
 
 	resolveCustomEditor(document: SpreadsheetDocument, panel: vscode.WebviewPanel): void {
 		const key = document.uri.toString();
+		this.documents.set(key, document);
 		const documentPanels = this.panels.get(key) ?? new Set<vscode.WebviewPanel>();
 		documentPanels.add(panel);
 		this.panels.set(key, documentPanels);
@@ -68,7 +92,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		listeners.push(panel.onDidDispose(() => {
 			documentPanels.delete(panel);
 			this.panelDrafts.delete(panel);
-			if (documentPanels.size === 0) {this.panels.delete(key);}
+			if (documentPanels.size === 0) {this.panels.delete(key); this.documents.delete(key);}
 			if (documentPanels.size === 0) {this.disposeWatcher(key);}
 			if (documentPanels.size === 0) {
 				const timer = this.saveTimers.get(key);
@@ -93,10 +117,17 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				return;
 			}
 			if (isWebviewReadyMessage(message)) {
-				this.activeSheets.set(panel, 0);
+				const restored = this.readViewState(document.uri, 'edit');
+				const workbook = document.xlsx ?? document.ods;
+				const restoredIndex = workbook?.sheets.findIndex((_, index) => document.sheetId(index) === restored?.activeSheetId) ?? -1;
+				const activeIndex = restoredIndex >= 0 ? restoredIndex : 0;
+				this.activeSheets.set(panel, activeIndex);
 				try {
+					void panel.webview.postMessage({ type: 'restoreViewState', mode: 'edit', state: restored, corrupted: this.lastViewStateWasCorrupt });
+					if (!restored && workbook && vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('restoreState', true)) {
+						void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, activeIndex) } satisfies SortStateMessage);
+					}
 					this.postDocument(document, panel);
-					void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, 0) } satisfies SortStateMessage);
 					this.postSaveState(document, { type: 'saveState', state: document.hasUnsavedChanges ? 'pending' : 'clean' }, panel);
 					if (document.hasUnsavedChanges) {this.scheduleSave(document);}
 				} catch (error) {
@@ -110,8 +141,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (isSelectSheetMessage(message) && (document.xlsx || document.ods)) {
 				if (message.documentId !== document.documentId || message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {return;}
 				this.activeSheets.set(panel, message.sheetIndex);
+				void panel.webview.postMessage({ type: 'restoreViewState', mode: 'edit', state: this.readViewState(document.uri, 'edit') });
 				this.postXlsxSheet(document, panel, message.sheetIndex, message.requestId);
-				void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, message.sheetIndex) } satisfies SortStateMessage);
 				return;
 			}
 			if (isInvalidCellMessage(message)) {
@@ -134,7 +165,24 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (isSetSortMessage(message) && message.documentId === document.documentId) {
 				const sheetIndex = this.activeSheets.get(panel) ?? 0;
 				if (message.sheetId !== document.sheetId(sheetIndex) || !isValidSortCriteria(message.criteria, getColumnCount(document, sheetIndex))) {return;}
-				void this.workspaceState.update(sortStateKey(document.uri, sheetIndex), message.criteria);
+				if (vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('restoreState', true)) {
+					void this.workspaceState.update(sortStateKey(document.uri, sheetIndex), message.criteria);
+				}
+				return;
+			}
+			if (isPersistViewStateMessage(message)) {
+				if (message.mode !== 'edit') {return;}
+				if (!vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('restoreState', true)) {return;}
+				const state: ViewStateV1 = { ...message.state, version: 1, uri: document.uri.toString(), mode: 'edit', updatedAt: Date.now() };
+				if (!this.viewStates.write(state, document.uri.toString(), 'edit')) {
+					this.output.appendLine(`Se ignoró el estado de vista inválido o demasiado grande: ${document.uri.toString()}`);
+				}
+				return;
+			}
+			if (isResetViewMessage(message)) {
+				if (message.mode !== 'edit') {return;}
+				this.viewStates.remove(document.uri.toString(), 'edit');
+				void panel.webview.postMessage({ type: 'restoreViewState', mode: 'edit' });
 			}
 		}));
 		panel.webview.html = this.getHtml(document.uri, panel.webview);
@@ -219,6 +267,15 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (this.pendingOpens.get(key) === opening) {
 				this.pendingOpens.delete(key);
 			}
+		}
+	}
+
+	resetView(uri: vscode.Uri): void {
+		this.viewStates.remove(uri.toString(), 'edit');
+		const legacyPrefix = `spreadsheet-viewer.view-state.v1:${uri.toString()}:`;
+		for (const key of this.workspaceState.keys()) {if (key.startsWith(legacyPrefix)) {void this.workspaceState.update(key, undefined);}}
+		for (const panel of this.panels.get(uri.toString()) ?? []) {
+			void panel.webview.postMessage({ type: 'restoreViewState', mode: 'edit', reset: true });
 		}
 	}
 
@@ -361,6 +418,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				|| message.sheetId !== document.sheetId(message.sheetIndex)) {
 				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
 			}
+			if (document.csv?.rowKinds[message.row] === 'comment') {throw new Error('Los registros de comentario CSV no se pueden editar como celdas.');}
 			const before = document.editSession.getCell(message.sheetIndex, message.row, message.column);
 			if (before.value === message.value && before.exists) {return;}
 			document.editCell(message.sheetIndex, message.row, message.column, message.value);
@@ -589,9 +647,22 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const panels = onlyPanel ? [onlyPanel] : [...(this.panels.get(document.uri.toString()) ?? [])];
 		for (const panel of panels) {
 			if (document.csv) {
+				const csvRows = document.editSession.getRows(0);
+				const csvSettings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv');
+				const headerRow = csvSettings.get<boolean>('firstRowHeader', true)
+					? document.csv.rowKinds.findIndex(kind => kind === 'data') : -1;
+				const caseMode = csvSettings.get<'none' | 'upper' | 'lower'>('headerCase', 'none');
+				const headerLabels = headerRow < 0 ? undefined : Array.from({ length: document.csv.columnCount }, (_, column) => {
+					const label = csvRows[headerRow]?.[column] ?? '';
+					return caseMode === 'upper' ? label.toUpperCase() : caseMode === 'lower' ? label.toLowerCase() : label;
+				});
 				const data: CsvDataMessage = {
-					type: 'csvData', revision: document.revision, documentId: document.documentId, sheetId: document.sheetId(0), fileName: path.posix.basename(document.uri.path), rows: document.editSession.getRows(0),
+					type: 'csvData', revision: document.revision, documentId: document.documentId, sheetId: document.sheetId(0), fileName: path.posix.basename(document.uri.path), rows: csvRows,
 					rowCount: document.csv.rowCount, columnCount: document.csv.columnCount,
+					rowKinds: document.csv.rowKinds, physicalLines: document.csv.physicalLines,
+					rowComments: document.csv.rowComments,
+					headerLabels,
+					formatSchema: `csv:${document.csv.delimiter}:${document.csv.quoteChar}:${document.csv.quotes ? 1 : 0}:${document.csv.commentPrefix ?? 'no-comments'}:${headerRow < 0 ? 'none' : createHeaderSignature(csvRows[headerRow] ?? [])}`,
 				};
 				void panel.webview.postMessage(data);
 			} else if (document.xlsx || document.ods) {
@@ -600,7 +671,6 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				const index = Math.min(this.activeSheets.get(panel) ?? 0, Math.max(0, workbook.sheets.length - 1));
 				this.activeSheets.set(panel, index);
 				this.postXlsxSheet(document, panel, index);
-				void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, index) } satisfies SortStateMessage);
 			}
 		}
 	}
@@ -608,6 +678,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private getSortState(uri: vscode.Uri, sheetIndex: number): SortStateMessage['criteria'] {
 		const value: unknown = this.workspaceState.get(sortStateKey(uri, sheetIndex));
 		return Array.isArray(value) && isValidSortCriteria(value, 256) ? value : [];
+	}
+
+	private readViewState(uri: vscode.Uri, mode: ViewMode): ViewStateV1 | undefined {
+		this.lastViewStateWasCorrupt = false;
+		if (!vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('restoreState', true)) {return undefined;}
+		const result = this.viewStates.read(uri.toString(), mode);
+		this.lastViewStateWasCorrupt = result.corrupted;
+		if (result.corrupted && !this.warnedCorruptViewState) {
+			this.warnedCorruptViewState = true;
+			void vscode.window.showWarningMessage('Se ignoró un estado de vista guardado porque estaba dañado o excedía sus límites.');
+		}
+		return result.state;
 	}
 
 	private postSaveState(document: SpreadsheetDocument, message: SaveStateMessage, onlyPanel?: vscode.WebviewPanel): void {
@@ -651,6 +733,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					<p id="dimensions" role="status">Cargando archivo…</p>
 				</div>
 				<div id="header-actions">
+					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
+					<button id="reset-view" type="button" title="Restablecer selección, búsqueda, tamaños y orden">Restablecer vista</button>
 					<p id="save-status" role="status" aria-live="polite">Sin cambios</p>
 					<button id="reload-file" type="button" title="Volver a leer el archivo desde disco">↻ Recargar</button>
 				</div>
@@ -789,6 +873,17 @@ function isSetSortMessage(message: unknown): message is Extract<WebviewToExtensi
 			&& Number.isInteger((item as Record<string, unknown>).column)
 			&& ['asc', 'desc'].includes(String((item as Record<string, unknown>).direction))
 			&& ['text', 'number'].includes(String((item as Record<string, unknown>).mode)));
+}
+
+function isPersistViewStateMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'persistViewState' }> {
+	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'persistViewState'
+		&& 'mode' in message && (message.mode === 'edit' || message.mode === 'preview')
+		&& 'state' in message && typeof message.state === 'object' && message.state !== null;
+}
+
+function isResetViewMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'resetView' }> {
+	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'resetView'
+		&& 'mode' in message && (message.mode === 'edit' || message.mode === 'preview');
 }
 
 function isValidSortCriteria(criteria: unknown[], columnCount: number): boolean {

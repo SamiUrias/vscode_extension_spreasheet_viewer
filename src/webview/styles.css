@@ -410,10 +410,25 @@ textarea:focus-visible,
 .column-header {
 	position: relative;
 	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	user-select: none;
 	padding-right: 12px !important;
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.column-ordinal {
+	flex: 0 0 auto;
+}
+
+.column-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.85em;
+	font-weight: normal;
+	opacity: 0.8;
 }
 
 .column-resize-handle {

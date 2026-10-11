@@ -4,7 +4,7 @@ import { SpreadsheetPreviewProvider } from './preview';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const provider = new SpreadsheetEditorProvider(context.extensionUri, context.workspaceState);
-	const previews = new SpreadsheetPreviewProvider(context.extensionUri, (uri, webview, label) => provider.getHtml(uri, webview, label));
+	const previews = new SpreadsheetPreviewProvider(context.extensionUri, (uri, webview, label) => provider.getHtml(uri, webview, label), context.workspaceState);
 	context.subscriptions.push(
 		vscode.window.registerCustomEditorProvider(
 			SpreadsheetEditorProvider.viewType,
@@ -59,6 +59,12 @@ export function activate(context: vscode.ExtensionContext): void {
 			}
 			try { await previews.openBuffer(uri, true); }
 			catch (error) { void vscode.window.showErrorMessage(`No se pudo previsualizar como CSV: ${error instanceof Error ? error.message : String(error)}`); }
+		}),
+		vscode.commands.registerCommand('spreadsheet-viewer.resetView', (resource: unknown) => {
+			const uri = resource === undefined ? getActiveResource() : resource;
+			if (!isUri(uri)) {void vscode.window.showErrorMessage('Selecciona una hoja para restablecer su vista.'); return;}
+			provider.resetView(uri);
+			previews.resetView(uri);
 		}),
 		previews,
 		provider,

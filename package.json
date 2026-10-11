@@ -34,6 +34,11 @@
         "command": "spreadsheet-viewer.previewCsv",
         "title": "Vista previa como CSV…",
         "category": "Spreadsheet Viewer"
+      },
+      {
+        "command": "spreadsheet-viewer.resetView",
+        "title": "Restablecer vista de hoja",
+        "category": "Spreadsheet Viewer"
       }
     ],
     "customEditors": [
@@ -143,7 +148,33 @@
         "mac": "cmd+alt+shift+o",
         "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Spreadsheet Viewer",
+      "properties": {
+        "spreadsheet-viewer.csv.commentPrefix": {
+          "type": "string",
+          "default": "#",
+          "description": "Prefijo que identifica comentarios CSV al inicio de un registro. Usa una cadena vacía para desactivar los comentarios."
+        },
+        "spreadsheet-viewer.csv.firstRowHeader": {
+          "type": "boolean",
+          "default": true,
+          "description": "Usa la primera fila de datos como etiqueta visual de las columnas CSV."
+        },
+        "spreadsheet-viewer.csv.headerCase": {
+          "type": "string",
+          "enum": ["none", "upper", "lower"],
+          "default": "none",
+          "description": "Transformación visual aplicada a las etiquetas de encabezado CSV."
+        },
+        "spreadsheet-viewer.view.restoreState": {
+          "type": "boolean",
+          "default": true,
+          "description": "Restaura y guarda selección, scroll, búsqueda y tamaños por archivo y hoja."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

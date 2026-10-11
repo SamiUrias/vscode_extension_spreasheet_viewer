@@ -40,12 +40,20 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 		: kind === 'empty' || (exists && values[column] === '')
 			? 'Celda vacía almacenada'
 			: kind === 'missing' || !exists ? 'Celda ausente' : 'Valor crudo';
+	if (snapshot.type === 'csvData' && snapshot.physicalLines?.[row]) {
+		context.cellState.textContent += ` · Registro ${row + 1}, línea física ${snapshot.physicalLines[row]}`;
+	}
 	if (capability?.reason) {context.cellState.textContent += ` · ${capability.reason}`;}
 	context.cellState.dataset.state = kind === 'formula'
 		? snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods' ? 'formula'
 			: result?.status ?? 'calculating'
 		: kind === 'empty' || kind === 'missing' || !exists ? 'empty' : 'raw';
 	context.cellValue.textContent = exists ? values[column]! : '';
+	if (snapshot.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
+		context.cellValue.textContent = snapshot.rowComments?.[row] ?? '';
+		context.cellState.textContent = 'Registro de comentario';
+		if (snapshot.physicalLines?.[row]) {context.cellState.textContent += ` · Registro ${row + 1}, línea física ${snapshot.physicalLines[row]}`;}
+	}
 	if (kind === 'formula') {
 		const cache = context.getFormulaCache(row, column) || 'Sin valor almacenado';
 		context.cellValue.textContent += `\nValor almacenado en caché: ${cache}`;
@@ -57,7 +65,9 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 	}
 	context.cellEditor.value = exists ? values[column]! : '';
 	context.setEditorDirty(false);
-	context.cellEditor.disabled = snapshot.readonly === true || (capability ? !capability.editable : false);
+	context.cellEditor.disabled = snapshot.readonly === true
+		|| (snapshot.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment')
+		|| (capability ? !capability.editable : false);
 	context.applyCellEditButton.disabled = context.cellEditor.disabled;
 	context.ensureSelectionVisible(row, column);
 	context.renderGrid();
