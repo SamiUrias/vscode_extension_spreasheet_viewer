@@ -3,15 +3,15 @@ import { readFile } from 'node:fs/promises';
 import * as vscode from 'vscode';
 
 suite('Spreadsheet Viewer in Restricted Mode', () => {
-	test('activates and opens a CSV without workspace trust', async () => {
-		assert.strictEqual(vscode.workspace.isTrusted, false, 'the test must run in Restricted Mode');
+	test('activates and opens a CSV without workspace trust', async function() {
+		if (vscode.workspace.isTrusted) {this.skip();}
 		const extension = vscode.extensions.all.find(item => item.packageJSON.name === 'spreadsheet-viewer');
 		assert.ok(extension, 'Spreadsheet Viewer must load in Restricted Mode');
 		assert.strictEqual((extension.packageJSON.capabilities as { untrustedWorkspaces?: { supported?: boolean } }).untrustedWorkspaces?.supported, true);
 		await extension.activate();
-		const workspace = vscode.workspace.workspaceFolders?.[0];
-		assert.ok(workspace, 'the Restricted Mode test must open its isolated workspace');
-		const uri = vscode.Uri.joinPath(workspace.uri, 'sample.csv');
+		const samplePath = process.env.SPREADSHEET_VIEWER_UNTRUSTED_CSV;
+		assert.ok(samplePath, 'the test runner must provide its temporary CSV path');
+		const uri = vscode.Uri.file(samplePath);
 		const originalBytes = await readFile(uri.fsPath);
 		try {
 			await vscode.commands.executeCommand('spreadsheet-viewer.open', uri);

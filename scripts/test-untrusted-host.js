@@ -20,6 +20,7 @@ async function main() {
 		const runner = path.join(path.dirname(require.resolve('@vscode/test-cli')), 'runner.cjs');
 		const env = { ...process.env };
 		delete env.ELECTRON_RUN_AS_NODE;
+		env.SPREADSHEET_VIEWER_UNTRUSTED_CSV = path.join(workspace, 'sample.csv');
 		env.VSCODE_TEST_OPTIONS = JSON.stringify({
 			mochaOpts: { timeout: 10000 },
 			colorDefault: false,
