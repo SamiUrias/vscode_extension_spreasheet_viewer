@@ -796,7 +796,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<option value="none">Desactivado</option><option value="first">Primera columna</option><option value="all" selected>Todas las columnas</option>
 					</select>
 				</label>
-				<button id="auto-fit-columns" type="button" title="Ajusta el ancho según la opción elegida: primera columna o todas. Con Desactivado no cambia los anchos.">Autoajustar</button>
+				<span id="auto-fit-control">
+					<button id="auto-fit-columns" type="button" aria-describedby="auto-fit-tooltip">Autoajustar</button>
+					<span id="auto-fit-tooltip" role="tooltip">Ajusta el ancho de la primera columna o de todas, según la opción elegida. Con Desactivado no cambia los anchos.</span>
+				</span>
 				<label><input id="wrap-cells" type="checkbox"> Ajustar texto</label>
 				<label>Filas fijas <input id="freeze-rows" type="number" min="0" max="50" value="0" aria-label="Cantidad de filas fijas"></label>
 				<label>Columnas fijas <input id="freeze-columns" type="number" min="0" max="256" value="0" aria-label="Cantidad de columnas fijas"></label>
