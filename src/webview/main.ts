@@ -1,5 +1,7 @@
 import type { CellVisualStyle, CsvDataMessage, FormulaEvaluation, ReloadStateMessage, RestoreViewStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
+import type { CellEditDeltaMessage } from '../protocol';
 import { parseCellRangeBounds, resolveCellReference } from '../cell-reference';
+import { applyCsvCellEditDelta } from '../cell-delta';
 import { findSearchMatches } from '../search';
 import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, wrappedTextHeight, type RowLayout } from './grid-layout';
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
@@ -262,6 +264,27 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	}
 	if (isSaveStateMessage(event.data)) {
 		updateSaveStatus(event.data);
+		return;
+	}
+	if (isCellEditDeltaMessage(event.data)) {
+		if (!snapshot || snapshot.documentId !== event.data.documentId) {return;}
+		if (snapshot.type !== 'csvData') {
+			vscodeApi.postMessage({ type: 'requestSnapshot', documentId: snapshot.documentId, revision: snapshot.revision });
+			return;
+		}
+		const result = applyCsvCellEditDelta(snapshot, event.data);
+		if (result.status === 'resync') {
+			vscodeApi.postMessage({ type: 'requestSnapshot', documentId: snapshot.documentId, revision: snapshot.revision });
+			return;
+		}
+		if (result.status === 'ignore') {return;}
+		const changedSelectedCell = selectedCell && event.data.cells.some(cell => cell.row === selectedCell!.row && cell.column === selectedCell!.column);
+		snapshot = { ...snapshot, ...result.snapshot };
+		cachedProjection = undefined;
+		gridRendererState.rowsViewport = undefined;
+		scheduleSearch();
+		if (changedSelectedCell && !editorDirty && !inlineEditorDirty && selectedCell) {selectCell(selectedCell.row, selectedCell.column);}
+		else {renderGrid();}
 		return;
 	}
 	if (!isCsvDataMessage(event.data) && !isXlsxDataMessage(event.data)) {
@@ -2062,6 +2085,17 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 			&& (!('target' in item) || item.target === undefined || typeof item.target === 'string')
 			&& (!('location' in item) || item.location === undefined || typeof item.location === 'string')))
 		&& Array.isArray(candidate.warnings);
+}
+
+function isCellEditDeltaMessage(value: unknown): value is CellEditDeltaMessage {
+	if (typeof value !== 'object' || value === null) {return false;}
+	const candidate = value as Record<string, unknown>;
+	return candidate.type === 'cellEditDelta' && typeof candidate.documentId === 'string'
+		&& Number.isInteger(candidate.baseRevision) && Number.isInteger(candidate.revision)
+		&& Array.isArray(candidate.cells) && candidate.cells.length > 0 && candidate.cells.length <= 500_000
+		&& candidate.cells.every((cell: unknown) => typeof cell === 'object' && cell !== null
+			&& Number.isInteger((cell as Record<string, unknown>).row) && Number.isInteger((cell as Record<string, unknown>).column)
+			&& typeof (cell as Record<string, unknown>).value === 'string');
 }
 
 function isCellVisualStyle(value: unknown): value is CellVisualStyle {

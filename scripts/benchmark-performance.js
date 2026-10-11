@@ -46,6 +46,8 @@ async function main() {
 	const rows = session.getRows(0);
 	const csvPayload = { type: 'csvData', revision: 0, documentId: 'benchmark', sheetId: 'sheet', fileName: 'benchmark.csv', rows,
 		rowCount: rows.length, columnCount: rows[0]?.length ?? 0 };
+	const oneCellDelta = { type: 'cellEditDelta', documentId: 'benchmark', baseRevision: 0, revision: 1,
+		cells: [{ row: 10, column: 2, value: 'updated' }] };
 	const xlsxBytes = makeXlsx(rowCount, columnCount);
 	const sheetXml = new TextDecoder().decode(unzipSync(xlsxBytes)['xl/worksheets/sheet1.xml']);
 	const beforeMemory = process.memoryUsage();
@@ -75,6 +77,7 @@ async function main() {
 			csv500x256: { bytes: wideBytes.byteLength, rows: 500, columns: 256 },
 			xlsx35290x5: { zipBytes: xlsxBytes.byteLength, worksheetXmlBytes: encoder.encode(sheetXml).byteLength, rows: rowCount, columns: columnCount },
 			csvWebviewJsonBytes: jsonBytes,
+			csvOneCellDeltaJsonBytes: encoder.encode(JSON.stringify(oneCellDelta)).byteLength,
 		},
 		timings,
 		memory: {

@@ -11,6 +11,7 @@ import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
 import { isCellCoveredByRange } from './cell-reference';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
+import type { CellEditDeltaMessage } from './protocol';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -162,6 +163,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		};
 		listeners.push(panel.webview.onDidReceiveMessage((message: unknown) => {
 			if (document.isDisposed) {return;}
+			if (isRequestSnapshotMessage(message)) {
+				if (message.documentId === document.documentId) {this.postDocument(document, panel);}
+				return;
+			}
 			if (isReloadFileMessage(message)) {
 				void vscode.window.withProgress(
 						{ location: vscode.ProgressLocation.Notification, title: 'Recargando' },
@@ -582,6 +587,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
 			}
 			if (document.csv?.rowKinds[message.row] === 'comment') {throw new Error('Los registros de comentario CSV no se pueden editar como celdas.');}
+			const baseRevision = document.revision;
 			const before = document.editSession.getCell(message.sheetIndex, message.row, message.column);
 			if (before.value === message.value && before.exists) {return;}
 			const transactionId = document.editCell(message.sheetIndex, message.row, message.column, message.value);
@@ -593,7 +599,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				redo: () => { if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, [{ sheetIndex: message.sheetIndex, row: message.row, column: message.column, value: message.value }]); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
-			this.postDocument(document);
+			if (!this.postCsvCellEditDelta(document, baseRevision, [{ sheetIndex: message.sheetIndex, row: message.row, column: message.column }])) {this.postDocument(document);}
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
 			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
 		} catch (error) {
@@ -616,6 +622,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
 			}
 			if (document.csv && edits.some(edit => document.csv?.rowKinds[edit.row] === 'comment')) {throw new Error('Los registros de comentario CSV no se pueden editar como celdas.');}
+			const baseRevision = document.revision;
 			const transactionId = document.editCells(edits);
 			if (transactionId === undefined) {return false;}
 			const event: vscode.CustomDocumentEditEvent<SpreadsheetDocument> = {
@@ -625,7 +632,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				redo: () => { if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, edits); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
-			this.postDocument(document);
+			if (!this.postCsvCellEditDelta(document, baseRevision, edits)) {this.postDocument(document);}
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
 			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
 			return true;
@@ -635,6 +642,23 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			void vscode.window.showErrorMessage(`No se pudo aplicar la edición: ${messageText}`);
 			return false;
 		}
+	}
+
+	private postCsvCellEditDelta(
+		document: SpreadsheetDocument,
+		baseRevision: number,
+		edits: readonly { sheetIndex: number; row: number; column: number }[],
+	): boolean {
+		if (!document.csv || edits.some(edit => edit.sheetIndex !== 0)) {return false;}
+		const settings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri);
+		const headerRow = settings.get<boolean>('firstRowHeader', true) ? document.csv.rowKinds.findIndex(kind => kind === 'data') : -1;
+		if (edits.some(edit => edit.row === headerRow)) {return false;}
+		const cells = edits.map(edit => ({ row: edit.row, column: edit.column, value: document.editSession.getCell(0, edit.row, edit.column).value }));
+		if (cells.some(cell => !Number.isInteger(cell.row) || cell.row < 0 || cell.row >= document.csv!.rowCount
+			|| !Number.isInteger(cell.column) || cell.column < 0 || cell.column >= document.csv!.columnCount)) {return false;}
+		const message: CellEditDeltaMessage = { type: 'cellEditDelta', documentId: document.documentId, baseRevision, revision: document.revision, cells };
+		for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage(message);}
+		return true;
 	}
 
 	private async applyXlsxStructureOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'xlsxStructureOperation' }>): Promise<void> {
@@ -1375,6 +1399,12 @@ function isPersistViewStateMessage(message: unknown): message is Extract<Webview
 function isResetViewMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'resetView' }> {
 	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'resetView'
 		&& 'mode' in message && (message.mode === 'edit' || message.mode === 'preview');
+}
+
+function isRequestSnapshotMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'requestSnapshot' }> {
+	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'requestSnapshot'
+		&& 'documentId' in message && typeof message.documentId === 'string'
+		&& 'revision' in message && Number.isInteger(message.revision);
 }
 
 function isValidSortCriteria(criteria: unknown[], columnCount: number): boolean {

@@ -1,6 +1,6 @@
 # Spreadsheet Viewer — guía de implementación del MVP y propuesta v2
 
-El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 continúa hasta V2-25; el trabajo llega a V2-16B2 y las verificaciones visuales en Extension Host siguen pendientes por incompatibilidad del runner con Node 18. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
+El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 continúa hasta V2-25; el trabajo llega a V2-19A1 y V2-19A2 está implementando deltas para edición CSV. Algunas verificaciones visuales/de integración en Extension Host siguen pendientes por incompatibilidad del runner con Node 18; V2-18B requiere además abrir el XLSX editado en Excel o LibreOffice. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
 
 ## 1. Resumen del producto
 
@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-18B están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18 y V2-18B aún requiere abrir fixtures guardados en Excel o LibreOffice. V2-19A1 está implementada; V2-19A2 es la siguiente etapa. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-18B están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18 y V2-18B aún requiere abrir fixtures guardados en Excel o LibreOffice. V2-19A1 está implementada; V2-19A2 está en progreso y cubre deltas de edición CSV; después sigue V2-19A3 para deltas XLSX/ODS. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -979,15 +979,25 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A y V2
 
 **Aceptación:** informe reproducible con hardware/runtime/p50/p95/tamaño; medidas y límites descritos en `PERFORMANCE.md`; tipos, lint, build y benchmark pasan. Render y cálculo en Extension Host quedan sin medir por falta de runner compatible. El baseline revela un pico de memoria alto en el parseo XLSX y prohíbe aumentar límites sin perfilarlo. **Fuera:** afirmar que los milisegundos locales predicen otros equipos o elevar límites para aparentar competitividad.
 
-#### V2-19A2 — Deltas de transacción y resincronización
+#### V2-19A2 — Deltas de edición CSV y resincronización
 
-**Depende de:** V2-19A1/V2-13. **Archivos:** protocol/editor/document/Webview/tests. **Pasos:** transportar deltas de transacción entre snapshots completos de apertura/recarga; validar `baseRevision` antes de aplicarlos y solicitar snapshot completo al detectar hueco, cambio externo o revisión obsoleta. Mantener scroll y cambio de hoja sin reenviar la matriz completa; evitar mezclar deltas de documentos/revisiones.
+**Depende de:** V2-19A1/V2-13. **Archivos:** protocol/editor/Webview/tests. **Pasos:** enviar celdas modificadas y `baseRevision` para ediciones CSV normales; validar revisión antes de aplicar y pedir snapshot completo si se pierde/ordena mal un delta. Conservar el snapshot completo para apertura/recarga, undo/redo, edición del header y cambios estructurales. Compartir el delta solo con paneles del documento correspondiente.
 
-**Aceptación:** pruebas de orden/revisión demuestran aplicación exacta, descarte de delta obsoleto y recuperación por snapshot; se miden tamaños transferidos antes/después en CSV y XLSX; estados guardados/dirty y fórmulas recalculadas siguen correctos. **Fuera:** elevar 10 MiB/64 MiB u otros límites para aparentar competitividad.
+**Aceptación:** helper prueba cambios inmutables, varias celdas por fila y coordenadas inválidas; Webview descarta revisiones obsoletas y solicita resync; headers, búsqueda, filtros, orden, selección y borrador visible se conservan; tamaño comparativo se mide con el benchmark. **Fuera:** XLSX/ODS, fórmulas, exportar o cambiar el límite de archivos.
+
+- [x] Emite delta para ediciones CSV de celdas cuando la firma del header no cambia; header y otros cambios conservan snapshot completo.
+- [x] Webview valida `baseRevision`, actualiza solo filas tocadas y solicita snapshot completo ante revisión inesperada o coordenadas no válidas.
+- [ ] Probar interacción real del provider/Webview y medir los bytes de un cambio de celda frente al snapshot completo. `npm run test:save-lifecycle` se intentó el 2026-10-11, pero el runner no pudo descargar VS Code por DNS (`ENOTFOUND update.code.visualstudio.com`); registrar tamaños del delta y snapshot en próximas mediciones del benchmark.
+
+#### V2-19A3 — Deltas de edición XLSX/ODS
+
+**Depende de:** V2-19A2. **Archivos:** protocol/editor/Webview/tests. **Pasos:** delta de celda que incluya valor, tipo, kind y metadatos requeridos en el snapshot; cuando fórmulas o cachés dependan del cambio, proveer la actualización de revisión adecuada o usar snapshot completo. ODS mantiene las fórmulas como solo lectura. Undo/redo y operaciones estructurales pueden pedir snapshot completo.
+
+**Aceptación:** no se mezclan documento/revisión/hoja; estilos, presentación, permisos, fórmulas y cachés siguen correctos; pérdida de delta hace resync seguro; comparación de tamaños cubre XLSX/ODS. **Fuera:** cambiar alcance de edición por formato.
 
 #### V2-19B — Grid en dos ejes y worker de fórmulas
 
-**Depende de:** V2-19A2/V2-02B. **Archivos:** grid/layout/worker/calculador/build/tests. **Pasos:** offsets acumulados y búsqueda binaria para filas/columnas visibles+overscan; mantener headers/freeze/merge/active cell/editor; worker local carga WASM por documentId/revision, entrega resultados por lote y libera libros. Cancelación entre lotes; si evaluación individual bloquea, timeout y terminate/recreate worker, nunca asumir cancel síncrono del WASM.
+**Depende de:** V2-19A3/V2-02B. **Archivos:** grid/layout/worker/calculador/build/tests. **Pasos:** offsets acumulados y búsqueda binaria para filas/columnas visibles+overscan; mantener headers/freeze/merge/active cell/editor; worker local carga WASM por documentId/revision, entrega resultados por lote y libera libros. Cancelación entre lotes; si evaluación individual bloquea, timeout y terminate/recreate worker, nunca asumir cancel síncrono del WASM.
 
 **Metas:** navegación visual <100 ms en p95 sobre fixtures de referencia propios y tareas UI de scroll sin bloqueos >50 ms; objetivos a medir, no resultados actuales. **Aceptación:** DOM proporcional a viewport, selección/IME estable, respuesta antigua descartada, fórmulas fuera de viewport/interhoja correctas, timeout deja error/cache-only y UI operativa. **Fuera:** cálculo con datos incompletos de una sola ventana.
 
@@ -1123,7 +1133,7 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 >
 > Al cerrar, actualiza estado de **esa tarjeta** con archivos, evidencia/tests y pendientes; reporta qué acciones manuales la verifican. Todo botón añadido debe tener tooltip; toda nueva funcionalidad queda activada por defecto y se puede desactivar desde `settings.json`. Documenta las opciones en `CONFIGURATION.md` y la experiencia en `README.md` en el mismo cambio. Ejecuta los criterios de aceptación y, cuando la etapa quede verificada y la documentación esté actualizada, crea un commit. Si un check requerido está bloqueado por el entorno, describe el comando y error, deja el check pendiente y no marques la etapa como verificada. No declares v2 completa ni soporte de host/formato complejo antes de sus criterios. Si detectas una brecha nueva, agrégala a F/T y describe su efecto; no la implementes como refactor incidental.
 
-El trabajo implementado llega hasta **V2-19A1**; sigue **V2-19A2 — Deltas de transacción y resincronización** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
+El trabajo implementado llega hasta **V2-19A1**; V2-19A2 (deltas CSV) está en progreso y después sigue V2-19A3 (deltas XLSX/ODS). Hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
 
