@@ -874,7 +874,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Desactivar acciones si hay proyección por orden/filtro/búsqueda; recoger borradores antes de modificar filas y deshacer/rehacer con el journal.
 - [x] Tras insertar, enfocar la primera celda del registro nuevo; tras borrar, enfocar la fila vecina cuando aún existe.
 - [x] Proteger en el host la fila de encabezado configurada contra eliminación accidental; `firstRowHeader: false` conserva la opción de eliminarla como dato.
-- [x] Extender `npm run test:edit-batch-host` para probar por el handler real inserción/foco, confirmación al borrar, undo/redo y bloqueo del encabezado.
+- [x] Extender `npm run test:edit-batch-host` para probar por el handler real inserción/foco, confirmación al borrar, undo/redo y bloqueo del encabezado. Reejecutado el 2026-10-11 con Node 24.21.0 fuera del sandbox: pasa lote de celdas, rechazo de stale/invalid, confirmación CSV, foco y undo/redo.
 - [x] Verificar en Extension Host real insertar fila CSV, guardar y deshacer/rehacer mediante el proveedor.
 - [x] Verificar en Extension Host acciones del proveedor, prompt de ancho controlado, guardado y undo/redo al crear la primera fila de un CSV vacío mediante `test:save-lifecycle`.
 - [ ] Verificar visualmente selección de filas y diálogos/prompt desde la UI. El runner automatizado pasa por el proveedor real, pero sustituye la respuesta del prompt y no simula clics ni inspecciona el modal.
