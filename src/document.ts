@@ -8,6 +8,7 @@ import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xls
 import { getXlsxStructureCapability, type XlsxStructureCapability, type XlsxStructureOperation } from './formats/xlsx-structure';
 import type { FormulaParserService } from './formula-reference';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
+import { isWritableFileSystem } from './filesystem-capability';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
 	readonly documentId = randomUUID();
@@ -24,6 +25,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	private csvOptions: CsvParseOptions;
 
 	sheetId(sheetIndex: number): string { return `${this.uri.toString()}:sheet:${sheetIndex}`; }
+	get isReadOnly(): boolean {return !isWritableFileSystem(vscode.workspace.fs.isWritableFileSystem(this.uri.scheme));}
 
 	private constructor(readonly uri: vscode.Uri, bytes: Uint8Array, baselineBytes = bytes, csvOptions: CsvParseOptions = optionsForUri(uri)) {
 		this.csvOptions = csvOptions;

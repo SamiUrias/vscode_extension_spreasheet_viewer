@@ -80,6 +80,10 @@ Una fila con cantidad irregular de campos no se convierte por eso en comentario.
 
 El delimitador no tiene una propiedad de Settings actualmente: se detecta al abrir el archivo. `.tsv`/`.tab` fuerzan tabulador; cuando el documento tiene un language ID reconocido, `tsv`, `csv (tab)`, `csv (semicolon)` y `csv (pipe)` (además de sus variantes `csv-semicolon`/`csv-pipe`) fuerzan el delimitador correspondiente. La extensión no requiere Rainbow CSV: usa solo el `languageId` que VS Code ya asignó. En caso de `.tsv`/`.tab`, la extensión del archivo tiene prioridad; en otros archivos de texto, el ID especializado tiene prioridad sobre la detección automática. `csv` genérico conserva la detección automática. La selección que puede aparecer ante una interpretación ambigua es una decisión para esa apertura.
 
+### Proveedores de archivos y escritura
+
+Para URI que usan proveedores de archivos de VS Code, el editor solo habilita cambios cuando `workspace.fs.isWritableFileSystem` confirma que el esquema admite escritura. Los esquemas que indican solo lectura o no informan capacidad se abren en modo de solo lectura; el guardado vuelve a consultar la capacidad antes de escribir. **Guardar como** también valida el destino. La vista previa siempre es de solo lectura. La API de capacidad indica soporte del esquema, no garantiza que una operación específica vaya a funcionar; si el proveedor falla al escribir, se conserva el documento y el borrador queda pendiente.
+
 ### Encabezados
 
 El encabezado solo cambia las etiquetas visuales de las columnas y no la matriz de datos. La primera fila de datos se puede editar como cualquier fila. La capitalización modifica la etiqueta que aparece sobre la columna, no el valor almacenado. Los cambios a `firstRowHeader` y `headerCase` se reflejan visualmente sin reescribir el archivo.

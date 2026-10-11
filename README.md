@@ -31,6 +31,8 @@ You can also use the editor title button or run **Spreadsheet Viewer: Abrir en S
 
 Spreadsheet Viewer is an optional editor for these formats. To make it the default for a file type, use **Open With…** in VS Code and select the extension.
 
+Files opened through a VS Code file-system provider are editable only when that provider reports write support for its URI scheme. Unknown or read-only schemes open as read-only; saves also recheck provider capability and preserve the in-memory draft if writing is unavailable.
+
 ## Work with data
 
 ### Sort and filter

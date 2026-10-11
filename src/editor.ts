@@ -5,6 +5,7 @@ import { SpreadsheetDocument } from './document';
 import { loadFormulaParserService } from './formula-parser-loader';
 import { CsvDelimiterAmbiguityError, type CsvParseOptions } from './formats/csv';
 import { delimiterForCsvResource } from './csv-dialect';
+import { isDocumentMutationMessageType } from './filesystem-capability';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
@@ -233,6 +234,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				}
 				return;
 			}
+			if (document.isReadOnly && isMutationMessage(message)) {
+				this.postSaveState(document, { type: 'saveState', state: 'error', message: 'El proveedor de archivos no permite modificar este recurso; no se aplicaron cambios.' }, panel);
+				return;
+			}
 			if (isEditCellMessage(message)) {
 				this.applyEdit(document, message);
 				return;
@@ -345,7 +350,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			? formulaSnapshot : undefined;
 		const workbookMatchesSavedBytes = formulaSnapshot === undefined || formulaSnapshot === Buffer.from(document.sourceBytes).toString('base64');
 		const sheetProtected = document.ods?.sheets[sheetIndex]?.odsMetadata?.protected === true;
-		const formulaEditingAllowed = Boolean(document.xlsx) && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true);
+		const formulaEditingAllowed = Boolean(document.xlsx) && !document.isReadOnly && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true);
 		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
 		const data: XlsxDataMessage = {
 			type: 'xlsxData',
@@ -375,20 +380,23 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			} : {}),
 			...(requestId === undefined ? {} : { requestId }),
 			...(recoveredDraft ? { recoveredDraft } : {}),
+			readonly: document.isReadOnly,
 			rows: snapshot.rows,
 			cellKinds: snapshot.cellKinds ?? sheet.cellKinds,
 			cellTypes: snapshot.cellTypes ?? sheet.cellTypes,
 			cellCapabilities: (snapshot.cellTypes ?? sheet.cellTypes).map((row, rowIndex) => row.map((storedType, columnIndex) => {
 				const protectedSheet = sheetProtected || document.xlsx?.sheets[sheetIndex]?.metadata?.protected === true;
 				const covered = mergedRanges.some(range => isCellCoveredByRange(range, rowIndex, columnIndex));
-				const editable = !protectedSheet && !covered && storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported' && storedType !== 'duration';
+				const editable = !document.isReadOnly && !protectedSheet && !covered && storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported' && storedType !== 'duration';
 				const formulaEditable = formulaEditingAllowed && !protectedSheet && !covered && storedType !== 'error' && storedType !== 'unsupported' && storedType !== 'duration';
-				const reason = protectedSheet ? 'La hoja está protegida.' : covered ? 'Celda cubierta por una combinación.' : `Tipo ${storedType} protegido en esta etapa.`;
+				const reason = document.isReadOnly ? 'El proveedor de archivos no permite escribir este recurso.' : protectedSheet ? 'La hoja está protegida.' : covered ? 'Celda cubierta por una combinación.' : `Tipo ${storedType} protegido en esta etapa.`;
 				return { storedType, editable, formulaEditable, ...(!editable ? { reason } : {}) };
 			})),
 			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
 			...(document.xlsx ? {
-				structureCapability: !workbookMatchesSavedBytes
+				structureCapability: document.isReadOnly
+					? { allowed: false, reason: 'El proveedor de archivos no permite escribir este recurso.' }
+					: !workbookMatchesSavedBytes
 					? { allowed: false, reason: 'Guarda o deshaz los cambios pendientes antes de cambiar la estructura.' }
 					: document.xlsxStructureCapability,
 				cellStyleIndexes: document.xlsx.sheets[sheetIndex]?.cellStyleIndexes,
@@ -469,6 +477,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				if (!this.externalConflicts.has(document.uri.toString())) {this.scheduleSave(document);}
 				throw new vscode.CancellationError();
 			}
+			if (document.isReadOnly && document.hasUnsavedChanges) {
+				throw new Error('El proveedor de archivos no permite escribir este recurso. El borrador se conserva; elige un destino escribible con Guardar como.');
+			}
 			const automaticSave = this.automaticSaveInFlight.has(document.uri.toString());
 			if (!automaticSave) {await this.confirmDraftsBeforeSave(document);}
 			const revision = document.revision;
@@ -484,6 +495,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				if (this.hasPendingDraft(document)) {this.markPendingDraftsDirty(document);}
 				return;
 			}
+			if (document.isReadOnly) {throw new Error('El proveedor de archivos dejó de confirmar permisos de escritura. El borrador se conserva.');}
 			this.postSaveState(document, { type: 'saveState', state: 'saving' });
 			const ownWrites = this.ownWrites.get(document) ?? [];
 			ownWrites.push(bytes);
@@ -535,6 +547,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 		const bytes = document.serializeCopy();
 		document.validateCopy(bytes);
+		if (!vscode.workspace.fs.isWritableFileSystem(destination.scheme)) {
+			throw new Error('El destino no pertenece a un proveedor que confirme permisos de escritura.');
+		}
 		await replaceFile(destination, bytes);
 	}
 
@@ -1126,7 +1141,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		for (const panel of panels) {
 			if (document.csv) {
 				const csvRows = document.editSession.getRows(0);
-				const csvSettings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv');
+				const csvSettings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri);
 				const headerRow = csvSettings.get<boolean>('firstRowHeader', true)
 					? document.csv.rowKinds.findIndex(kind => kind === 'data') : -1;
 				const caseMode = csvSettings.get<'none' | 'upper' | 'lower'>('headerCase', 'none');
@@ -1136,6 +1151,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				});
 				const data: CsvDataMessage = {
 					type: 'csvData', revision: document.revision, documentId: document.documentId, sheetId: document.sheetId(0), fileName: path.posix.basename(document.uri.path), rows: csvRows,
+					readonly: document.isReadOnly,
 					rowCount: document.csv.rowCount, columnCount: document.csv.columnCount,
 					rowKinds: document.csv.rowKinds, physicalLines: document.csv.physicalLines,
 					rowComments: document.csv.rowComments,
@@ -1530,6 +1546,11 @@ function isRequestSnapshotMessage(message: unknown): message is Extract<WebviewT
 	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'requestSnapshot'
 		&& 'documentId' in message && typeof message.documentId === 'string'
 		&& 'revision' in message && Number.isInteger(message.revision);
+}
+
+function isMutationMessage(message: unknown): boolean {
+	return typeof message === 'object' && message !== null && 'type' in message
+		&& typeof message.type === 'string' && isDocumentMutationMessageType(message.type);
 }
 
 function isValidSortCriteria(criteria: unknown[], columnCount: number): boolean {

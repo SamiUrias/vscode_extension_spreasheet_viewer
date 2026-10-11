@@ -2,9 +2,13 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { chmod, rename, stat } from 'node:fs/promises';
 import * as vscode from 'vscode';
+import { isWritableFileSystem } from './filesystem-capability';
 
 /** Replace a resource through a verified sibling temporary file. */
 export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?: Uint8Array, isCancelled: () => boolean = () => false): Promise<void> {
+	if (!isWritableFileSystem(vscode.workspace.fs.isWritableFileSystem(uri.scheme))) {
+		throw new Error('El proveedor de archivos no confirma permisos de escritura; el documento se conserva sin guardar.');
+	}
 	if (isCancelled()) {throw new vscode.CancellationError();}
 	if (expected) {
 		const current = await vscode.workspace.fs.readFile(uri);
