@@ -47,7 +47,7 @@ Sorting and filtering only change the visible projection. The source rows and th
 - Use the cell reference field to jump to a location such as `B54`.
 - Use the search field and its previous/next controls to move through matches in the active sheet.
 
-Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Copying does not change the file. Paste and moving ranges are not available yet.
+Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Paste TSV into the focused grid to apply the whole range as one undoable edit; a single value fills the selected range. Press `Delete` or `Backspace` to clear selected contents. Paste and clear are disabled for sorted, filtered, or searched views to prevent changes landing on unexpected rows. Formulas and unsupported cells are rejected by the edit preflight. Moving ranges is not available yet.
 
 ### Adjust the view
 

@@ -826,6 +826,13 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Aceptación:** 2×3 paste una transacción; 1×1 rellena rango; shape incompatible, fórmula/protegida o overflow rechaza todo; columna numérica no recibe texto por coerción; Delete conserva numFmt y deja celda vacía válida; undo/redo todo; preview rechaza edición desde host. **Fuera:** autoexpandir rango, cut/mover o crear fórmulas implícitas. **Checks:** operaciones/clipboard/formatos + host.
 
+- [x] Parsear TSV con soporte de comillas, tabs, saltos de línea internos y límites de tamaño/celdas; rechazar comillas mal formadas.
+- [x] Pegar rango como una operación `editCells`, repetir un valor 1×1 en la selección y rechazar overflow, edición obsoleta, comentario CSV, fórmula o celda no editable.
+- [x] Borrar contenido con Delete/Backspace como operación por rango; dejar intacto el estilo XLSX existente.
+- [x] Desactivar pegado/borrado cuando orden, filtros o búsqueda cambian la vista de filas; documentar el comportamiento.
+- [x] Verificar parser, clipboard, tipos, lint y build producción.
+- [ ] Confirmar interacción paste/clear y undo en Extension Host; el runner de VS Code falla antes de cargar las suites con Node 18.20.4 y `string-width` `/v`.
+
 #### V2-14A — Estructura CSV en adaptador y modelo
 
 **Depende de:** V2-03/V2-12A. **Archivos:** csv/edit-model/operations/tests. **Pasos:** transacción de insertar/añadir/borrar registros basada en spans completos con terminadores; resolver edits de celdas previos en una nueva baseline de trabajo en memoria con historial reversible, sin escribir disco intermedio. Conservar comentarios/preamble/BOM y bytes no afectados; definir EOL nuevo desde terminador más cercano (LF fallback). Registro añadido tiene ancho de tabla, sin convertir valores.

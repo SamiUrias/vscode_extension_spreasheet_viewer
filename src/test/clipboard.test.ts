@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { parseTsv, serializeTsv, serializeVisibleSelection } from '../clipboard';
+import { parseClipboardTsv, parseTsv, serializeTsv, serializeVisibleSelection } from '../clipboard';
 
 suite('spreadsheet clipboard TSV', () => {
 	test('round-trips delimiters, quotes, line endings, Unicode, blanks, and trailing zeros', () => {
@@ -17,6 +17,12 @@ suite('spreadsheet clipboard TSV', () => {
 		assert.deepStrictEqual(parseTsv(''), [['']]);
 		assert.deepStrictEqual(parseTsv('\t'), [['', '']]);
 		assert.deepStrictEqual(parseTsv('a\r\n'), [['a']]);
+	});
+	test('parses quoted multiline clipboard cells and rejects malformed or oversized clipboard text', () => {
+		assert.deepStrictEqual(parseClipboardTsv('one\t"two\nlines"\r\nthree\tfour'), [['one', 'two\nlines'], ['three', 'four']]);
+		assert.throws(() => parseClipboardTsv('"unclosed'), /comillas sin cerrar/);
+		assert.throws(() => parseClipboardTsv('"quoted"tail'), /después de una comilla/);
+		assert.throws(() => parseClipboardTsv('x'.repeat(50 * 1024 * 1024 + 1)), /50 MiB/);
 	});
 	test('maps a selected source range through sorted and filtered visible rows', () => {
 		const sourceRows = [['header'], ['hidden'], ['last-visible'], ['middle-visible']];

@@ -5,7 +5,7 @@ import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, 
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell, type CellRange } from './selection';
 import { isCellInVisibleRange } from '../range-selection';
-import { serializeVisibleSelection } from '../clipboard';
+import { parseClipboardTsv, serializeVisibleSelection } from '../clipboard';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
 
@@ -501,6 +501,11 @@ gridScroll.addEventListener('keydown', event => {
 		return;
 	}
 	if (event.isComposing) {return;}
+	if (event.key === 'Delete' || event.key === 'Backspace') {
+		event.preventDefault();
+		clearSelectionContents();
+		return;
+	}
 	if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && showCopyButtons) {
 		event.preventDefault();
 		void copySelection('raw');
@@ -550,6 +555,51 @@ gridScroll.addEventListener('keydown', event => {
 	column = Math.max(0, Math.min(snapshot.columnCount - 1, column));
 	selectCell(rows[visibleRow]!, column, extend);
 });
+
+gridScroll.addEventListener('paste', event => {
+	if (event.target !== gridScroll || !snapshot || !selectedCell || snapshot.readonly) {return;}
+	const text = event.clipboardData?.getData('text/plain');
+	if (text === undefined) {return;}
+	event.preventDefault();
+	try {
+		if (sortCriteria.length || columnFilters.length || searchInput.value) {throw new Error('Quita orden, filtros y búsqueda antes de pegar para conservar la correspondencia de filas.');}
+		const matrix = parseClipboardTsv(text);
+		const startRow = selectionRange ? Math.min(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+		const startColumn = selectionRange ? Math.min(selectionRange.anchor.column, selectionRange.focus.column) : selectedCell.column;
+		const fillRange = matrix.length === 1 && matrix[0]?.length === 1 && selectionRange;
+		const height = fillRange ? Math.abs(selectionRange!.focus.row - selectionRange!.anchor.row) + 1 : matrix.length;
+		const width = fillRange ? Math.abs(selectionRange!.focus.column - selectionRange!.anchor.column) + 1 : Math.max(...matrix.map(row => row.length));
+		if (startRow + height > snapshot.rowCount || startColumn + width > snapshot.columnCount) {throw new Error('El pegado se sale del rango actual de la hoja.');}
+		const edits: Array<{ row: number; column: number; value: string }> = [];
+		for (let r = 0; r < height; r++) {for (let c = 0; c < width; c++) {
+			const value = fillRange ? matrix[0]![0]! : (matrix[r]?.[c] ?? '');
+			edits.push({ row: startRow + r, column: startColumn + c, value });
+		}}
+		vscodeApi.postMessage({ type: 'editCells', documentId: snapshot.documentId, revision: snapshot.revision,
+			sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0,
+			sheetId: snapshot.sheetId, edits });
+	} catch (error) {
+		saveStatus.textContent = error instanceof Error ? error.message : 'No se pudo pegar el contenido.';
+		saveStatus.classList.add('save-error');
+	}
+});
+
+function clearSelectionContents(): void {
+	if (!snapshot || !selectedCell || snapshot.readonly) {return;}
+	if (sortCriteria.length || columnFilters.length || searchInput.value) {
+		saveStatus.textContent = 'Quita orden, filtros y búsqueda antes de borrar contenido.';
+		saveStatus.classList.add('save-error');
+		return;
+	}
+	const firstRow = selectionRange ? Math.min(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+	const lastRow = selectionRange ? Math.max(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
+	const firstColumn = selectionRange ? Math.min(selectionRange.anchor.column, selectionRange.focus.column) : selectedCell.column;
+	const lastColumn = selectionRange ? Math.max(selectionRange.anchor.column, selectionRange.focus.column) : selectedCell.column;
+	const edits = [];
+	for (let row = firstRow; row <= lastRow; row++) {for (let column = firstColumn; column <= lastColumn; column++) {edits.push({ row, column, value: '', targetType: 'string' as const });}}
+	vscodeApi.postMessage({ type: 'editCells', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0, sheetId: snapshot.sheetId, edits });
+}
 
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
 requiredElement<HTMLButtonElement>('#copy-displayed').addEventListener('click', () => {void copySelection('displayed');});
