@@ -791,9 +791,10 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir serializador/parser TSV puro y prueba de roundtrip para caracteres especiales, vacíos y fin de línea.
 - [x] Integrar copia de selección en orden visible con acciones crudo/mostrado/encabezados, atajo `Ctrl+C`/`Cmd+C` en la tabla y fallback a clipboard host; vista previa también permite copiar.
 - [x] Añadir límite visible para payloads grandes sin truncar, tooltips y `spreadsheet-viewer.view.showCopyButtons` (`true` por defecto) en manifest, configuración de pruebas y documentación.
-- [ ] Verificar en Extension Host que copiar desde inputs mantiene su comportamiento y comprobar clipboard de macOS/Windows/Linux disponible.
+- [x] En Extension Development Host de macOS, abrir el CSV de prueba y activar **Copiar**: la UI mostró «Selección copiada» y el documento permaneció «Sin cambios».
+- [ ] Verificar que `Ctrl/Cmd+C` desde inputs conserva la copia normal y comprobar el contenido real del clipboard en los hosts/plataformas disponibles. La automatización no pudo activar una celda de forma estable para completar esta parte.
 
-**Estado de verificación:** los cinco tests TSV, typecheck, lint y paquete de producción pasan. `npm test` no alcanza a ejecutar las suites en el entorno actual: Node 18.20.4 no admite la bandera `/v` que usa `string-width` (`SyntaxError: Invalid regular expression flags`). Queda pendiente la prueba manual del clipboard en Extension Host.
+**Estado de verificación:** los siete casos de `src/test/clipboard.test.ts` pasan al compilar con `npm run compile-tests` y ejecutarlos con el harness local; typecheck, lint y paquete de producción también pasan según los checks registrados arriba. La prueba manual confirma que la acción de copia se activa en Extension Host sin marcar el archivo como modificado. La verificación de los atajos y de la copia desde inputs sigue pendiente. `npm test` no alcanza a ejecutar las suites en este entorno: Node 18.20.4 no admite la bandera `/v` que usa `string-width` (`SyntaxError: Invalid regular expression flags`). Por ello V2-11 sigue parcial.
 
 #### V2-12A — Transacciones de edición
 
