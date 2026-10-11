@@ -1,5 +1,5 @@
 import type { CsvDataMessage, XlsxDataMessage, FormulaEvaluation } from '../protocol';
-import { buildProjectedRowLayout, type RowLayout } from './grid-layout';
+import { buildProjectedRowLayout, getVisibleColumnWindow, type RowLayout } from './grid-layout';
 import type { RowProjection } from '../table-view';
 import { getRenderableMerges, mergeAnchorIntersectsViewport } from './merge-layout';
 
@@ -78,6 +78,7 @@ const templateColumns = gridTemplateColumns(widths);
 			heading.className = 'column-header';
 			heading.dataset.columnIndex = String(column);
 			heading.setAttribute('role', 'columnheader');
+			heading.setAttribute('aria-colindex', String(column + 2));
 			const ordinal = document.createElement('span');
 			ordinal.className = 'column-ordinal';
 			ordinal.textContent = `${columnName(column)}${sortLabel(column)}`;
@@ -141,6 +142,12 @@ const templateColumns = gridTemplateColumns(widths);
 	}
 	const projectedHeights = state.projectedHeights ?? [];
 	const projectedOffsets = state.projectedOffsets ?? [0];
+	const columnWindow = getVisibleColumnWindow(widths, gridScroll.scrollLeft, gridScroll.clientWidth, rowHeaderWidth, freezeColumns, overscan);
+	const visibleColumns = new Set(columnWindow.rendered);
+	for (const merge of mergeRanges) {
+		if (merge.left <= columnWindow.end && merge.right >= columnWindow.start) {visibleColumns.add(merge.left);}
+	}
+	const renderedColumns = [...visibleColumns].sort((left, right) => left - right);
 	const visibleRowCount = projection.visibleRows.length;
 	gridScroll.setAttribute('aria-rowcount', String(visibleRowCount + 1));
 	const firstViewportRow = findRowAtOffset(projectedOffsets, Math.max(0, gridScroll.scrollTop - headingHeight));
@@ -197,7 +204,7 @@ const templateColumns = gridTemplateColumns(widths);
 		row.append(rowHeader);
 
 		const values = snapshot.rows[sourceRow];
-		for (let column = 0; column < snapshot.columnCount; column++) {
+		for (const column of renderedColumns) {
 			const merge = mergeRanges.find(range => sourceRow >= range.top && sourceRow <= range.bottom && column >= range.left && column <= range.right);
 			if (merge && (sourceRow !== merge.top || column !== merge.left)) {continue;}
 			const valueCell = document.createElement('div');
@@ -208,6 +215,7 @@ const templateColumns = gridTemplateColumns(widths);
 			valueCell.textContent = value;
 			valueCell.title = value === rawValue ? rawValue : `${value}\nValor crudo: ${rawValue}`;
 			valueCell.setAttribute('role', 'gridcell');
+			valueCell.setAttribute('aria-colindex', String(column + 2));
 			valueCell.id = `cell-${sourceRow}-${column}`;
 			valueCell.dataset.sourceRow = String(sourceRow);
 			valueCell.dataset.column = String(column);

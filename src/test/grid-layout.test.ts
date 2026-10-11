@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { buildProjectedRowLayout, rebuildRowOffsets, sampleEvenly, wrappedTextHeight, type RowLayout } from '../webview/grid-layout';
+import { buildColumnOffsets, buildProjectedRowLayout, findColumnAtOffset, getVisibleColumnWindow, rebuildRowOffsets, sampleEvenly, wrappedTextHeight, type RowLayout } from '../webview/grid-layout';
 
 suite('Grid layout helpers', () => {
 	test('samples rows evenly and deterministically within the requested limit', () => {
@@ -25,5 +25,15 @@ suite('Grid layout helpers', () => {
 		rebuildRowOffsets(layout);
 		assert.equal(layout.revision, 2);
 		assert.deepStrictEqual(layout.offsets, [0, 40, 70]);
+	});
+
+	test('renders only visible columns plus overscan while retaining frozen columns', () => {
+		const widths = Array.from({ length: 20 }, () => 100);
+		const offsets = buildColumnOffsets(widths);
+		assert.equal(findColumnAtOffset(offsets, 0), 0);
+		assert.equal(findColumnAtOffset(offsets, 250), 2);
+		assert.deepStrictEqual(getVisibleColumnWindow(widths, 0, 500, 60, 1, 1).rendered, [0, 1, 2, 3, 4, 5]);
+		assert.deepStrictEqual(getVisibleColumnWindow(widths, 500, 500, 60, 1, 1).rendered, [0, 5, 6, 7, 8, 9, 10]);
+		assert.deepStrictEqual(getVisibleColumnWindow(widths, 0, 400, 60, 2, 1).rendered, [0, 1, 2, 3, 4]);
 	});
 });
