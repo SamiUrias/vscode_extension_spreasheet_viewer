@@ -22,6 +22,7 @@ suite('spreadsheet clipboard TSV', () => {
 		assert.deepStrictEqual(parseClipboardTsv('one\t"two\nlines"\r\nthree\tfour'), [['one', 'two\nlines'], ['three', 'four']]);
 		assert.throws(() => parseClipboardTsv('"unclosed'), /comillas sin cerrar/);
 		assert.throws(() => parseClipboardTsv('"quoted"tail'), /después de una comilla/);
+		assert.throws(() => parseClipboardTsv('unescaped"quote'), /comilla dentro de un campo/);
 		assert.throws(() => parseClipboardTsv('x'.repeat(50 * 1024 * 1024 + 1)), /50 MiB/);
 	});
 	test('maps a selected source range through sorted and filtered visible rows', () => {

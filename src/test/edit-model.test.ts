@@ -15,6 +15,19 @@ suite('edit transactions', () => {
 		assert.equal(session.hasEdits, false);
 		assert.equal(session.undo(), false);
 	});
+	test('rejects invalid pasted values without partially changing the batch', () => {
+		const workbook: XlsxWorkbook = { warnings: [], sheets: [{ name: 'Sheet1', rows: [['1', '=A1+1']],
+			cellKinds: [['value', 'formula']], cellTypes: [['number', 'formula']], formulaCaches: { B1: '2' }, rowCount: 1, columnCount: 2 }] };
+		const session = new SpreadsheetEditSession(undefined, workbook, new Uint8Array());
+		assert.throws(() => session.editCells([
+			{ sheetIndex: 0, row: 0, column: 0, value: '2' },
+			{ sheetIndex: 0, row: 0, column: 1, value: 'plain text' },
+		]), /no se puede editar/);
+		assert.deepStrictEqual(session.getRows(0), [['1', '=A1+1']]);
+		assert.equal(session.hasEdits, false);
+		assert.throws(() => session.editCell(0, 0, 0, 'plain text'), /Número inválido/);
+		assert.equal(session.getCell(0, 0, 0).value, '1');
+	});
 	test('applies a multi-cell transaction with one undo and one redo', () => {
 		const session = new SpreadsheetEditSession(parseCsvBytes(new TextEncoder().encode('a,b\nc,d')));
 		const transactionId = session.editCells([

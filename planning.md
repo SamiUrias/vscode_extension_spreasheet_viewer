@@ -835,8 +835,11 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Pegar rango como una operación `editCells`, repetir un valor 1×1 en la selección y rechazar overflow, edición obsoleta, comentario CSV, fórmula o celda no editable.
 - [x] Borrar contenido con Delete/Backspace como operación por rango; dejar intacto el estilo XLSX existente.
 - [x] Desactivar pegado/borrado cuando orden, filtros o búsqueda cambian la vista de filas; documentar el comportamiento.
-- [x] Verificar parser, clipboard, tipos, lint y build producción.
-- [ ] Confirmar interacción paste/clear y undo en Extension Host; el runner de VS Code falla antes de cargar las suites con Node 18.20.4 y `string-width` `/v`.
+- [x] Endurecer el parser para rechazar comillas sin escapar dentro de campos y probarlo junto con TSV multilínea y límites.
+- [x] Verificar que un lote con fórmula/número incompatible no aplica ninguna celda y que borrar una celda XLSX conserva su formato numérico; undo restaura los bytes originales.
+- [x] Añadir `npm run test:edit-batch-host`: pasa mensajes `editCells` por el handler real de `resolveCustomEditor` y verifica lote, un solo undo/redo, rechazo atómico de coordenada inválida y revisión obsoleta.
+- [x] Verificar parser, clipboard, tipos, lint y build producción con Node 24.21.
+- [ ] Confirmar pegado y borrado con teclado en Extension Host; el runner no pudo descargar VS Code porque DNS no resuelve `update.code.visualstudio.com` (`ENOTFOUND`). El handler host sí queda cubierto por el runner local.
 
 #### V2-14A — Estructura CSV en adaptador y modelo
 

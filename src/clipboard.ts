@@ -50,7 +50,9 @@ export function parseClipboardTsv(text: string): string[][] {
 			else {field += character;}
 		} else if (closedQuote && character !== '\t' && character !== '\r' && character !== '\n') {
 			throw new Error('El TSV tiene texto después de una comilla de cierre.');
-		} else if (character === '"' && field.length === 0 && !closedQuote) {quoted = true;}
+		} else if (character === '"' && field.length === 0 && !closedQuote) {
+			quoted = true;
+		} else if (character === '"') {throw new Error('El TSV tiene una comilla dentro de un campo sin escapar.');}
 		else if (character === '\t') {pushCell(); field = ''; closedQuote = false;}
 		else if (character === '\r' || character === '\n') {
 			pushCell(); rows.push(row); row = []; field = ''; closedQuote = false;

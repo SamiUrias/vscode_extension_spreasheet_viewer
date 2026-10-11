@@ -159,6 +159,22 @@ function encodeUtf16(text: string, littleEndian: boolean): Buffer {
 }
 
 suite('XLSX reader', () => {
+	test('clearing a cell keeps its XLSX number format and undo restores original bytes', () => {
+		const original = createStyledXlsxFixture();
+		const initialWorkbook = parseXlsxBytes(original);
+		const originalStyle = initialWorkbook.sheets[0]?.cellStyleIndexes?.[1]?.[0];
+		assert.equal(initialWorkbook.styles?.cellFormats[originalStyle ?? 0]?.numberFormatId, 10);
+		const session = new SpreadsheetEditSession(undefined, initialWorkbook, original);
+		const transaction = session.editCells([{ sheetIndex: 0, row: 1, column: 0, value: '', targetType: 'string' }]);
+		assert.notEqual(transaction, undefined);
+		const cleared = parseXlsxBytes(session.serializeCopy());
+		assert.equal(cleared.sheets[0]?.rows[1]?.[0], '');
+		const clearedStyle = cleared.sheets[0]?.cellStyleIndexes?.[1]?.[0];
+		assert.equal(cleared.styles?.cellFormats[clearedStyle ?? 0]?.numberFormatId, 10, 'Delete preserves the existing number format');
+		assert.equal(session.undo(transaction), true);
+		assert.deepStrictEqual(session.serializeCopy(), original, 'undo restores the original XLSX bytes');
+	});
+
 	test('XLSX style, merge and freeze operations preserve values and support undo', () => {
 		const original = createStyledXlsxFixture();
 		const originalParts = unzipSync(original);

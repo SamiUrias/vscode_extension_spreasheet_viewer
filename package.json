@@ -297,6 +297,7 @@
     "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
     "test:clipboard": "npm run compile-tests && node scripts/test-clipboard.js",
     "test:edit-transactions": "npm run compile-tests && node scripts/test-edit-transactions.js",
+    "test:edit-batch-host": "npm run compile-tests && node scripts/test-edit-batch-host.js",
     "test:save-coordinator": "npm run compile-tests && node scripts/test-save-coordinator.js",
     "test:recovery": "npm run compile-tests && node scripts/test-recovery-lifecycle.js",
     "test:cell-deltas": "npm run compile-tests && node scripts/test-cell-deltas.js",
