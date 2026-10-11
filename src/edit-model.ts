@@ -1,4 +1,4 @@
-import { serializeCsvEdits, type CsvTable } from './formats/csv';
+import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 
@@ -21,7 +21,8 @@ export interface CellEditInput {
 	readonly sheetIndex: number; readonly row: number; readonly column: number; readonly value: string; readonly targetType?: EditableCellType;
 }
 interface CellChange { readonly key: string; readonly before: CellEdit | undefined; readonly after: CellEdit | undefined; }
-interface EditTransaction { readonly id: number; readonly changes: readonly CellChange[]; }
+interface EditState { readonly csv: CsvTable; readonly edits: Map<string, CellEdit>; }
+interface EditTransaction { readonly id: number; readonly changes?: readonly CellChange[]; readonly before?: EditState; readonly after?: EditState; }
 
 /** In-memory edit journal. Serialization always returns a new byte array. */
 export class SpreadsheetEditSession {
@@ -31,7 +32,7 @@ export class SpreadsheetEditSession {
 	private nextTransactionId = 1;
 
 	constructor(
-		private readonly csv?: CsvTable,
+		private csv?: CsvTable,
 		private readonly xlsx?: XlsxWorkbook,
 		private readonly xlsxBytes?: Uint8Array,
 		private readonly ods?: OdsWorkbook,
@@ -40,6 +41,24 @@ export class SpreadsheetEditSession {
 
 	get hasEdits(): boolean {
 		return this.edits.size > 0;
+	}
+
+	get csvTable(): CsvTable | undefined {return this.csv;}
+
+	applyCsvRowOperation(operation: CsvRowOperation): number {
+		if (!this.csv) {throw new Error('La operación de registros solo está disponible para documentos CSV.');}
+		const currentBytes = serializeCsvEdits(this.csv, [...this.edits.values()].map(edit => ({ row: edit.row, column: edit.column, value: edit.value })));
+		const current = parseCsvBytes(currentBytes, { delimiter: this.csv.delimiter, quoteChar: this.csv.quoteChar, quotes: this.csv.quotes, commentPrefix: this.csv.commentPrefix });
+		const resultBytes = serializeCsvRowOperation(current, operation);
+		const next = parseCsvBytes(resultBytes, { delimiter: current.delimiter, quoteChar: current.quoteChar, quotes: current.quotes, commentPrefix: current.commentPrefix });
+		const before: EditState = { csv: this.csv, edits: new Map(this.edits) };
+		this.csv = next;
+		this.edits.clear();
+		const after: EditState = { csv: next, edits: new Map() };
+		const id = this.nextTransactionId++;
+		this.undoStack.push({ id, before, after });
+		this.redoStack.length = 0;
+		return id;
 	}
 
 	getRows(sheetIndex: number): string[][] {
@@ -110,7 +129,8 @@ export class SpreadsheetEditSession {
 		if (transactionId !== undefined && this.undoStack[this.undoStack.length - 1]?.id !== transactionId) {return false;}
 		const transaction = this.undoStack.pop();
 		if (!transaction) {return false;}
-		for (const change of [...transaction.changes].reverse()) {this.assign(change.key, change.before);}
+		if (transaction.before) {this.restoreState(transaction.before);}
+		else {for (const change of [...transaction.changes ?? []].reverse()) {this.assign(change.key, change.before);}}
 		this.redoStack.push(transaction);
 		return true;
 	}
@@ -119,7 +139,8 @@ export class SpreadsheetEditSession {
 		if (transactionId !== undefined && this.redoStack[this.redoStack.length - 1]?.id !== transactionId) {return false;}
 		const transaction = this.redoStack.pop();
 		if (!transaction) {return false;}
-		for (const change of transaction.changes) {this.assign(change.key, change.after);}
+		if (transaction.after) {this.restoreState(transaction.after);}
+		else {for (const change of transaction.changes ?? []) {this.assign(change.key, change.after);}}
 		this.undoStack.push(transaction);
 		return true;
 	}
@@ -181,6 +202,12 @@ export class SpreadsheetEditSession {
 		} else {
 			this.edits.delete(key);
 		}
+	}
+
+	private restoreState(state: EditState): void {
+		this.csv = state.csv;
+		this.edits.clear();
+		for (const [key, edit] of state.edits) {this.edits.set(key, edit);}
 	}
 }
 

@@ -839,8 +839,9 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 - [x] Añadir serializador CSV de operaciones de insertar/eliminar registros completos. Conserva bytes de todos los registros no afectados, terminadores vecinos, BOM, directiva `sep=`, comentarios y quoting de campos multilínea.
 - [x] Validar estructura reparseando el resultado; impedir borrar comentarios, índices inválidos, inserciones fuera de límite y registros de ancho incorrecto.
-- [x] Probar inserción/eliminación con preámbulo, comentarios, CRLF, comillas y multilinea; suites de formato, tipos y lint pasan.
-- [ ] Integrar estas operaciones en el journal transaccional y rebasar edits de celdas sin guardar. Aún no hay comandos/acciones UI; V2-14A permanece parcialmente implementada y V2-14B no inicia hasta cerrar esa integración.
+- [x] Integrar la operación con el journal: los edits previos se rebasan sobre una copia de trabajo en memoria; el cambio estructural forma una transacción con undo/redo y deja el disco intacto.
+- [x] Probar inserción/eliminación con preámbulo, comentarios, CRLF, comillas, multilinea, rebase y orden de undo/redo; suites de formato, tipos y lint pasan.
+- [ ] Las acciones de usuario se añaden en V2-14B; la validación de save lifecycle de VS Code sigue pendiente mientras falle el runner Extension Host.
 
 **Aceptación:** borrar última/primera/multilinea/discontinuas; añadir con/sin salto final; insertar sin tocar comments; UTF-16 ambos endian; undo restaura bytes originales; tabla vacía admite primer registro con ancho elegido. **Fuera:** estructura XLSX/ODS ni UI todavía. **Checks:** byte-level fixtures propios y unit.
 

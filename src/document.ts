@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
 import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
-import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvTable } from './formats/csv';
+import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 
@@ -129,13 +129,20 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return transactionId;
 	}
 
+	applyCsvRowOperation(operation: CsvRowOperation): number {
+		const transactionId = this.editSession.applyCsvRowOperation(operation);
+		this.csv = this.editSession.csvTable;
+		this.revision++;
+		return transactionId;
+	}
+
 	undo(transactionId?: number): boolean {
-		if (this.editSession.undo(transactionId)) {this.revision++; return true;}
+		if (this.editSession.undo(transactionId)) {this.csv = this.editSession.csvTable; this.revision++; return true;}
 		return false;
 	}
 
 	redo(transactionId?: number): boolean {
-		if (this.editSession.redo(transactionId)) {this.revision++; return true;}
+		if (this.editSession.redo(transactionId)) {this.csv = this.editSession.csvTable; this.revision++; return true;}
 		return false;
 	}
 

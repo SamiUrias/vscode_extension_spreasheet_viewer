@@ -68,4 +68,18 @@ suite('edit transactions', () => {
 		assert.deepStrictEqual(restored.cellKinds, [['value', 'missing']]);
 		assert.deepStrictEqual(restored.cellTypes, [['number', 'missing']]);
 	});
+	test('CSV structural transactions rebase prior cell edits and undo/redo in source order', () => {
+		const session = new SpreadsheetEditSession(parseCsvBytes(new TextEncoder().encode('name,value\r\nfirst,1\r\nlast,2\r\n')));
+		const cellEdit = session.editCells([{ sheetIndex: 0, row: 1, column: 1, value: '9' }])!;
+		const structure = session.applyCsvRowOperation({ kind: 'insert', index: 2, rows: [['middle', '3']] });
+		assert.deepStrictEqual(session.getRows(0), [['name', 'value'], ['first', '9'], ['middle', '3'], ['last', '2']]);
+		assert.equal(session.undo(structure), true);
+		assert.deepStrictEqual(session.getRows(0), [['name', 'value'], ['first', '9'], ['last', '2']]);
+		assert.equal(session.undo(cellEdit), true);
+		assert.deepStrictEqual(session.getRows(0), [['name', 'value'], ['first', '1'], ['last', '2']]);
+		assert.equal(session.redo(cellEdit), true);
+		assert.equal(session.redo(structure), true);
+		assert.deepStrictEqual(session.getRows(0), [['name', 'value'], ['first', '9'], ['middle', '3'], ['last', '2']]);
+		assert.deepStrictEqual(parseCsvBytes(session.serializeCopy()).rows, session.getRows(0));
+	});
 });
