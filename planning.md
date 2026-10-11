@@ -1,6 +1,6 @@
 # Spreadsheet Viewer — guía de implementación del MVP y propuesta v2
 
-El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. Al 2026-10-11, la implementación llega hasta V2-10; V2-11 en adelante sigue pendiente. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
+El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 está en curso: V2-11 y V2-12A tienen commits; V2-12B se está implementando. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
 
 ## 1. Resumen del producto
 
@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** análisis y propuesta; las etapas V2-00A a V2-10 tienen implementación en el workspace. V2-09 y V2-10 se añadieron en el commit `f81b7bc` junto con configuración de prueba y documentación. Siguen pendientes las verificaciones manuales que indican sus checklists y las tarjetas previas. V2-11 en adelante no está implementada. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-10 ya estaban implementadas; V2-11 y V2-12A están en commits; V2-12B está en implementación. Las verificaciones pendientes de Extension Host siguen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -812,6 +812,13 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 **Depende de:** V2-12A/V2-00B. **Archivos:** storage/document/editor/protocol/tests. **Pasos:** envelope backup versionado del contrato, draft separado y baseline; Save solicita/recoge confirmación de draft antes de snapshot, con timeout, o conserva draft sin guardarlo según acción explícita; no salvar mediante dispose. Restauración reconoce legacy y conflicto con disco. Añadir modo save manual opcional manteniendo onCommit default; comprobar dirty VS Code.
 
 **Aceptación:** hot exit recupera lote y texto no confirmado; Escape no reaparece tras reiniciar; archivo externo modificado desde backup abre en conflicto; cancelación/error de permisos mantiene draft; Ctrl/Cmd+S no pierde última tecla; Save As copia formato y draft según política confirmada. **Fuera:** persistir drafts en workspaceState. **Checks:** proveedor/backup tests y reinicio manual Host.
+
+- [x] Definir envelope versionado con hash de baseline y contenido de trabajo, y preservar lectura de respaldos legacy.
+- [x] Recuperar celdas aplicadas como una transacción undoable y recuperar por separado el draft no confirmado.
+- [x] Agregar política de Save para borradores, setting `spreadsheet-viewer.edit.saveOnCommit` (default `true`), y recolección de draft antes de backup/Save.
+- [x] Detectar que el archivo en disco no coincide con el baseline del respaldo y conservar la recuperación para Save As.
+- [x] Añadir pruebas de envelope y restauración con conflicto; tipos, lint y compilación de pruebas pasan.
+- [ ] Ejecutar el ciclo completo de save/backup/hot-exit en Extension Host y revisar manualmente recuperación y Save As. El runner `vscode-test` falla antes de cargar suites bajo Node 18.20.4 por la expresión con flag `/v` de `string-width`; este punto no está probado.
 
 #### V2-13 — Pegado y borrar contenido
 

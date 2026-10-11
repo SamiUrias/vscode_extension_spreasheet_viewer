@@ -30,6 +30,10 @@ export interface InvalidCellMessage {
 
 export interface CopyToClipboardMessage { type: 'copyToClipboard'; text: string; }
 export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; visible: boolean; }
+export interface RecoveredDraft { sheetIndex: number; row: number; column: number; value: string; }
+export interface RestoreCellDraftMessage { type: 'restoreCellDraft'; draft: RecoveredDraft; }
+export interface DiscardCellDraftMessage { type: 'discardCellDraft'; }
+export interface DraftStateChangedMessage { type: 'draftStateChanged'; dirty: boolean; }
 
 export interface EditCellMessage {
 	type: 'editCell';
@@ -73,8 +77,10 @@ export interface DraftStateMessage {
 	column: number;
 	value: string;
 }
+export interface DraftCaptureResultMessage { type: 'draftCaptureResult'; requestId: number; draft?: RecoveredDraft; }
+export interface CaptureDraftMessage { type: 'captureDraft'; requestId: number; }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditCellsMessage | HistoryMessage | DraftStateMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditCellsMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';
@@ -108,6 +114,7 @@ export interface CsvDataMessage {
 	readonly?: boolean;
 	sourceMode?: 'disk' | 'buffer' | 'csv-text';
 	sourceStatus?: string;
+	recoveredDraft?: RecoveredDraft;
 }
 
 export interface XlsxDataMessage {
@@ -134,6 +141,7 @@ export interface XlsxDataMessage {
 	readonly?: boolean;
 	sourceMode?: 'disk' | 'buffer' | 'csv-text';
 	sourceStatus?: string;
+	recoveredDraft?: RecoveredDraft;
 }
 
 export interface CellCapability {
@@ -145,5 +153,5 @@ export interface CellCapability {
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
 export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

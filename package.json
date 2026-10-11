@@ -202,6 +202,11 @@
           "type": "boolean",
           "default": true,
           "description": "Muestra los controles para copiar la selección como TSV."
+        },
+        "spreadsheet-viewer.edit.saveOnCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Guarda automáticamente cada cambio confirmado; al desactivarlo, guarda con Ctrl/Cmd+S."
         }
       }
     }

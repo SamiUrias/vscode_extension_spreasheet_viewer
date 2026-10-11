@@ -151,6 +151,28 @@ gridScroll.setAttribute('role', 'grid');
 gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'captureDraft'
+		&& 'requestId' in event.data && Number.isInteger(event.data.requestId)) {
+		let draft: { sheetIndex: number; row: number; column: number; value: string } | undefined;
+		if (snapshot && !snapshot.readonly) {
+			const position = inlineEditorDirty ? editingCell : editorDirty ? selectedCell : undefined;
+			if (position) {
+				draft = { sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0, ...position,
+					value: inlineEditorDirty ? inlineEditValue : cellEditor.value };
+			}
+		}
+		vscodeApi.postMessage({ type: 'draftCaptureResult', requestId: event.data.requestId as number, ...(draft ? { draft } : {}) });
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'restoreCellDraft'
+		&& 'draft' in event.data && isRecoveredDraft(event.data.draft)) {
+		restoreCellDraft(event.data.draft);
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'discardCellDraft') {
+		discardCellDraft();
+		return;
+	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'copyButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showCopyButtons = event.data.visible;
@@ -285,6 +307,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		applyCellEditButton.disabled = true;
 		renderGrid();
 	}
+	if (snapshot.recoveredDraft) {restoreCellDraft(snapshot.recoveredDraft);}
 	if (restoredView && restoreScrollAfterSelection) {
 		gridScroll.scrollTop = restoreScrollAfterSelection.top;
 		gridScroll.scrollLeft = restoreScrollAfterSelection.left;
@@ -749,6 +772,31 @@ function sendDraftState(
 		...position,
 		value,
 	});
+}
+
+function isRecoveredDraft(value: unknown): value is { sheetIndex: number; row: number; column: number; value: string } {
+	return typeof value === 'object' && value !== null && 'sheetIndex' in value && Number.isInteger(value.sheetIndex)
+		&& 'row' in value && Number.isInteger(value.row) && 'column' in value && Number.isInteger(value.column)
+		&& 'value' in value && typeof value.value === 'string';
+}
+
+function restoreCellDraft(draft: { sheetIndex: number; row: number; column: number; value: string }): void {
+	if (!snapshot || snapshot.readonly || draft.sheetIndex !== (snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0)
+		|| draft.row >= snapshot.rowCount || draft.column >= snapshot.columnCount || !canEditCell(draft.row, draft.column)) {return;}
+	selectCell(draft.row, draft.column);
+	cellEditor.value = draft.value;
+	editorDirty = true;
+	applyCellEditButton.disabled = false;
+	cellState.textContent = 'Borrador recuperado; presiona Aplicar para confirmar o Esc para descartarlo.';
+	sendDraftState(true, draft.value, { row: draft.row, column: draft.column });
+}
+
+function discardCellDraft(): void {
+	if (!snapshot || !selectedCell) {return;}
+	editorDirty = false;
+	cellEditor.value = snapshot.rows[selectedCell.row]?.[selectedCell.column] ?? '';
+	applyCellEditButton.disabled = true;
+	selectCell(selectedCell.row, selectedCell.column);
 }
 
 function isEditing(row: number, column: number): boolean {

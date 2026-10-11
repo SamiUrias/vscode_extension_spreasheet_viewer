@@ -2,10 +2,12 @@ import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SpreadsheetDocument } from './document';
-import { CsvDelimiterAmbiguityError } from './formats/csv';
+import { CsvDelimiterAmbiguityError, type CsvParseOptions } from './formats/csv';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
+import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
+import type { RecoveryDraft } from './recovery';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -27,6 +29,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private readonly ownWrites = new WeakMap<SpreadsheetDocument, Uint8Array[]>();
 	private readonly formulaSnapshots = new WeakMap<SpreadsheetDocument, { revision: number; base64: string }>();
 	private readonly panelDrafts = new Map<vscode.WebviewPanel, Extract<WebviewToExtensionMessage, { type: 'draftState' }>>();
+	private readonly draftTransactions = new Map<vscode.WebviewPanel, { current: Extract<WebviewToExtensionMessage, { type: 'draftState' }>; active: boolean }>();
+	private readonly draftCaptureWaiters = new Map<number, { panel: vscode.WebviewPanel; timer: ReturnType<typeof setTimeout>; resolve: (ok: boolean) => void }>();
+	private nextDraftCaptureId = 1;
 	private readonly panelListeners = new Map<vscode.WebviewPanel, vscode.Disposable[]>();
 	private readonly watcherListeners = new Map<string, vscode.Disposable[]>();
 	private readonly documents = new Map<string, SpreadsheetDocument>();
@@ -73,6 +78,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	dispose(): void {
 		for (const timer of this.saveTimers.values()) {clearTimeout(timer);}
 		for (const timer of this.externalTimers.values()) {clearTimeout(timer);}
+		for (const waiter of this.draftCaptureWaiters.values()) {clearTimeout(waiter.timer); waiter.resolve(false);}
+		this.draftCaptureWaiters.clear();
 		for (const watcher of this.watchers.values()) {watcher.dispose();}
 		for (const list of [...this.watcherListeners.values(), ...this.panelListeners.values()]) {for (const item of list) {item.dispose();}}
 		this.saveTimers.clear(); this.externalTimers.clear(); this.watchers.clear(); this.watcherListeners.clear(); this.panelListeners.clear();
@@ -85,8 +92,15 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	async openCustomDocument(uri: vscode.Uri, openContext: vscode.CustomDocumentOpenContext): Promise<SpreadsheetDocument> {
 		if (!await resolveDirtyTextBuffer(uri)) {throw new Error('Se canceló la apertura para conservar los cambios de texto sin guardar.');}
-		const backup = openContext.backupId ? await readBackup(openContext.backupId) : undefined;
-		try { return await SpreadsheetDocument.open(uri, backup); }
+		const backupBytes = openContext.backupId ? await readBackup(openContext.backupId) : undefined;
+		const recovery = backupBytes ? parseRecoveryEnvelope(backupBytes) : undefined;
+		const open = async (options?: CsvParseOptions): Promise<SpreadsheetDocument> => {
+			if (recovery) {return SpreadsheetDocument.restoreRecovery(uri, recovery, options);}
+			const document = await SpreadsheetDocument.open(uri, backupBytes, options);
+			if (backupBytes) {document.recoveryConflict = true;}
+			return document;
+		};
+		try { return await open(); }
 		catch (error) {
 			if (!(error instanceof CsvDelimiterAmbiguityError)) {throw error;}
 			const delimiter = await vscode.window.showQuickPick(error.delimiters.map(value => ({
@@ -95,7 +109,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			})), { title: 'Elige el separador del archivo', placeHolder: 'El archivo admite más de una interpretación.' });
 			if (!delimiter) {throw new Error('Se canceló la selección del dialecto CSV.');}
 			const commentPrefix = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<string>('commentPrefix', '#');
-			return SpreadsheetDocument.open(uri, backup, { delimiter: delimiter.value, persistDelimiter: true, commentPrefix: commentPrefix || undefined });
+			return open({ delimiter: delimiter.value, persistDelimiter: true, commentPrefix: commentPrefix || undefined });
 		}
 	}
 
@@ -110,6 +124,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		listeners.push(panel.onDidDispose(() => {
 			documentPanels.delete(panel);
 			this.panelDrafts.delete(panel);
+					this.draftTransactions.delete(panel);
 			if (documentPanels.size === 0) {this.panels.delete(key); this.documents.delete(key);}
 			if (documentPanels.size === 0) {this.disposeWatcher(key);}
 			if (documentPanels.size === 0) {
@@ -137,17 +152,20 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (isWebviewReadyMessage(message)) {
 				const restored = this.readViewState(document.uri, 'edit');
 				const workbook = document.xlsx ?? document.ods;
+				const recoveredDraft = document.takeRecoveredDraft();
 				const restoredIndex = workbook?.sheets.findIndex((_, index) => document.sheetId(index) === restored?.activeSheetId) ?? -1;
-				const activeIndex = restoredIndex >= 0 ? restoredIndex : 0;
+				const activeIndex = recoveredDraft?.sheetIndex ?? (restoredIndex >= 0 ? restoredIndex : 0);
 				this.activeSheets.set(panel, activeIndex);
 				try {
 					void panel.webview.postMessage({ type: 'restoreViewState', mode: 'edit', state: restored, corrupted: this.lastViewStateWasCorrupt });
 					if (!restored && workbook && vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('restoreState', true)) {
 						void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, activeIndex) } satisfies SortStateMessage);
 					}
-					this.postDocument(document, panel);
+					this.postDocument(document, panel, recoveredDraft);
 					this.postSaveState(document, { type: 'saveState', state: document.hasUnsavedChanges ? 'pending' : 'clean' }, panel);
-					if (document.hasUnsavedChanges) {this.scheduleSave(document);}
+					if (document.recoveryConflict) {
+						this.handleExternalConflict(document, false, false, 'Se recuperó un respaldo cuya versión base no coincide con el archivo actual. El borrador se conserva; guarda una copia para evitar sobrescribir cambios externos.');
+					} else if (document.hasUnsavedChanges) {this.scheduleSave(document);}
 				} catch (error) {
 					const detail = errorMessage(error);
 					this.output.appendLine(`No se pudo enviar el documento a la vista: ${detail}`);
@@ -186,8 +204,45 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isDraftStateMessage(message)) {
 				if (message.documentId !== document.documentId || message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {return;}
-				if (message.dirty) {this.panelDrafts.set(panel, message);}
-				else {this.panelDrafts.delete(panel);}
+				let transaction = this.draftTransactions.get(panel);
+				if (message.dirty) {
+					this.panelDrafts.set(panel, message);
+					if (!transaction || !transaction.active) {
+						transaction = { current: message, active: true };
+						this.draftTransactions.set(panel, transaction);
+						this.emitDraftTransaction(document, panel, transaction);
+					} else {transaction.current = message;}
+				} else {
+					this.panelDrafts.delete(panel);
+					if (transaction) {transaction.active = false;}
+				}
+				this.postSaveState(document, { type: 'saveState', state: 'pending' });
+				return;
+			}
+			if (isDraftCaptureResultMessage(message)) {
+				const waiter = this.draftCaptureWaiters.get(message.requestId);
+				if (!waiter || waiter.panel !== panel) {return;}
+				clearTimeout(waiter.timer);
+				this.draftCaptureWaiters.delete(message.requestId);
+				const draftSheet = (document.xlsx ?? document.ods)?.sheets[message.draft?.sheetIndex ?? -1];
+				const draftRowCount = document.csv?.rowCount ?? draftSheet?.rowCount ?? 0;
+				if (message.draft && message.draft.row < draftRowCount && message.draft.column < getColumnCount(document, message.draft.sheetIndex)) {
+					const state = { type: 'draftState' as const, dirty: true, documentId: document.documentId, revision: document.revision,
+						sheetId: document.sheetId(message.draft.sheetIndex), ...message.draft };
+					this.panelDrafts.set(panel, state);
+					const transaction = this.draftTransactions.get(panel);
+					if (transaction?.active) {transaction.current = state;}
+					else {
+						const next = { current: state, active: true };
+						this.draftTransactions.set(panel, next);
+						this.emitDraftTransaction(document, panel, next);
+					}
+				} else {
+					this.panelDrafts.delete(panel);
+					const transaction = this.draftTransactions.get(panel);
+					if (transaction) {transaction.active = false;}
+				}
+				waiter.resolve(true);
 				return;
 			}
 			if (isHistoryMessage(message)) {
@@ -224,6 +279,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		panel: vscode.WebviewPanel,
 		sheetIndex: number,
 		requestId?: number,
+		recoveredDraft?: RecoveryDraft,
 	): void {
 		const workbook = document.xlsx ?? document.ods;
 		if (!workbook || !Number.isInteger(sheetIndex) || sheetIndex < 0 || sheetIndex >= workbook.sheets.length) {
@@ -243,6 +299,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			sheetNames: workbook.sheets.map(item => item.name),
 			activeSheetIndex: sheetIndex,
 			...(requestId === undefined ? {} : { requestId }),
+			...(recoveredDraft ? { recoveredDraft } : {}),
 			rows: snapshot.rows,
 			cellKinds: snapshot.cellKinds ?? sheet.cellKinds,
 			cellTypes: snapshot.cellTypes ?? sheet.cellTypes,
@@ -319,6 +376,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				if (!this.externalConflicts.has(document.uri.toString())) {this.scheduleSave(document);}
 				throw new vscode.CancellationError();
 			}
+			const automaticSave = this.automaticSaveInFlight.has(document.uri.toString());
+			if (!automaticSave) {await this.confirmDraftsBeforeSave(document);}
 			const revision = document.revision;
 			const bytes = document.serializeCopy();
 			const conflict = this.externalConflicts.get(document.uri.toString());
@@ -328,7 +387,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				: 'El archivo cambió en disco; recarga o guarda una copia antes de continuar.');
 			}
 			if (equalBytes(bytes, document.sourceBytes)) {
-				this.postSaveState(document, { type: 'saveState', state: 'saved' });
+				this.postSaveState(document, { type: 'saveState', state: this.hasPendingDraft(document) ? 'pending' : 'saved' });
+				if (this.hasPendingDraft(document)) {this.markPendingDraftsDirty(document);}
 				return;
 			}
 			this.postSaveState(document, { type: 'saveState', state: 'saving' });
@@ -340,10 +400,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				await replaceFile(document.uri, bytes, document.sourceBytes, () => cancellation.isCancellationRequested);
 				document.sourceBytes = bytes.slice();
 				if (document.revision === revision) {
-					this.postSaveState(document, { type: 'saveState', state: 'saved' });
+					this.postSaveState(document, { type: 'saveState', state: this.hasPendingDraft(document) ? 'pending' : 'saved' });
 				} else {
 					this.scheduleSave(document);
 				}
+				if (this.hasPendingDraft(document)) {this.markPendingDraftsDirty(document);}
 			} catch (error) {
 				if (isCancellationError(error)) {
 					// VS Code may cancel an in-flight save when a newer autosave request
@@ -375,6 +436,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	}
 
 	async saveCustomDocumentAs(document: SpreadsheetDocument, destination: vscode.Uri, _cancellation: vscode.CancellationToken): Promise<void> {
+		await this.confirmDraftsBeforeSave(document);
 		if (path.posix.extname(destination.path).toLowerCase() !== path.posix.extname(document.uri.path).toLowerCase()) {
 			throw new Error('Save As debe conservar la extensión del formato actual.');
 		}
@@ -459,12 +521,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				document,
 				label: `Editar ${columnName(message.column + 1)}${message.row + 1}`,
 				undo: () => { if (document.undo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
-				redo: () => { if (document.redo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
+				redo: () => { if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, [{ sheetIndex: message.sheetIndex, row: message.row, column: message.column, value: message.value }]); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
 			this.postDocument(document);
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
-			if (scheduleSave) {this.scheduleSave(document);}
+			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
 		} catch (error) {
 			const messageText = errorMessage(error);
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
@@ -476,8 +538,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		document: SpreadsheetDocument,
 		message: Pick<Extract<WebviewToExtensionMessage, { type: 'editCells' }>, 'documentId' | 'revision' | 'sheetIndex' | 'sheetId'>,
 		edits: Array<{ sheetIndex: number; row: number; column: number; value: string; targetType?: 'string' | 'number' | 'boolean' | 'date' }>,
-	): void {
-		if (document.isDisposed) {return;}
+		scheduleSave = true,
+	): boolean {
+		if (document.isDisposed) {return false;}
 		try {
 			if (message.documentId !== document.documentId || message.revision !== document.revision
 				|| message.sheetId !== document.sheetId(message.sheetIndex)) {
@@ -485,22 +548,108 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (document.csv && edits.some(edit => document.csv?.rowKinds[edit.row] === 'comment')) {throw new Error('Los registros de comentario CSV no se pueden editar como celdas.');}
 			const transactionId = document.editCells(edits);
-			if (transactionId === undefined) {return;}
+			if (transactionId === undefined) {return false;}
 			const event: vscode.CustomDocumentEditEvent<SpreadsheetDocument> = {
 				document,
 				label: `Editar ${edits.length} celdas`,
 				undo: () => { if (document.undo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
-				redo: () => { if (document.redo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
+				redo: () => { if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, edits); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
 			this.postDocument(document);
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
-			this.scheduleSave(document);
+			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
+			return true;
 		} catch (error) {
 			const messageText = errorMessage(error);
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
 			void vscode.window.showErrorMessage(`No se pudo aplicar la edición: ${messageText}`);
+			return false;
 		}
+	}
+
+	private async confirmDraftsBeforeSave(document: SpreadsheetDocument): Promise<void> {
+		if (!await this.captureDrafts(document)) {throw new Error('No se pudo confirmar el borrador visible; se canceló guardar para conservarlo.');}
+		const entries = [...(this.panels.get(document.uri.toString()) ?? [])]
+			.map(panel => ({ panel, draft: this.panelDrafts.get(panel) })).filter((entry): entry is { panel: vscode.WebviewPanel; draft: NonNullable<typeof entry.draft> } => Boolean(entry.draft));
+		if (!entries.length) {return;}
+		const choice = await vscode.window.showWarningMessage(
+			'Hay texto de celda sin confirmar. ¿Quieres aplicarlo antes de guardar?',
+			{ modal: true }, 'Aplicar borradores y guardar', 'Guardar solo cambios aplicados', 'Cancelar',
+		);
+		if (choice === 'Cancelar' || choice === undefined) {throw new vscode.CancellationError();}
+		if (choice === 'Aplicar borradores y guardar') {
+			const edits = entries.map(({ draft }) => ({ sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value }));
+			const changed = edits.some(edit => {
+				const current = document.editSession.getCell(edit.sheetIndex, edit.row, edit.column);
+				return current.value !== edit.value || !current.exists;
+			});
+			if (!changed) {this.clearAllDrafts(document); return;}
+			const message = { documentId: document.documentId, revision: document.revision, sheetIndex: edits[0]!.sheetIndex, sheetId: document.sheetId(edits[0]!.sheetIndex) };
+			if (!this.applyEditBatch(document, message, edits, false)) {throw new Error('No se pudo aplicar el borrador; no se guardó el archivo.');}
+			this.clearAllDrafts(document);
+		} else {this.markPendingDraftsDirty(document);}
+	}
+
+	private clearAllDrafts(document: SpreadsheetDocument): void {
+		for (const panel of this.panels.get(document.uri.toString()) ?? []) {
+			this.panelDrafts.delete(panel);
+			const transaction = this.draftTransactions.get(panel);
+			if (transaction) {transaction.active = false;}
+			void panel.webview.postMessage({ type: 'discardCellDraft' });
+		}
+	}
+
+	private markPendingDraftsDirty(document: SpreadsheetDocument): void {
+		for (const panel of this.panels.get(document.uri.toString()) ?? []) {
+			const transaction = this.draftTransactions.get(panel);
+			if (transaction?.active) {this.emitDraftTransaction(document, panel, transaction);}
+		}
+	}
+
+	private emitDraftTransaction(
+		document: SpreadsheetDocument,
+		panel: vscode.WebviewPanel,
+		state: { current: Extract<WebviewToExtensionMessage, { type: 'draftState' }>; active: boolean },
+	): void {
+		this.emitter.fire({
+			document, label: 'Borrador de celda sin confirmar',
+			undo: () => {
+				if (!state.active) {return;}
+				state.active = false;
+				this.panelDrafts.delete(panel);
+				void panel.webview.postMessage({ type: 'discardCellDraft' });
+				this.postSaveState(document, { type: 'saveState', state: document.hasUnsavedChanges ? 'pending' : 'clean' });
+			},
+			redo: () => {
+				if (state.active || document.isDisposed) {return;}
+				state.active = true;
+				const current = { ...state.current, revision: document.revision, sheetId: document.sheetId(state.current.sheetIndex) };
+				state.current = current;
+				this.panelDrafts.set(panel, current);
+				void panel.webview.postMessage({ type: 'restoreCellDraft', draft: { sheetIndex: current.sheetIndex, row: current.row, column: current.column, value: current.value } });
+				this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			},
+		});
+	}
+
+	private clearPendingDraftsForCells(
+		document: SpreadsheetDocument,
+		edits: readonly { sheetIndex: number; row: number; column: number; value: string }[],
+	): void {
+		for (const [panel, state] of this.draftTransactions) {
+			if (!state.active) {continue;}
+			const draft = state.current;
+			if (draft.documentId !== document.documentId || !edits.some(edit => edit.sheetIndex === draft.sheetIndex
+				&& edit.row === draft.row && edit.column === draft.column && edit.value === draft.value)) {continue;}
+			state.active = false;
+			this.panelDrafts.delete(panel);
+			void panel.webview.postMessage({ type: 'discardCellDraft' });
+		}
+	}
+
+	private saveOnCommit(document: SpreadsheetDocument): boolean {
+		return vscode.workspace.getConfiguration('spreadsheet-viewer.edit', document.uri).get<boolean>('saveOnCommit', true);
 	}
 
 	private watchDocument(document: SpreadsheetDocument): void {
@@ -634,6 +783,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					sheetIndex: draft.sheetIndex, sheetId: draft.sheetId, row: draft.row, column: draft.column, value: draft.value }, false);
 			}
 		}
+		this.clearAllDrafts(document);
 		const extension = path.posix.extname(document.uri.path);
 		const baseName = path.posix.basename(document.uri.path, extension);
 		const destination = await vscode.window.showSaveDialog({
@@ -707,7 +857,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}, 300));
 	}
 
-	private postDocument(document: SpreadsheetDocument, onlyPanel?: vscode.WebviewPanel): void {
+	private postDocument(document: SpreadsheetDocument, onlyPanel?: vscode.WebviewPanel, recoveredDraft?: RecoveryDraft): void {
 		const panels = onlyPanel ? [onlyPanel] : [...(this.panels.get(document.uri.toString()) ?? [])];
 		for (const panel of panels) {
 			if (document.csv) {
@@ -727,6 +877,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					rowComments: document.csv.rowComments,
 					headerLabels,
 					formatSchema: `csv:${document.csv.delimiter}:${document.csv.quoteChar}:${document.csv.quotes ? 1 : 0}:${document.csv.commentPrefix ?? 'no-comments'}:${headerRow < 0 ? 'none' : createHeaderSignature(csvRows[headerRow] ?? [])}`,
+					...(recoveredDraft ? { recoveredDraft } : {}),
 				};
 				void panel.webview.postMessage(data);
 			} else if (document.xlsx || document.ods) {
@@ -734,7 +885,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				if (!workbook) {continue;}
 				const index = Math.min(this.activeSheets.get(panel) ?? 0, Math.max(0, workbook.sheets.length - 1));
 				this.activeSheets.set(panel, index);
-				this.postXlsxSheet(document, panel, index);
+				this.postXlsxSheet(document, panel, index, undefined, recoveredDraft);
 			}
 		}
 	}
@@ -764,13 +915,39 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	async backupCustomDocument(
 		document: SpreadsheetDocument,
 		context: vscode.CustomDocumentBackupContext,
-		_cancellation: vscode.CancellationToken,
+		cancellation: vscode.CancellationToken,
 	): Promise<vscode.CustomDocumentBackup> {
 		const id = context.destination.toString();
-		const bytes = document.serializeCopy();
-		document.validateCopy(bytes);
+		if (cancellation.isCancellationRequested) {throw new vscode.CancellationError();}
+		if (!await this.captureDrafts(document)) {throw new Error('No se pudo recoger el texto sin confirmar; se canceló la copia de recuperación para no perderlo.');}
+		if (cancellation.isCancellationRequested) {throw new vscode.CancellationError();}
+		const workingBytes = document.serializeCopy();
+		document.validateCopy(workingBytes);
+		const drafts = [...(this.panels.get(document.uri.toString()) ?? [])]
+			.map(panel => this.panelDrafts.get(panel)).filter((draft): draft is NonNullable<typeof draft> => Boolean(draft));
+		const draft = drafts.at(-1);
+		const bytes = serializeRecoveryEnvelope({
+			uri: document.uri.toString(), baselineBytes: document.sourceBytes, workingBytes,
+			...(draft ? { draft: { sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value } } : {}),
+		});
 		await writeBackup(context.destination, bytes);
 		return { id, delete: () => { void deleteBackup(id); } };
+	}
+
+	private async captureDrafts(document: SpreadsheetDocument): Promise<boolean> {
+		const panels = [...(this.panels.get(document.uri.toString()) ?? [])];
+		const results = await Promise.all(panels.map(panel => new Promise<boolean>(resolve => {
+			const requestId = this.nextDraftCaptureId++;
+			const timer = setTimeout(() => {this.draftCaptureWaiters.delete(requestId); resolve(false);}, 1_500);
+			this.draftCaptureWaiters.set(requestId, { panel, timer, resolve });
+			void panel.webview.postMessage({ type: 'captureDraft', requestId }).then(sent => {
+				if (!sent) {
+					const waiter = this.draftCaptureWaiters.get(requestId);
+					if (waiter) {clearTimeout(waiter.timer); this.draftCaptureWaiters.delete(requestId); waiter.resolve(false);}
+				}
+			});
+		})));
+		return results.every(Boolean);
 	}
 
 	getHtml(uri: vscode.Uri, webview: vscode.Webview, modeLabel?: string): string {
@@ -993,6 +1170,16 @@ function isDraftStateMessage(message: unknown): message is Extract<WebviewToExte
 	return typeof candidate.dirty === 'boolean' && typeof candidate.documentId === 'string' && Number.isInteger(candidate.revision)
 		&& typeof candidate.sheetId === 'string' && Number.isInteger(candidate.sheetIndex)
 		&& Number.isInteger(candidate.row) && Number.isInteger(candidate.column) && typeof candidate.value === 'string';
+}
+
+function isDraftCaptureResultMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'draftCaptureResult' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'draftCaptureResult'
+		|| !('requestId' in message) || !Number.isInteger(message.requestId)) {return false;}
+	if (!('draft' in message) || message.draft === undefined) {return true;}
+	const draft = message.draft;
+	return typeof draft === 'object' && draft !== null && 'sheetIndex' in draft && Number.isInteger(draft.sheetIndex)
+		&& 'row' in draft && Number.isInteger(draft.row) && 'column' in draft && Number.isInteger(draft.column)
+		&& 'value' in draft && typeof draft.value === 'string';
 }
 
 function isSetSortMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'setSort' }> {

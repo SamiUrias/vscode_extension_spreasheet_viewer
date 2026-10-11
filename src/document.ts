@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
+import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
@@ -14,6 +15,8 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	sourceBytes: Uint8Array;
 	editSession: SpreadsheetEditSession;
 	revision = 0;
+	recoveryConflict = false;
+	private recoveredDraft: RecoveryDraft | undefined;
 	private disposed = false;
 	private csvOptions: CsvParseOptions;
 
@@ -39,8 +42,61 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return new SpreadsheetDocument(uri, await SpreadsheetDocument.readBytes(uri), undefined, csvOptions ?? optionsForUri(uri));
 	}
 
+	static async restoreRecovery(uri: vscode.Uri, backup: RecoveryEnvelopeV1, csvOptions?: CsvParseOptions): Promise<SpreadsheetDocument> {
+		if (backup.uri !== uri.toString()) {throw new Error('La copia de recuperación pertenece a otro archivo.');}
+		const document = new SpreadsheetDocument(uri, backup.baselineBytes, backup.baselineBytes, csvOptions ?? optionsForUri(uri));
+		document.restoreWorkingBytes(backup.workingBytes);
+		document.recoveredDraft = backup.draft;
+		try {
+			document.recoveryConflict = !equalBytes(await SpreadsheetDocument.readBytes(uri), backup.baselineBytes);
+		} catch {document.recoveryConflict = true;}
+		return document;
+	}
+
+	takeRecoveredDraft(): RecoveryDraft | undefined {
+		const draft = this.recoveredDraft;
+		this.recoveredDraft = undefined;
+		return draft;
+	}
+
 	static fromBytes(uri: vscode.Uri, bytes: Uint8Array, csvOptions?: CsvParseOptions): SpreadsheetDocument {
 		return new SpreadsheetDocument(uri, bytes, bytes, csvOptions ?? optionsForUri(uri));
+	}
+
+	private restoreWorkingBytes(workingBytes: Uint8Array): void {
+		const working = parseDocument(this.uri, workingBytes, this.csvOptions);
+		const edits: CellEditInput[] = [];
+		if (this.csv && working.csv) {
+			if (this.csv.rowCount !== working.csv.rowCount || this.csv.columnCount !== working.csv.columnCount) {throw new Error('La copia contiene cambios estructurales CSV que esta versión no puede recuperar.');}
+			for (let row = 0; row < this.csv.rowCount; row++) {
+				for (let column = 0; column < this.csv.columnCount; column++) {
+					const before = this.editSession.getCell(0, row, column), after = working.csv.rows[row]?.[column];
+					const exists = column < (working.csv.rows[row]?.length ?? 0);
+					if (before.value !== (after ?? '') || before.exists !== exists) {
+						if (!exists) {throw new Error('La copia contiene una eliminación de campo CSV no recuperable.');}
+						edits.push({ sheetIndex: 0, row, column, value: after ?? '' });
+					}
+				}
+			}
+		} else {
+			const baseline = this.xlsx ?? this.ods, current = working.xlsx ?? working.ods;
+			if (!baseline || !current || baseline.sheets.length !== current.sheets.length) {throw new Error('La copia de recuperación no corresponde al formato del archivo.');}
+			const workingSession = new SpreadsheetEditSession(working.csv, working.xlsx, working.xlsx ? workingBytes : undefined, working.ods, working.ods ? workingBytes : undefined);
+			for (let sheetIndex = 0; sheetIndex < baseline.sheets.length; sheetIndex++) {
+				const beforeSheet = baseline.sheets[sheetIndex]!, afterSheet = current.sheets[sheetIndex]!;
+				if (beforeSheet.name !== afterSheet.name || beforeSheet.rowCount !== afterSheet.rowCount || beforeSheet.columnCount !== afterSheet.columnCount) {throw new Error('La copia contiene cambios estructurales de hoja que esta versión no puede recuperar.');}
+				for (let row = 0; row < beforeSheet.rowCount; row++) {
+					for (let column = 0; column < beforeSheet.columnCount; column++) {
+						const before = this.editSession.getCell(sheetIndex, row, column), after = workingSession.getCell(sheetIndex, row, column);
+						if (before.value !== after.value || before.type !== after.type || before.exists !== after.exists) {
+							if (!after.exists || ['formula', 'error', 'unsupported'].includes(after.storedType)) {throw new Error('La copia contiene un cambio de celda que esta versión no puede recuperar.');}
+							edits.push({ sheetIndex, row, column, value: after.value, targetType: after.type });
+						}
+					}
+				}
+			}
+		}
+		if (edits.length) {this.editSession.editCells(edits); this.revision++;}
 	}
 
 	static async readBytes(uri: vscode.Uri): Promise<Uint8Array> {
@@ -110,6 +166,10 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	updateCsvOptions(options: CsvParseOptions): void { this.csvOptions = { ...options }; }
 
 	dispose(): void { this.disposed = true; }
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+	return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 }
 
 function optionsForUri(uri: vscode.Uri): CsvParseOptions {

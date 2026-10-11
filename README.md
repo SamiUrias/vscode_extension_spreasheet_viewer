@@ -8,6 +8,7 @@
 
 - **One table for common spreadsheet files:** open CSV, TSV, TAB, XLSX, and ODS files in an editor tab.
 - **Edit and save cells:** edit values in place or in the cell editor and save changes to the original file.
+- **Choose when changes are written:** automatic saving after confirming an edit is on by default; it can be disabled to save with `Ctrl+S` (`Cmd+S` on macOS).
 - **Keep raw values visible:** values are not silently converted to dates, percentages, or display-formatted numbers.
 - **Find data quickly:** search the active sheet and jump to a cell by reference, such as `B54`.
 - **Sort and filter the view:** sort by multiple columns and filter by raw values or conditions. These operations do not reorder or remove data in the file.
@@ -88,6 +89,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
 | `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
+| `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. |
 
 For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.
 
