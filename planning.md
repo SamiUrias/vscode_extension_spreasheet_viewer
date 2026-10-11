@@ -806,7 +806,10 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Exponer en el snapshot de hoja valores, tipos y kinds derivados del journal para no enviar metadata inicial desactualizada al webview.
 - [x] Añadir ruta host `editCells` con un único evento de undo, revisión, snapshot y guardado por lote; mantener fuera una interfaz de pegado.
 - [x] Verificar atomicidad, transacción única, no-op, identidad undo/redo, metadata XLSX y suites de clipboard/modelo/formatos (29 tests focalizados pasan).
-- [ ] Ejecutar pruebas completas de save lifecycle, conflicto y Extension Host; el runner general sigue bloqueado por Node 18.20.4 y su dependencia `/v`.
+- [x] Añadir `npm run test:save-coordinator`, que ejercita el `saveCustomDocument` real con escritura diferida y comprueba que una edición durante el guardado programe y guarde la revisión siguiente; comprobar que un conflicto externo preserve bytes del disco, baseline y journal local.
+- [x] Confirmar en Extension Development Host que una segunda edición se guarda; el usuario confirmó que el fallo de guardado ya estaba corregido.
+
+**Estado de verificación:** V2-12A verificada en pruebas de transacción y coordinación de guardado. `test:edit-transactions` pasa siete casos y `test:save-coordinator` pasa ambos escenarios de revisión en vuelo y conflicto. El runner aislado `test:save-lifecycle` sigue sin poder iniciar otro VS Code: la app local termina con `SIGABRT` antes de cargar las pruebas, y sin ruta local intenta descargar el host pero el DNS falla. La confirmación manual del host y las pruebas directas del proveedor cubren el guardado; conservar el problema de arranque del runner para el cierre global V2-25.
 
 #### V2-12B — Backup de draft y recuperación coherente
 

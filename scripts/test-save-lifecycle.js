@@ -23,6 +23,24 @@ async function main() {
 				contents: `
 const vscode = require('vscode');
 const { SpreadsheetEditorProvider } = require('./src/editor');
+const fs = require('node:fs/promises');
+const { setLocalFileReplaceAdapter } = require('./src/storage');
+let nextWriteGate;
+setLocalFileReplaceAdapter(async (uri, bytes, expected) => {
+	const gate = nextWriteGate;
+	nextWriteGate = undefined;
+	if (gate) {gate.start(); await gate.releasePromise;}
+	const same = async value => Buffer.from(await fs.readFile(uri.fsPath)).equals(Buffer.from(value));
+	if (expected && !await same(expected)) {throw new Error('El archivo cambió en disco desde que se abrió.');}
+	const mode = (await fs.stat(uri.fsPath)).mode & 0o777;
+	const temporary = uri.fsPath + '.save-lifecycle.tmp';
+	try {
+		await fs.writeFile(temporary, bytes);
+		await fs.chmod(temporary, mode);
+		if (!await same(expected ?? await fs.readFile(uri.fsPath))) {throw new Error('El archivo cambió en disco durante el guardado.');}
+		await fs.rename(temporary, uri.fsPath);
+	} finally {await fs.rm(temporary, { force: true });}
+});
 exports.activate = context => {
 	// Reproduce the old replacement route when explicitly requested.
 	if (process.env.SAVE_LIFECYCLE_OLD_RENAME === '1') {
@@ -37,6 +55,13 @@ exports.activate = context => {
 		SpreadsheetEditorProvider.viewType, provider, { supportsMultipleEditorsPerDocument: false }));
 	return {
 		get document() { return document; },
+		holdNextWrite() {
+			let start, release;
+			const started = new Promise(resolve => {start = resolve;});
+			const releasePromise = new Promise(resolve => {release = resolve;});
+			nextWriteGate = { start, releasePromise };
+			return { started, release };
+		},
 		commit(row, column, value) {
 			provider.applyEdit(document, { type: 'editCell', documentId: document.documentId,
 				revision: document.revision, sheetId: document.sheetId(0), sheetIndex: 0, row, column, value });
@@ -80,6 +105,7 @@ exports.run = async () => {
 	const first = 'name,value\\nfirst,10\\nsecond,2\\n';
 	const second = 'name,value\\nfirst,10\\nsecond,20\\n';
 	const third = 'name,value\\nfirst,30\\nsecond,40\\n';
+	const fifth = 'name,value\\nfirst,50\\nsecond,60\\n';
 	api.commit(1, 1, '10');
 	await waitFor('first autosave', saved(first));
 	api.commit(2, 1, '20');
@@ -87,10 +113,16 @@ exports.run = async () => {
 	api.commit(1, 1, '30');
 	api.commit(2, 1, '40');
 	await waitFor('rapid consecutive edits', saved(third));
+	const gate = api.holdNextWrite();
+	api.commit(1, 1, '50');
+	await gate.started;
+	api.commit(2, 1, '60');
+	gate.release();
+	await waitFor('edit committed while a save is in flight', saved(fifth));
 	await vscode.commands.executeCommand('undo');
-	await waitFor('undo autosave', saved('name,value\\nfirst,30\\nsecond,20\\n'));
+	await waitFor('undo autosave', saved('name,value\\nfirst,50\\nsecond,40\\n'));
 	await vscode.commands.executeCommand('redo');
-	await waitFor('redo autosave', saved(third));
+	await waitFor('redo autosave', saved(fifth));
 	await vscode.window.tabGroups.close(tab());
 	const formulaPath = path.join(__dirname, 'formula.xlsx');
 	await copyFile(path.join(${JSON.stringify(root)}, 'src/test/fixtures/xlsx/formula_excel.xlsx'), formulaPath);
@@ -116,7 +148,7 @@ exports.run = async () => {
 	const formulaTab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
 		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === formulaUri.toString());
 	await vscode.window.tabGroups.close(formulaTab());
-	console.log('PASS: CSV autosave lifecycle and XLSX formula edit/save/reopen/undo/redo');
+	console.log('PASS: CSV autosave and in-flight revision lifecycle; XLSX formula edit/save/reopen/undo/redo');
 };
 `);
 		// An integrated terminal can inherit this from VS Code's Node processes.
