@@ -199,6 +199,9 @@ exports.run = async () => {
 	await vscode.commands.executeCommand('redo');
 	await waitFor('empty CSV row redo', async () => (await readFile(emptyCsvUri.fsPath, 'utf8')) === ',,');
 	await vscode.window.tabGroups.close(emptyTab());
+	await vscode.commands.executeCommand('vscode.openWith', uri, 'spreadsheet-viewer.editor');
+	await waitFor('original CSV reopened', async () => api.document?.uri.toString() === uri.toString(), false);
+	await waitFor('original CSV panel ready', async () => tab()?.isDirty === false);
 	api.commit(1, 1, '30');
 	api.commit(2, 1, '40');
 	await waitFor('rapid consecutive edits', saved(third));
