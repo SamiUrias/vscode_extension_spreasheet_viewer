@@ -12,7 +12,7 @@ import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewSta
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
 import { isCellCoveredByRange } from './cell-reference';
-import { validateFormulaExpression } from './formula-reference';
+import { transformFormulaReferences, validateFormulaExpression } from './formula-reference';
 import { serializeXlsxEdits } from './formats/xlsx';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import type { CellEditDeltaMessage, WorkbookCellEditDeltaMessage } from './protocol';
@@ -87,6 +87,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showFormulaAssistance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showFormulaAssistance', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'formulaAssistanceVisibility', visible });}
+				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showFormulaFillActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showFormulaFillActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'formulaFillActionsVisibility', visible });}
 				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
@@ -260,6 +264,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isXlsxStructureOperationMessage(message)) {
 				void this.applyXlsxStructureOperation(document, panel, message);
+				return;
+			}
+			if (isFillFormulaRangeMessage(message)) {
+				void this.applyFormulaFill(document, panel, message);
 				return;
 			}
 			if (isDraftStateMessage(message)) {
@@ -685,6 +693,60 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
 			void vscode.window.showErrorMessage(`No se pudo aplicar la fórmula: ${messageText}`);
 			return false;
+		}
+	}
+
+	private async applyFormulaFill(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'fillFormulaRange' }>): Promise<void> {
+		try {
+			if (document.isReadOnly || !document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('El rango de fórmulas quedó desactualizado o no es editable.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true)) {
+				throw new Error('La edición de fórmulas XLSX está desactivada en Settings.');
+			}
+			const { startRow, startColumn, endRow, endColumn, direction } = message;
+			const sheet = document.xlsx.sheets[message.sheetIndex];
+			if (!sheet || ![startRow, startColumn, endRow, endColumn].every(Number.isInteger)
+				|| startRow < 0 || startColumn < 0 || endRow < startRow || endColumn < startColumn
+				|| endRow >= sheet.rowCount || endColumn >= sheet.columnCount) {throw new Error('El rango seleccionado está fuera de la hoja.');}
+			const height = endRow - startRow + 1, width = endColumn - startColumn + 1;
+			if (height * width > 100_000 || direction === 'down' && height < 2 || direction === 'right' && width < 2) {throw new Error('El rango no es válido o excede el límite de 100,000 celdas.');}
+			const parser = await loadFormulaParserService(this.extensionUri);
+			if (message.revision !== document.revision || document.isDisposed) {throw new Error('El libro cambió mientras se preparaban las fórmulas; vuelve a intentarlo.');}
+			const formulas: Array<{ sheetIndex: number; row: number; column: number; formula: string }> = [];
+			const sourceCells = direction === 'down'
+				? Array.from({ length: width }, (_, index) => ({ row: startRow, column: startColumn + index }))
+				: Array.from({ length: height }, (_, index) => ({ row: startRow + index, column: startColumn }));
+			for (const source of sourceCells) {
+				const cell = document.editSession.getCell(message.sheetIndex, source.row, source.column);
+				if (cell.storedType !== 'formula' || !cell.value.startsWith('=')) {throw new Error(`La celda ${columnName(source.column + 1)}${source.row + 1} del origen no contiene una fórmula normal.`);}
+				const destinations = direction === 'down'
+					? Array.from({ length: height - 1 }, (_, index) => ({ row: startRow + index + 1, column: source.column }))
+					: Array.from({ length: width - 1 }, (_, index) => ({ row: source.row, column: startColumn + index + 1 }));
+				for (const destination of destinations) {
+					const transformed = await transformFormulaReferences(cell.value, { kind: 'copy', rowOffset: destination.row - source.row, columnOffset: destination.column - source.column }, parser);
+					if (transformed.status === 'unsupported') {throw new Error(`No se pudo transformar ${columnName(source.column + 1)}${source.row + 1}: ${transformed.reason}`);}
+					if (!cell.value.includes('#REF!') && transformed.formula.includes('#REF!')) {throw new Error(`La copia desde ${columnName(source.column + 1)}${source.row + 1} produciría una referencia fuera del límite de Excel.`);}
+					formulas.push({ sheetIndex: message.sheetIndex, ...destination, formula: transformed.formula });
+				}
+			}
+			if (!formulas.length) {throw new Error('El rango no contiene destinos de fórmula.');}
+			await document.editSession.validateFormulaBatch(formulas, parser);
+			const preview = formulas.slice(0, 8).map(edit => `${columnName(edit.column + 1)}${edit.row + 1} = ${edit.formula}`).join('\n');
+			const suffix = formulas.length > 8 ? `\n… y ${formulas.length - 8} fórmulas más.` : '';
+			const answer = await vscode.window.showWarningMessage(`Vista previa de ${formulas.length} fórmulas:\n${preview}${suffix}`, { modal: true }, 'Aplicar');
+			if (answer !== 'Aplicar') {return;}
+			if (message.revision !== document.revision || document.isDisposed || this.hasPendingDraft(document)) {throw new Error('El documento cambió o tiene un borrador sin confirmar; vuelve a preparar el relleno.');}
+			const transactionId = await document.editFormulas(formulas, parser);
+			if (transactionId === undefined) {return;}
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({ document, label: `Rellenar ${formulas.length} fórmulas`, undo: () => {if (document.undo(transactionId)) {update();}}, redo: () => {if (document.redo(transactionId)) {update();}} });
+			this.postDocument(document);
+			this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			if (this.saveOnCommit(document)) {this.scheduleSave(document);}
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
+			void vscode.window.showErrorMessage(`No se pudieron rellenar las fórmulas: ${messageText}`);
 		}
 	}
 
@@ -1252,6 +1314,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showFillActions = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showFillActions', true);
 		const showFormulaEditing = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('allowFormulaEditing', true);
 		const showFormulaAssistance = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaAssistance', true);
+		const showFormulaFillActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaFillActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
@@ -1282,6 +1345,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
 					</div>
 					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">Rellenar rango</button><span id="fill-range-tooltip" role="tooltip">Repite los valores o extiende una serie numérica en el rango seleccionado. Muestra una vista previa antes de aplicar; se puede deshacer.</span></span>
+					<div id="formula-fill-actions" data-setting-visible="${showFormulaFillActions}"${showFormulaFillActions ? '' : ' hidden'}><span class="copy-control"><button id="fill-formulas-down" type="button" aria-describedby="fill-formulas-down-tooltip">Rellenar fórmulas abajo</button><span id="fill-formulas-down-tooltip" role="tooltip">Copia las fórmulas de la primera fila seleccionada hacia abajo y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span><span class="copy-control"><button id="fill-formulas-right" type="button" aria-describedby="fill-formulas-right-tooltip">Rellenar fórmulas derecha</button><span id="fill-formulas-right-tooltip" role="tooltip">Copia las fórmulas de la primera columna seleccionada hacia la derecha y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span></div>
 					<span class="copy-control"><button id="toggle-display-mode" type="button"${showDisplayModeButton ? '' : ' hidden'} aria-describedby="display-mode-tooltip">Ver libro</button><span id="display-mode-tooltip" role="tooltip">Alterna entre valores crudos y su formato numérico de presentación. No modifica el archivo.</span></span>
 					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="Acciones de registros CSV">
 						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>
@@ -1506,6 +1570,16 @@ function isXlsxStructureOperationMessage(message: unknown): message is Extract<W
 		&& Number.isInteger(value.sheetIndex) && ['insertRows', 'deleteRows', 'insertColumns', 'deleteColumns'].includes(String(value.kind))
 		&& Number.isInteger(value.index) && Number(value.index) >= 0 && Number.isInteger(value.count)
 		&& Number(value.count) > 0 && Number(value.count) <= 50_000;
+}
+
+function isFillFormulaRangeMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'fillFormulaRange' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'fillFormulaRange') {return false;}
+	const value = message as Record<string, unknown>;
+	return typeof value.documentId === 'string' && Number.isInteger(value.revision) && typeof value.sheetId === 'string'
+		&& Number.isInteger(value.sheetIndex) && (value.direction === 'down' || value.direction === 'right')
+		&& Number.isInteger(value.startRow) && Number(value.startRow) >= 0 && Number.isInteger(value.startColumn) && Number(value.startColumn) >= 0
+		&& Number.isInteger(value.endRow) && Number(value.endRow) >= Number(value.startRow)
+		&& Number.isInteger(value.endColumn) && Number(value.endColumn) >= Number(value.startColumn);
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {

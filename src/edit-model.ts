@@ -23,6 +23,7 @@ interface CellEdit extends CellValue {
 export interface CellEditInput {
 	readonly sheetIndex: number; readonly row: number; readonly column: number; readonly value: string; readonly targetType?: EditableCellType;
 }
+export interface FormulaEditInput { readonly sheetIndex: number; readonly row: number; readonly column: number; readonly formula: string; }
 interface CellChange { readonly key: string; readonly before: CellEdit | undefined; readonly after: CellEdit | undefined; }
 interface EditState { readonly csv: CsvTable; readonly edits: Map<string, CellEdit>; }
 interface XlsxStructureState { readonly workbook: XlsxWorkbook; readonly bytes: Uint8Array; }
@@ -180,6 +181,45 @@ export class SpreadsheetEditSession {
 		this.undoStack.push(transaction);
 		this.redoStack.length = 0;
 		return transaction.id;
+	}
+
+	/** Validates and preflights the whole set before recording one undoable formula transaction. */
+	async editFormulas(inputs: readonly FormulaEditInput[], parser: FormulaParserService): Promise<number | undefined> {
+		await this.validateFormulaBatch(inputs, parser);
+		if (!inputs.length) {return undefined;}
+		const changes: CellChange[] = [];
+		for (const input of inputs) {
+			const key = cellKey(input.sheetIndex, input.row, input.column);
+			const original = this.original(input.sheetIndex, input.row, input.column);
+			const after: CellEdit = { sheetIndex: input.sheetIndex, row: input.row, column: input.column, value: input.formula, type: 'formula', storedType: 'formula', exists: true };
+			const normalized = equivalent(after, original) ? undefined : after;
+			const before = this.edits.get(key);
+			if (!sameEdit(before, normalized)) {changes.push({ key, before, after: normalized });}
+		}
+		if (!changes.length) {return undefined;}
+		for (const change of changes) {this.assign(change.key, change.after);}
+		const transaction = { id: this.nextTransactionId++, changes };
+		this.undoStack.push(transaction);
+		this.redoStack.length = 0;
+		return transaction.id;
+	}
+
+	async validateFormulaBatch(inputs: readonly FormulaEditInput[], parser: FormulaParserService): Promise<void> {
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La edición de fórmulas solo está disponible en libros XLSX.');}
+		if (!inputs.length) {throw new Error('El rango no contiene fórmulas de destino.');}
+		const keys = new Set<string>();
+		for (const input of inputs) {
+			const sheet = this.xlsx.sheets[input.sheetIndex];
+			if (!sheet || !Number.isInteger(input.row) || !Number.isInteger(input.column) || input.row < 0 || input.column < 0
+				|| input.row >= sheet.rowCount || input.column >= sheet.columnCount) {throw new Error('Una fórmula está fuera del rango actual.');}
+			if (sheet.metadata?.protected || sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, input.row, input.column))) {throw new Error('El rango incluye una celda protegida o combinada.');}
+			const key = cellKey(input.sheetIndex, input.row, input.column);
+			if (keys.has(key)) {throw new Error('La transacción contiene una celda repetida.');}
+			keys.add(key);
+			await validateFormulaExpression(input.formula, parser);
+		}
+		const xlsxEdits: XlsxCellEdit[] = inputs.map(input => ({ sheetIndex: input.sheetIndex, row: input.row, column: input.column, value: input.formula, type: 'formula' }));
+		serializeXlsxEdits(this.serializeCopy(), xlsxEdits);
 	}
 
 	undo(transactionId?: number): boolean {

@@ -59,6 +59,7 @@ suite('Spreadsheet Viewer editor', () => {
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showWorkbookAppearance']?.default, true);
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.xlsx.showStructureActions']?.default, true);
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showFillActions']?.default, true);
+		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.xlsx.showFormulaFillActions']?.default, true);
 		assert.ok(contributions.menus.commandPalette.some(item => item.command === 'spreadsheet-viewer.resetView' && item.when === 'true'));
 	});
 

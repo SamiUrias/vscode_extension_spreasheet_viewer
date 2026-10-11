@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { createUuid } from './runtime';
 import { uriExtname } from './uri-path';
-import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
+import { SpreadsheetEditSession, type CellEditInput, type FormulaEditInput } from './edit-model';
 import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
@@ -159,6 +159,12 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 
 	async editFormula(sheetIndex: number, row: number, column: number, formula: string, parser: FormulaParserService): Promise<number | undefined> {
 		const transactionId = await this.editSession.editFormula(sheetIndex, row, column, formula, parser);
+		if (transactionId !== undefined) {this.revision++;}
+		return transactionId;
+	}
+
+	async editFormulas(edits: readonly FormulaEditInput[], parser: FormulaParserService): Promise<number | undefined> {
+		const transactionId = await this.editSession.editFormulas(edits, parser);
 		if (transactionId !== undefined) {this.revision++;}
 		return transactionId;
 	}

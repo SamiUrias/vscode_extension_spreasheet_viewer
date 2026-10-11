@@ -217,6 +217,11 @@
           "default": true,
           "description": "Muestra sugerencias de funciones probadas y la inserción explícita de referencias XLSX."
         },
+        "spreadsheet-viewer.xlsx.showFormulaFillActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra las acciones para copiar fórmulas XLSX relativas hacia abajo o a la derecha."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,

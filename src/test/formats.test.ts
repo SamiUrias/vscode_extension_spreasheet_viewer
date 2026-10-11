@@ -355,6 +355,32 @@ suite('XLSX reader', () => {
 		assert.deepStrictEqual(original, createXlsxFixture(), 'editing must not mutate the original XLSX bytes');
 	});
 
+	test('XLSX formula batch validates and applies as one undoable transaction', async () => {
+		const original = createXlsxFixture();
+		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);
+		const parser = {
+			parseFormula: async (formula: string) => ({ type: formula === '=BAD(' ? 'error' : 'number' }),
+			tokenizeFormula: async () => [],
+		} as unknown as FormulaParserService;
+		await assert.rejects(session.editFormulas([
+			{ sheetIndex: 0, row: 0, column: 0, formula: '=2+2' },
+			{ sheetIndex: 0, row: 0, column: 1, formula: '=BAD(' },
+		], parser), /parser no puede validar/);
+		assert.equal(session.hasEdits, false, 'invalid formula must reject the whole batch before mutation');
+		const transaction = await session.editFormulas([
+			{ sheetIndex: 0, row: 0, column: 0, formula: '=2+2' },
+			{ sheetIndex: 0, row: 0, column: 1, formula: '=3+3' },
+		], parser);
+		assert.equal(typeof transaction, 'number');
+		assert.equal(session.getCell(0, 0, 0).value, '=2+2');
+		assert.equal(session.getCell(0, 0, 1).value, '=3+3');
+		assert.equal(session.undo(transaction), true);
+		assert.equal(session.getCell(0, 0, 0).value, '0.25');
+		assert.equal(session.getCell(0, 0, 1).value, '45292.123456789012345');
+		assert.equal(session.redo(transaction), true);
+		assert.equal(session.getCell(0, 0, 0).value, '=2+2');
+	});
+
 	test('XLSX rejects an invalid edit without changing the source value and preserves date-formatted raw numbers', () => {
 		const original = createXlsxFixture();
 		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);

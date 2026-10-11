@@ -78,6 +78,9 @@ const filterPopover = requiredElement<HTMLElement>('#filter-popover');
 const resetViewButton = requiredElement<HTMLButtonElement>('#reset-view');
 const fillActionsControl = requiredElement<HTMLSpanElement>('#fill-actions-control');
 const fillRangeButton = requiredElement<HTMLButtonElement>('#fill-range');
+const formulaFillActions = requiredElement<HTMLDivElement>('#formula-fill-actions');
+const fillFormulasDownButton = requiredElement<HTMLButtonElement>('#fill-formulas-down');
+const fillFormulasRightButton = requiredElement<HTMLButtonElement>('#fill-formulas-right');
 const autoFitMode = requiredElement<HTMLSelectElement>('#auto-fit-mode');
 const autoFitButton = requiredElement<HTMLButtonElement>('#auto-fit-columns');
 const wrapCellsInput = requiredElement<HTMLInputElement>('#wrap-cells');
@@ -240,6 +243,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'fillActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		fillActionsControl.hidden = !event.data.visible;
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'formulaFillActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		formulaFillActions.dataset.settingVisible = String(event.data.visible);
+		updateFormulaFillControls();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'focusCell'
@@ -896,6 +905,32 @@ function showFillMessage(message: string): void {
 	saveStatus.classList.add('save-error');
 }
 
+function requestFormulaFill(direction: 'down' | 'right'): void {
+	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.fileFormat !== 'xlsx' || !selectedCell || !selectionRange || editorDirty) {
+		showFillMessage('Selecciona un rango XLSX con fórmulas y aplica o descarta los borradores pendientes.'); return;
+	}
+	if (sortCriteria.length || columnFilters.length || searchInput.value) {showFillMessage('Quita orden, filtros y búsqueda antes de rellenar fórmulas.'); return;}
+	const startRow = Math.min(selectionRange.anchor.row, selectionRange.focus.row);
+	const startColumn = Math.min(selectionRange.anchor.column, selectionRange.focus.column);
+	const endRow = Math.max(selectionRange.anchor.row, selectionRange.focus.row);
+	const endColumn = Math.max(selectionRange.anchor.column, selectionRange.focus.column);
+	if (direction === 'down' && startRow === endRow || direction === 'right' && startColumn === endColumn) {showFillMessage('Selecciona al menos una celda de destino en esa dirección.'); return;}
+	vscodeApi.postMessage({ type: 'fillFormulaRange', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetId: snapshot.sheetId, sheetIndex: snapshot.activeSheetIndex, direction, startRow, startColumn, endRow, endColumn });
+}
+
+fillFormulasDownButton.addEventListener('click', () => requestFormulaFill('down'));
+fillFormulasRightButton.addEventListener('click', () => requestFormulaFill('right'));
+
+function updateFormulaFillControls(): void {
+	const enabled = formulaFillActions.dataset.settingVisible !== 'false' && snapshot?.type === 'xlsxData'
+		&& snapshot.fileFormat === 'xlsx' && snapshot.readonly !== true;
+	formulaFillActions.hidden = !enabled;
+	const hasRange = Boolean(selectionRange && selectedCell);
+	fillFormulasDownButton.disabled = !enabled || !hasRange || editorDirty;
+	fillFormulasRightButton.disabled = !enabled || !hasRange || editorDirty;
+}
+
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
 displayModeButton.addEventListener('click', () => {
 	cellPresentation = cellPresentation === 'raw' ? 'book' : 'raw';
@@ -1157,6 +1192,7 @@ function selectCell(row: number, column: number, extend = false, coveredMode: 's
 	}, row, column);
 	formulaEditMode.checked = snapshot?.type === 'xlsxData' && snapshot.cellTypes[row]?.[column] === 'formula';
 	updateFormulaEditorControls();
+	updateFormulaFillControls();
 	schedulePersistViewState();
 }
 

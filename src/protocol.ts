@@ -33,6 +33,7 @@ export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; vis
 export interface DisplayModeButtonVisibilityMessage { type: 'displayModeButtonVisibility'; visible: boolean; }
 export interface WorkbookAppearanceVisibilityMessage { type: 'workbookAppearanceVisibility'; visible: boolean; }
 export interface FillActionsVisibilityMessage { type: 'fillActionsVisibility'; visible: boolean; }
+export interface FormulaFillActionsVisibilityMessage { type: 'formulaFillActionsVisibility'; visible: boolean; }
 export interface CsvRowActionsVisibilityMessage { type: 'csvRowActionsVisibility'; visible: boolean; }
 export interface CellEditDeltaMessage {
 	type: 'cellEditDelta'; documentId: string; baseRevision: number; revision: number;
@@ -52,6 +53,10 @@ export interface CsvRowOperationMessage {
 export interface XlsxStructureOperationMessage {
 	type: 'xlsxStructureOperation'; documentId: string; revision: number; sheetId: string; sheetIndex: number;
 	kind: 'insertRows' | 'deleteRows' | 'insertColumns' | 'deleteColumns'; index: number; count: number;
+}
+export interface FillFormulaRangeMessage {
+	type: 'fillFormulaRange'; documentId: string; revision: number; sheetId: string; sheetIndex: number;
+	direction: 'down' | 'right'; startRow: number; startColumn: number; endRow: number; endColumn: number;
 }
 export interface RecoveredDraft { sheetIndex: number; row: number; column: number; value: string; formula?: boolean; }
 export interface RestoreCellDraftMessage { type: 'restoreCellDraft'; draft: RecoveredDraft; }
@@ -109,7 +114,7 @@ export interface DraftStateMessage {
 export interface DraftCaptureResultMessage { type: 'draftCaptureResult'; requestId: number; draft?: RecoveredDraft; }
 export interface CaptureDraftMessage { type: 'captureDraft'; requestId: number; }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';
@@ -206,5 +211,5 @@ export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibi
 export interface FormulaEditingVisibilityMessage { type: 'formulaEditingVisibility'; visible: boolean; }
 export interface FormulaAssistanceVisibilityMessage { type: 'formulaAssistanceVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | FormulaFillActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 
