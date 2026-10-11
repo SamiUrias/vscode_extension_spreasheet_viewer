@@ -917,7 +917,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir toggle **Ver libro** con tooltip; visible por `spreadsheet-viewer.view.showDisplayModeButton` (booleano, default `true`) y actualizado en vistas abiertas.
 - [x] Presentar formatos numéricos, fechas de sistema 1900/1904 y booleanos en una matriz derivada; preservar números largos, fórmulas, celdas sin estilo y datos originales.
 - [x] Mantener edición/copia raw sin formato y hacer que **Copiar mostrado** use la presentación activa.
-- [x] Documentar configuración, alcance y licencia; añadir `npm run test:presentation` para las cinco pruebas unitarias de presentación y tipos/lint/build.
+- [x] Documentar configuración, alcance y licencia; añadir `npm run test:presentation` para las cinco pruebas unitarias de presentación y tipos/lint/build. Reejecutado el 2026-10-11 con Node 24.21.0: pasan porcentajes, sistemas 1900/1904/serial 60, fechas UTC/booleanos, precisión/fórmulas y valores ODS sin cambios.
 - [ ] Verificar manualmente el toggle **Ver libro**, la actualización del modo en paneles abiertos y **Copiar mostrado** en la UI. `test:presentation` cubre el formateo, no el flujo de interacción de la Webview.
 
 #### V2-16B — Libro visual, hojas y combinaciones
