@@ -1,5 +1,6 @@
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import { unzipSync, zipSync } from 'fflate';
+import { isCellCoveredByRange } from '../cell-reference';
 
 export const MAX_XLSX_BYTES = 10 * 1024 * 1024;
 const MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
@@ -11,7 +12,7 @@ const MAX_RECTANGLE_CELLS = 1_000_000;
 const MAX_PRESENT_CELLS = 500_000;
 
 export type XlsxCellKind = 'value' | 'empty' | 'missing' | 'formula';
-export type XlsxStoredType = 'number' | 'sharedString' | 'inlineString' | 'string' | 'boolean' | 'error' | 'date' | 'formula' | 'empty' | 'missing' | 'unsupported';
+export type XlsxStoredType = 'number' | 'sharedString' | 'inlineString' | 'string' | 'boolean' | 'error' | 'date' | 'duration' | 'formula' | 'empty' | 'missing' | 'unsupported';
 
 export interface XlsxSheet {
 	readonly name: string;
@@ -36,6 +37,9 @@ export interface XlsxSheetMetadata {
 	readonly tableCount: number;
 	readonly hasNotes: boolean;
 	readonly hasDrawings: boolean;
+	readonly hyperlinks: Array<{ readonly reference: string; readonly target?: string; readonly location?: string }>;
+	readonly tables: Array<{ readonly name?: string; readonly displayName?: string; readonly reference?: string }>;
+	readonly notes: Array<{ readonly reference: string; readonly author?: string; readonly text: string }>;
 }
 
 export interface XlsxStyleMetadata {
@@ -50,6 +54,7 @@ export interface XlsxStyleMetadata {
 export interface XlsxWorkbook {
 	readonly sheets: XlsxSheet[];
 	readonly warnings: string[];
+	readonly unknownParts?: string[];
 	readonly date1904?: boolean;
 	readonly definedNames?: string[];
 	readonly hasExternalReferences?: boolean;
@@ -122,6 +127,8 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 			warnings.push(`El libro contiene ${feature.label}; no se interpretan en la vista tabular.`);
 		}
 	}
+	const unknownParts = Object.keys(files).filter(name => !isKnownXlsxPart(name));
+	if (unknownParts.length) {warnings.push(`El paquete conserva ${unknownParts.length} componente(s) XLSX no interpretado(s): ${unknownParts.slice(0, 10).join(', ')}${unknownParts.length > 10 ? ', …' : ''}.`);}
 	let workbookPresentCells = 0;
 	const sheets = sheetNodes.map((sheetNode, index) => {
 		const name = sheetNode.getAttribute('name') || `Hoja ${index + 1}`;
@@ -130,7 +137,7 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 		if (!target || !files[target]) {
 			throw new Error(`No se pudo leer la hoja «${name}»: falta su parte XML o su relación.`);
 		}
-		const parsedSheet = parseSheet(name, parseXml(files[target], target), sharedStrings);
+		const parsedSheet = parseSheet(name, parseXml(files[target], target), sharedStrings, files, target);
 		const state = sheetNode.getAttribute('state');
 		const sheet: XlsxSheet = { ...parsedSheet, state: state === 'hidden' || state === 'veryHidden' ? state : 'visible' };
 		workbookPresentCells += parsedSheet.cellKinds.reduce(
@@ -144,11 +151,17 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 	const definedNames = elements(workbook, 'definedName').map(node => node.getAttribute('name') ?? '').filter(Boolean);
 	const styleBytes = files['xl/styles.xml'];
 	return {
-		sheets, warnings, date1904: workbookProperties?.getAttribute('date1904') === '1' || workbookProperties?.getAttribute('date1904') === 'true',
+		sheets, warnings, unknownParts, date1904: workbookProperties?.getAttribute('date1904') === '1' || workbookProperties?.getAttribute('date1904') === 'true',
 		definedNames, hasExternalReferences: elements(workbook, 'externalReference').length > 0,
 		hasTheme: Object.keys(files).some(name => /^xl\/theme\/theme\d+\.xml$/i.test(name)),
 		...(styleBytes ? { styles: parseStyleMetadata(parseXml(styleBytes, 'xl/styles.xml')) } : {}),
 	};
+}
+
+function isKnownXlsxPart(name: string): boolean {
+	return name === '[Content_Types].xml' || name === '_rels/.rels' || /^docProps\//i.test(name)
+		|| /^xl\/(?:_rels|worksheets|tables|externalLinks|comments|drawings|media|pivotTables|theme|printerSettings|queryTables|slicerCaches)\//i.test(name)
+		|| /^xl\/(?:workbook\.xml|styles\.xml|sharedStrings\.xml|calcChain\.xml|vbaProject\.bin|connections\.xml|comments\d*\.xml|persons\/persons\.xml)$/i.test(name);
 }
 
 /** Returns a modified archive copy; callers retain responsibility for persistence. */
@@ -169,6 +182,10 @@ export function serializeXlsxEdits(bytes: Uint8Array, edits: readonly XlsxCellEd
 			throw new Error('La celda XLSX está fuera del rango actual.');
 		}
 		const currentType = sheet.cellTypes[edit.row]?.[edit.column] ?? 'missing';
+		if (sheet.metadata?.protected) {throw new Error('La hoja XLSX está protegida y no se puede editar.');}
+		if (sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, edit.row, edit.column))) {
+			throw new Error('La celda XLSX está cubierta por una combinación y no se puede editar directamente.');
+		}
 		if (currentType === 'formula' || currentType === 'unsupported' || currentType === 'error') {throw new Error('Esta celda XLSX no se puede editar de forma segura.');}
 		validateXlsxLexeme(edit.type, edit.value);
 		const sheetNode = elements(book, 'sheet')[edit.sheetIndex];
@@ -231,7 +248,7 @@ function columnName(column: number): string {
 	return name;
 }
 
-function parseSheet(name: string, document: Document, sharedStrings: string[]): XlsxSheet {
+function parseSheet(name: string, document: Document, sharedStrings: string[], archive: Record<string, Uint8Array>, partPath: string): XlsxSheet {
 	const cells = new Map<number, Map<number, { value: string; kind: XlsxCellKind; type: XlsxStoredType; style?: number; cache?: string; ref: string }>>();
 	let maxRow = 0;
 	let maxColumn = 0;
@@ -333,6 +350,45 @@ function parseSheet(name: string, document: Document, sharedStrings: string[]): 
 		hidden: element.getAttribute('hidden') === '1',
 		...(parseNonNegativeInt(element.getAttribute('s')) === undefined ? {} : { style: parseNonNegativeInt(element.getAttribute('s')) }),
 	}));
+	const relationshipPath = `${partPath.split('/').slice(0, -1).join('/')}/_rels/${partPath.split('/').pop()}.rels`;
+	const relationshipBytes = archive[relationshipPath];
+	const relationships = relationshipBytes ? elements(parseXml(relationshipBytes, relationshipPath), 'Relationship') : [];
+	const relationById = new Map(relationships.map(relation => [relation.getAttribute('Id') ?? '', relation]));
+	const tables = elements(document, 'tablePart').flatMap(tablePart => {
+		const relation = relationById.get(tablePart.getAttribute('r:id') ?? '');
+		if (!relation || !(relation.getAttribute('Type') ?? '').endsWith('/table') || relation.getAttribute('TargetMode')?.toLowerCase() === 'external') {return [];}
+		const target = resolvePartTarget(partPath, relation.getAttribute('Target') ?? '');
+		const bytes = target ? archive[target] : undefined;
+		if (!bytes) {return [];}
+		const table = elements(parseXml(bytes, target!), 'table')[0];
+		return table ? [{
+			...(table.getAttribute('name') ? { name: table.getAttribute('name')! } : {}),
+			...(table.getAttribute('displayName') ? { displayName: table.getAttribute('displayName')! } : {}),
+			...(table.getAttribute('ref') ? { reference: table.getAttribute('ref')! } : {}),
+		}] : [];
+	});
+	const hyperlinks = elements(document, 'hyperlink').map(hyperlink => {
+		const relation = relationById.get(hyperlink.getAttribute('r:id') ?? '');
+		return {
+			reference: hyperlink.getAttribute('ref') ?? '',
+			...(relation?.getAttribute('Target') ? { target: relation.getAttribute('Target')! } : {}),
+			...(hyperlink.getAttribute('location') ? { location: hyperlink.getAttribute('location')! } : {}),
+		};
+	});
+	const notes = relationships.flatMap(relation => {
+		if (!(relation.getAttribute('Type') ?? '').endsWith('/comments') || relation.getAttribute('TargetMode')?.toLowerCase() === 'external') {return [];}
+		const target = resolvePartTarget(partPath, relation.getAttribute('Target') ?? '');
+		const bytes = target ? archive[target] : undefined;
+		if (!bytes) {return [];}
+		const comments = parseXml(bytes, target!);
+		const authors = elements(comments, 'author').map(author => author.textContent ?? '');
+		return elements(comments, 'comment').map(comment => {
+			const authorIndex = parseNonNegativeInt(comment.getAttribute('authorId'));
+			return { reference: comment.getAttribute('ref') ?? '',
+				...(authorIndex !== undefined && authors[authorIndex] ? { author: authors[authorIndex] } : {}),
+				text: elements(comment, 't').map(text => text.textContent ?? '').join('') };
+		});
+	});
 	return { name, rows, cellKinds, cellTypes, cellStyleIndexes, formulaCaches, rowCount: maxRow, columnCount: maxColumn,
 		metadata: {
 			mergedRanges,
@@ -341,8 +397,8 @@ function parseSheet(name: string, document: Document, sharedStrings: string[]): 
 				...(pane.getAttribute('topLeftCell') ? { topLeftCell: pane.getAttribute('topLeftCell')! } : {}),
 				...(pane.getAttribute('state') ? { state: pane.getAttribute('state')! } : {}) } } : {}),
 			protected: elements(document, 'sheetProtection').length > 0, columns, rows: rowsMetadata,
-			hyperlinkCount: elements(document, 'hyperlink').length, tableCount: elements(document, 'tablePart').length,
-			hasNotes: elements(document, 'legacyDrawing').length > 0 || elements(document, 'legacyDrawingHF').length > 0,
+			hyperlinkCount: hyperlinks.length, tableCount: tables.length, hyperlinks, tables, notes,
+			hasNotes: notes.length > 0 || elements(document, 'legacyDrawing').length > 0 || elements(document, 'legacyDrawingHF').length > 0,
 			hasDrawings: elements(document, 'drawing').length > 0,
 		},
 	};
@@ -364,6 +420,17 @@ function parseStyleMetadata(document: Document): XlsxStyleMetadata {
 	return { customNumberFormats: numberFormats, cellFormats,
 		fontCount: countChildren('fonts', 'font'), fillCount: countChildren('fills', 'fill'),
 		borderCount: countChildren('borders', 'border'), namedStyleCount: countChildren('cellStyles', 'cellStyle') };
+}
+
+function resolvePartTarget(sourcePart: string, target: string): string | undefined {
+	if (!target || /^[a-z][a-z\d+.-]*:/i.test(target) || target.startsWith('//')) {return undefined;}
+	const base = target.startsWith('/') ? [] : sourcePart.split('/').slice(0, -1);
+	for (const part of target.replaceAll('\\', '/').replace(/^\//, '').split('/')) {
+		if (!part || part === '.') {continue;}
+		if (part === '..') {if (!base.length) {return undefined;} base.pop();}
+		else {base.push(part);}
+	}
+	return base.join('/') || undefined;
 }
 
 function parsePositiveInt(value: string | null): number {return parseNonNegativeInt(value) ?? 0;}

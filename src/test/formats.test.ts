@@ -237,10 +237,15 @@ suite('XLSX reader', () => {
 		files['xl/styles.xml'] = xml('<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts><numFmt numFmtId="165" formatCode="0.000%"/></numFmts><fonts><font/><font/></fonts><fills><fill/></fills><borders><border/></borders><cellStyles><cellStyle name="Normal"/></cellStyles><cellXfs><xf numFmtId="165" fontId="1" fillId="0" borderId="0" xfId="0"/><xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>');
 		files['xl/theme/theme1.xml'] = xml('<?xml version="1.0"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office"/>');
 		files['xl/worksheets/sheet1.xml'] = xml('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView><pane xSplit="2" ySplit="1" topLeftCell="C2" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="2" width="18.5" customWidth="1" hidden="1" style="1"/></cols><sheetData><row r="1" ht="28" customHeight="1" s="0"><c r="A1" s="1"><v>0.25</v></c></row></sheetData><mergeCells><mergeCell ref="A1:B1"/></mergeCells><sheetProtection sheet="1"/><hyperlinks><hyperlink ref="A1" r:id="externalHyperlink"/></hyperlinks><tableParts count="1"><tablePart r:id="table1"/></tableParts><legacyDrawing r:id="vml1"/><drawing r:id="drawing1"/></worksheet>');
+		files['xl/worksheets/_rels/sheet1.xml.rels'] = xml('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="externalHyperlink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/><Relationship Id="table1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/><Relationship Id="comments1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/></Relationships>');
+		files['xl/tables/table1.xml'] = xml('<?xml version="1.0"?><table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Orders" displayName="Orders" ref="A1:B1"/>');
+		files['xl/comments1.xml'] = xml('<?xml version="1.0"?><comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><authors><author>Sam</author></authors><commentList><comment ref="A1" authorId="0"><text><r><t>Check</t></r><r><t> value</t></r></text></comment></commentList></comments>');
+		files['xl/customFeature.bin'] = new Uint8Array([1, 2, 3]);
 		const workbook = parseXlsxBytes(zipSync(files));
 		assert.equal(workbook.date1904, true);
 		assert.deepStrictEqual(workbook.definedNames, ['MyRange']);
 		assert.equal(workbook.hasExternalReferences, true);
+		assert.deepStrictEqual(workbook.unknownParts, ['xl/customFeature.bin']);
 		assert.equal(workbook.styles?.customNumberFormats[0]?.formatCode, '0.000%');
 		assert.deepStrictEqual(workbook.styles?.cellFormats[0], { numberFormatId: 165, fontId: 1, fillId: 0, borderId: 0, baseFormatId: 0 });
 		assert.equal(workbook.styles?.fontCount, 2);
@@ -256,10 +261,22 @@ suite('XLSX reader', () => {
 		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.columns[0], { min: 1, max: 2, width: 18.5, hidden: true, style: 1 });
 		assert.equal(workbook.sheets[0]?.metadata?.rows[0]?.height, 28);
 		assert.equal(workbook.sheets[0]?.metadata?.hyperlinkCount, 1);
+		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.hyperlinks[0], { reference: 'A1', target: 'https://example.com' });
 		assert.equal(workbook.sheets[0]?.metadata?.tableCount, 1);
+		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.tables[0], { name: 'Orders', displayName: 'Orders', reference: 'A1:B1' });
 		assert.equal(workbook.sheets[0]?.metadata?.hasNotes, true);
+		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.notes[0], { reference: 'A1', author: 'Sam', text: 'Check value' });
 		assert.equal(workbook.sheets[0]?.metadata?.hasDrawings, true);
 		assert.equal(workbook.sheets[0]?.rowCount, 1, 'style/merge geometry must not expand the value matrix');
+		assert.throws(() => serializeXlsxEdits(zipSync(files), [{ sheetIndex: 0, row: 0, column: 0, value: '1', type: 'number' }]), /protegida/);
+		const unprotectedFiles: Record<string, Uint8Array> = unzipSync(createXlsxFixture());
+		unprotectedFiles['xl/customFeature.bin'] = new Uint8Array([9, 8, 7]);
+		const sheetXml = new TextDecoder().decode(unprotectedFiles['xl/worksheets/sheet1.xml']);
+		unprotectedFiles['xl/worksheets/sheet1.xml'] = xml(sheetXml.replace('</worksheet>', '<mergeCells><mergeCell ref="A1:B1"/></mergeCells></worksheet>'));
+		const mergedBytes = zipSync(unprotectedFiles);
+		assert.throws(() => serializeXlsxEdits(mergedBytes, [{ sheetIndex: 0, row: 0, column: 1, value: 'x', type: 'number' }]), /cubierta por una combinación/);
+		const edited = unzipSync(serializeXlsxEdits(mergedBytes, [{ sheetIndex: 0, row: 0, column: 0, value: '0.5', type: 'number' }]));
+		assert.deepStrictEqual(edited['xl/customFeature.bin'], new Uint8Array([9, 8, 7]));
 	});
 });
 
@@ -274,6 +291,28 @@ suite('ODS reader', () => {
 		assert.strictEqual(sheet.formulaCaches.A2, '12.5');
 		assert.strictEqual(sheet.cellKinds[1][0], 'formula');
 		assert.strictEqual(workbook.sheets[1].rowCount, 0);
+	});
+	test('preserves ODS visibility, protection, covered cells, merged ranges, geometry, and duration semantics', () => {
+		const bytes = createOdsMetadataFixture(false);
+		const workbook = parseOdsBytes(bytes);
+		const sheet = workbook.sheets[0]!;
+		assert.equal(sheet.odsMetadata?.state, 'hidden');
+		assert.equal(sheet.odsMetadata?.protected, false);
+		assert.equal(sheet.odsMetadata?.styleName, 'ta1');
+		assert.deepStrictEqual(sheet.odsMetadata?.mergedRanges, ['A1:B2']);
+		assert.deepStrictEqual(sheet.odsMetadata?.rowGeometry[0], { row: 1, repeated: 2, hidden: true, styleName: 'ro1' });
+		assert.deepStrictEqual(sheet.odsMetadata?.columnGeometry[0], { repeated: 2, hidden: true, styleName: 'co1' });
+		assert.equal(sheet.cellTypes[0]?.[0], 'duration');
+		assert.equal(sheet.cellTypes[0]?.[1], 'unsupported', 'covered cell remains non-editable');
+		const session = new SpreadsheetEditSession(undefined, undefined, undefined, workbook, bytes);
+		assert.throws(() => session.editCell(0, 0, 0, 'PT2H'), /no se puede editar/);
+		assert.throws(() => serializeOdsEdits(bytes, [{ sheetIndex: 0, row: 0, column: 0, value: 'PT2H', type: 'string' }]), /no se puede editar/);
+		const protectedBytes = createOdsMetadataFixture(true);
+		const protectedWorkbook = parseOdsBytes(protectedBytes);
+		assert.equal(protectedWorkbook.sheets[0]?.odsMetadata?.protected, true);
+		assert.throws(() => new SpreadsheetEditSession(undefined, undefined, undefined, protectedWorkbook, protectedBytes)
+			.editCell(0, 0, 0, 'x'), /protegida/);
+		assert.throws(() => serializeOdsEdits(protectedBytes, [{ sheetIndex: 0, row: 0, column: 0, value: 'x', type: 'string' }]), /protegida/);
 	});
 	test('edits ODS raw values while retaining formulas and untouched package parts', () => {
 		const original = createOdsFixture();
@@ -306,6 +345,13 @@ function createOdsFixture(): Uint8Array {
 		'styles.xml': xml('<office:document-styles/>'),
 		'meta.xml': xml('<office:document-meta/>'),
 	};
+	return zipSync(entries);
+}
+
+function createOdsMetadataFixture(protectedSheet: boolean): Uint8Array {
+	const mimetype = new TextEncoder().encode('application/vnd.oasis.opendocument.spreadsheet');
+	const content = xml(`<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"><office:body><office:spreadsheet><table:table table:name="Meta" table:display="false" table:protected="${protectedSheet ? 'true' : 'false'}" table:style-name="ta1"><table:table-column table:number-columns-repeated="2" table:visibility="collapse" table:style-name="co1"/><table:table-row table:number-rows-repeated="2" table:visibility="collapse" table:style-name="ro1"><table:table-cell office:value-type="time" office:time-value="PT1H" table:number-columns-spanned="2" table:number-rows-spanned="2"/><table:covered-table-cell/></table:table-row></table:table></office:spreadsheet></office:body></office:document-content>`);
+	const entries = { mimetype: [mimetype, { level: 0 }] as [Uint8Array, { level: 0 }], 'content.xml': content };
 	return zipSync(entries);
 }
 

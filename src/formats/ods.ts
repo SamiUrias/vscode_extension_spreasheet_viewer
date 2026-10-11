@@ -15,7 +15,16 @@ const TABLE_NS = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0';
 const OFFICE_NS = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0';
 const TEXT_NS = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0';
 
-interface OdsSheet extends XlsxSheet {}
+export interface OdsSheetMetadata {
+	readonly state: 'visible' | 'hidden';
+	readonly protected: boolean;
+	readonly styleName?: string;
+	readonly mergedRanges: string[];
+	readonly rowGeometry: Array<{ readonly row: number; readonly repeated: number; readonly hidden: boolean; readonly styleName?: string }>;
+	readonly columnGeometry: Array<{ readonly repeated: number; readonly hidden: boolean; readonly styleName?: string }>;
+}
+
+interface OdsSheet extends XlsxSheet { readonly odsMetadata?: OdsSheetMetadata; }
 export interface OdsWorkbook extends XlsxWorkbook { readonly sheets: OdsSheet[]; }
 
 /** Reads ODS table values and formula caches from content.xml without using display styles. */
@@ -66,8 +75,9 @@ export function serializeOdsEdits(bytes: Uint8Array, edits: readonly XlsxCellEdi
 		const sheet = workbook.sheets[edit.sheetIndex];
 		if (!sheet || !Number.isInteger(edit.row) || !Number.isInteger(edit.column) || edit.row < 0 || edit.column < 0
 			|| edit.row >= sheet.rowCount || edit.column >= sheet.columnCount) {throw new Error('La celda ODS está fuera del rango actual.');}
+		if (sheet.odsMetadata?.protected) {throw new Error('La hoja ODS está protegida y no se puede editar.');}
 		if (sheet.cellTypes[edit.row]?.[edit.column] === 'formula' || sheet.cellTypes[edit.row]?.[edit.column] === 'error'
-			|| sheet.cellTypes[edit.row]?.[edit.column] === 'unsupported') {throw new Error('Esta celda ODS no se puede editar de forma segura.');}
+			|| sheet.cellTypes[edit.row]?.[edit.column] === 'unsupported' || sheet.cellTypes[edit.row]?.[edit.column] === 'duration') {throw new Error('Esta celda ODS no se puede editar de forma segura.');}
 		validateValue(edit.type, edit.value);
 		const sheetEdits = bySheet.get(edit.sheetIndex) ?? [];
 		sheetEdits.push(edit);
@@ -88,6 +98,18 @@ export function serializeOdsEdits(bytes: Uint8Array, edits: readonly XlsxCellEdi
 function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet {
 	const name = table.getAttributeNS(TABLE_NS, 'name') || table.getAttribute('table:name') || `Hoja ${index + 1}`;
 	const rowNodes = descendants(table, 'table-row').filter(row => nearestTable(row) === table);
+	const mergedRanges: string[] = [];
+	const rowGeometry = rowNodes.map((rowNode, row) => ({
+		row: row + 1,
+		repeated: positiveInteger(attr(rowNode, TABLE_NS, 'number-rows-repeated', 'table:number-rows-repeated') || '1', 'filas repetidas'),
+		hidden: attr(rowNode, TABLE_NS, 'visibility', 'table:visibility') === 'collapse',
+		...(attr(rowNode, TABLE_NS, 'style-name', 'table:style-name') ? { styleName: attr(rowNode, TABLE_NS, 'style-name', 'table:style-name') } : {}),
+	}));
+	const columnGeometry = descendants(table, 'table-column').filter(column => nearestTable(column) === table).map(column => ({
+		repeated: positiveInteger(attr(column, TABLE_NS, 'number-columns-repeated', 'table:number-columns-repeated') || '1', 'columnas repetidas'),
+		hidden: attr(column, TABLE_NS, 'visibility', 'table:visibility') === 'collapse',
+		...(attr(column, TABLE_NS, 'style-name', 'table:style-name') ? { styleName: attr(column, TABLE_NS, 'style-name', 'table:style-name') } : {}),
+	}));
 	let sourceRowOffset = 0;
 	let lastMeaningfulRow = 0;
 	for (const rowNode of rowNodes) {
@@ -115,8 +137,15 @@ function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet
 		const values = new Map<number, { value: string; kind: XlsxCellKind; type: XlsxStoredType; cache?: string; ref: string }>();
 		for (const cell of rowCells) {
 			const repeatColumns = positiveInteger(cell.getAttributeNS(TABLE_NS, 'number-columns-repeated') || cell.getAttribute('table:number-columns-repeated') || '1', 'columnas repetidas');
+			const columnSpan = positiveInteger(attr(cell, TABLE_NS, 'number-columns-spanned', 'table:number-columns-spanned') || '1', 'combinaciones de columnas');
+			const rowSpan = positiveInteger(attr(cell, TABLE_NS, 'number-rows-spanned', 'table:number-rows-spanned') || '1', 'combinaciones de filas');
+			if (columnSpan > 1 || rowSpan > 1) {
+				const endRow = rowIndex + rowSpan;
+				const endColumn = columnIndex + columnSpan;
+				mergedRanges.push(`${columnName(columnIndex)}${rowIndex + 1}:${columnName(endColumn - 1)}${endRow}`);
+			}
 			if (columnIndex + repeatColumns > MAX_COLUMNS) {throw new Error(`La hoja «${name}» excede el límite de ${MAX_COLUMNS} columnas.`);}
-			if (local(cell) === 'table-cell') {
+				if (local(cell) === 'table-cell') {
 				const formula = attr(cell, TABLE_NS, 'formula', 'table:formula');
 				const { value, type } = cellValue(cell);
 				const kind: XlsxCellKind = formula ? 'formula' : value === '' ? 'empty' : 'value';
@@ -164,7 +193,11 @@ function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet
 		}
 		rows.push(text); cellKinds.push(kinds); cellTypes.push(types);
 	}
-	return { name, rows, cellKinds, cellTypes, formulaCaches, rowCount: maxRow, columnCount: maxColumn };
+	const display = attr(table, TABLE_NS, 'display', 'table:display');
+	const tableStyle = attr(table, TABLE_NS, 'style-name', 'table:style-name');
+	return { name, rows, cellKinds, cellTypes, formulaCaches, rowCount: maxRow, columnCount: maxColumn,
+		odsMetadata: { state: display === 'false' ? 'hidden' : 'visible', protected: attr(table, TABLE_NS, 'protected', 'table:protected') === 'true',
+			...(tableStyle ? { styleName: tableStyle } : {}), mergedRanges, rowGeometry, columnGeometry } };
 }
 
 function translateOdsFormula(formula: string, rowOffset: number): string {
@@ -184,7 +217,8 @@ function cellValue(cell: Element): { value: string; type: XlsxStoredType } {
 		|| attr(cell, OFFICE_NS, 'string-value', 'office:string-value');
 	const paragraphText = descendants(cell, 'p').map(readParagraph).join('\n');
 	if (type === 'float' || type === 'currency' || type === 'percentage') {return { value, type: 'number' };}
-	if (type === 'date' || type === 'time') {return { value: value || paragraphText, type: 'date' };}
+	if (type === 'date') {return { value: value || paragraphText, type: 'date' };}
+	if (type === 'time') {return { value: value || paragraphText, type: 'duration' };}
 	if (type === 'boolean') {return { value: value === 'true' ? '1' : value === 'false' ? '0' : value, type: 'boolean' };}
 	if (type === 'string' || paragraphText) {return { value: paragraphText || value, type: 'string' };}
 	if (type === '') {return { value: paragraphText || value, type: paragraphText ? 'string' : 'empty' };}

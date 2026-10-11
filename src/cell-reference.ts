@@ -20,3 +20,15 @@ export function resolveCellReference(reference: string, rowCount: number, column
 	}
 	return { row: row - 1, column: column - 1 };
 }
+
+/** Returns true for cells covered by a range while leaving its top-left anchor editable. */
+export function isCellCoveredByRange(range: string, row: number, column: number): boolean {
+	const parts = range.split(':');
+	if (parts.length !== 2) {return false;}
+	const first = resolveCellReference(parts[0]!, 1_048_576, 18_278);
+	const last = resolveCellReference(parts[1]!, 1_048_576, 18_278);
+	if (!first || !last) {return false;}
+	return row >= Math.min(first.row, last.row) && row <= Math.max(first.row, last.row)
+		&& column >= Math.min(first.column, last.column) && column <= Math.max(first.column, last.column)
+		&& (row !== first.row || column !== first.column);
+}

@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { resolveCellReference } from '../cell-reference';
+import { isCellCoveredByRange, resolveCellReference } from '../cell-reference';
 import { findSearchMatches } from '../search';
 
 suite('Cell references', () => {
@@ -16,6 +16,12 @@ suite('Cell references', () => {
 		assert.strictEqual(resolveCellReference('B54', 53, 30), undefined);
 		assert.strictEqual(resolveCellReference('AE1', 100, 30), undefined);
 		assert.strictEqual(resolveCellReference('A1', 0, 30), undefined);
+	});
+	test('identifies covered cells in an A1 range but leaves the anchor editable', () => {
+		assert.equal(isCellCoveredByRange('A1:B2', 0, 0), false);
+		assert.equal(isCellCoveredByRange('A1:B2', 1, 1), true);
+		assert.equal(isCellCoveredByRange('$B$4:$C$5', 4, 2), true);
+		assert.equal(isCellCoveredByRange('bad', 0, 0), false);
 	});
 });
 

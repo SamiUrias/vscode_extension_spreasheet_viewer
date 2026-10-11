@@ -82,4 +82,18 @@ suite('edit transactions', () => {
 		assert.deepStrictEqual(session.getRows(0), [['name', 'value'], ['first', '9'], ['middle', '3'], ['last', '2']]);
 		assert.deepStrictEqual(parseCsvBytes(session.serializeCopy()).rows, session.getRows(0));
 	});
+	test('XLSX protected sheets and merged covered cells are rejected before journal mutation', () => {
+		const sheet: XlsxWorkbook['sheets'][number] = { name: 'Sheet1', rows: [['1', '2']], cellKinds: [['value', 'value']], cellTypes: [['number', 'number']],
+			formulaCaches: {}, rowCount: 1, columnCount: 2, metadata: { mergedRanges: ['A1:B1'], protected: false,
+			columns: [], rows: [], hyperlinkCount: 0, tableCount: 0, hasNotes: false, hasDrawings: false, hyperlinks: [], tables: [], notes: [] } };
+		const workbook: XlsxWorkbook = { warnings: [], sheets: [sheet] };
+		const session = new SpreadsheetEditSession(undefined, workbook, new Uint8Array());
+		assert.throws(() => session.editCell(0, 0, 1, '3'), /cubierta por una combinación/);
+		assert.equal(session.getCell(0, 0, 1).value, '2');
+		session.editCell(0, 0, 0, '3');
+		const protectedWorkbook: XlsxWorkbook = { warnings: [], sheets: [{ ...sheet, metadata: { ...sheet.metadata!, mergedRanges: [], protected: true } }] };
+		const protectedSession = new SpreadsheetEditSession(undefined, protectedWorkbook, new Uint8Array());
+		assert.throws(() => protectedSession.editCell(0, 0, 0, '4'), /protegida/);
+		assert.equal(protectedSession.hasEdits, false);
+	});
 });

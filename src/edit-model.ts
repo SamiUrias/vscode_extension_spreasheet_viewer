@@ -1,6 +1,7 @@
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
+import { isCellCoveredByRange } from './cell-reference';
 
 export type EditableCellType = 'string' | 'number' | 'boolean' | 'date';
 
@@ -102,8 +103,15 @@ export class SpreadsheetEditSession {
 		const changes: CellChange[] = [];
 		for (const input of inputs) {
 			const { sheetIndex, row, column, value, targetType } = input;
+			if (this.ods?.sheets[sheetIndex]?.odsMetadata?.protected) {throw new Error('La hoja ODS está protegida y no se puede editar.');}
+			const xlsxSheet = this.xlsx?.sheets[sheetIndex];
+			if (xlsxSheet?.metadata?.protected) {throw new Error('La hoja XLSX está protegida y no se puede editar.');}
+			if (xlsxSheet?.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, row, column))
+				|| this.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges.some(range => isCellCoveredByRange(range, row, column))) {
+				throw new Error('La celda está cubierta por una combinación y no se puede editar directamente.');
+			}
 			const beforeValue = this.getCell(sheetIndex, row, column);
-			if (beforeValue.storedType === 'formula' || beforeValue.storedType === 'error' || beforeValue.storedType === 'unsupported') {
+			if (beforeValue.storedType === 'formula' || beforeValue.storedType === 'error' || beforeValue.storedType === 'unsupported' || beforeValue.storedType === 'duration') {
 				throw new Error('Esta celda XLSX no se puede editar en esta etapa.');
 			}
 			if (this.csv && targetType !== undefined && targetType !== 'string') {throw new Error('Las celdas CSV se conservan como texto.');}

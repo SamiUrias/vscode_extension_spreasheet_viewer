@@ -865,16 +865,23 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 - [x] Leer sistema de fechas 1900/1904, nombres definidos, referencias externas, visibilidad `visible`/`hidden`/`veryHidden` y estilos del libro.
 - [x] Asociar índice de estilo a cada celda con valor y extraer `cellXfs`, formatos numéricos, fuentes/rellenos/bordes por conteo, estilos nombrados y presencia de theme.
-- [x] Extraer merges, panes congelados, protección, geometría de filas/columnas, conteos de hyperlinks/tablas y presencia de notas/drawings sin expandir la matriz por geometría.
-- [x] Ignorar relaciones worksheet externas y probar con fixture XLSX que el rango crudo no se expande por merges/estilos.
-- [ ] Resolver metadata de tablas, hipervínculos, notas y relaciones internas a identificadores/targets completos; aplicar capacidades de protección/merge a controles de edición. Por ahora este inventario no habilita formatos ni acciones en UI.
-- [x] Ejecutar 21 pruebas focalizadas de formatos, tipos, lint y build de producción.
+- [x] Extraer merges, panes congelados, protección, geometría de filas/columnas, tablas con nombre/rango, hyperlinks con destino registrado, notas con autor/texto y drawings sin expandir la matriz por geometría.
+- [x] Resolver relaciones internas con rutas de archivo seguras; registrar destinos externos como texto sin seguirlos. Clasificar partes desconocidas y probar que sobreviven a ediciones.
+- [x] Aplicar protección de hoja y celdas cubiertas por merges en capabilities y en el preflight del journal/serializador; conservar editable el ancla del merge.
+- [x] Probar partes desconocidas, relación externa, tabla, nota, estilo, geometría, protección, merges y matriz cruda acotada.
+- [x] Ejecutar 22 pruebas focalizadas de formatos, tipos, lint y build de producción.
 
 #### V2-15B — Metadata ODS y límites visibles
 
 **Depende de:** V2-15A. **Archivos:** ods/model/protocol/tests. **Pasos:** exponer equivalentes mínimos de identidad/visibilidad/protección/covered/merges y repeticiones. Capabilities declara qué se puede presentar/escribir; mantener formulas cache-only y duración `office:time-value` diferenciada de fecha ISO para no permitir edición que pierde semántica.
 
 **Aceptación:** covered no editable; duración no se guarda como date; repetidos conservados; ODS muestra límites de vista libro con razón concreta sin perder su edición cruda. **Fuera:** recalcular OpenFormula o aplicar estilos ODF completos como si fueran XLSX.
+
+- [x] Leer estado visible/oculto, protección, nombre de estilo, rangos combinados y geometría/repetición de filas y columnas.
+- [x] Marcar celdas cubiertas como no editables y bloquear hojas protegidas tanto en capability webview como en el modelo y serializador.
+- [x] Distinguir `office:value-type="time"` como duración; conservar su lexema y rechazar edición que lo degradaría a fecha o texto.
+- [x] Probar metadata ODS, covered cells, protección y duración junto a regresiones XLSX: 35 pruebas focalizadas, tipos/lint y paquete de producción pasan.
+- [ ] La presentación visual de estos metadatos queda para V2-16; esta fase conserva los datos y habilita bloqueos seguros.
 
 #### V2-16A — Formatos de presentación
 

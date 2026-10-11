@@ -8,6 +8,7 @@ import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMes
 import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
+import { isCellCoveredByRange } from './cell-reference';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -295,6 +296,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 		const sheet = workbook.sheets[sheetIndex];
 		const snapshot = document.editSession.getSheetSnapshot(sheetIndex);
+		const sheetProtected = document.ods?.sheets[sheetIndex]?.odsMetadata?.protected === true;
+		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
 		const data: XlsxDataMessage = {
 			type: 'xlsxData',
 			fileFormat: document.ods ? 'ods' : 'xlsx',
@@ -311,9 +314,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			rows: snapshot.rows,
 			cellKinds: snapshot.cellKinds ?? sheet.cellKinds,
 			cellTypes: snapshot.cellTypes ?? sheet.cellTypes,
-			cellCapabilities: (snapshot.cellTypes ?? sheet.cellTypes).map(row => row.map(storedType => {
-				const editable = storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported';
-				return { storedType, editable, ...(!editable ? { reason: `Tipo ${storedType} protegido en esta etapa.` } : {}) };
+			cellCapabilities: (snapshot.cellTypes ?? sheet.cellTypes).map((row, rowIndex) => row.map((storedType, columnIndex) => {
+				const protectedSheet = sheetProtected || document.xlsx?.sheets[sheetIndex]?.metadata?.protected === true;
+				const covered = mergedRanges.some(range => isCellCoveredByRange(range, rowIndex, columnIndex));
+				const editable = !protectedSheet && !covered && storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported' && storedType !== 'duration';
+				const reason = protectedSheet ? 'La hoja está protegida.' : covered ? 'Celda cubierta por una combinación.' : `Tipo ${storedType} protegido en esta etapa.`;
+				return { storedType, editable, ...(!editable ? { reason } : {}) };
 			})),
 			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
 			...(document.xlsx ? { workbookBase64: this.getFormulaSnapshot(document) } : {}),
