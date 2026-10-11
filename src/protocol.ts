@@ -32,6 +32,7 @@ export interface CopyToClipboardMessage { type: 'copyToClipboard'; text: string;
 export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; visible: boolean; }
 export interface DisplayModeButtonVisibilityMessage { type: 'displayModeButtonVisibility'; visible: boolean; }
 export interface WorkbookAppearanceVisibilityMessage { type: 'workbookAppearanceVisibility'; visible: boolean; }
+export interface FillActionsVisibilityMessage { type: 'fillActionsVisibility'; visible: boolean; }
 export interface CsvRowActionsVisibilityMessage { type: 'csvRowActionsVisibility'; visible: boolean; }
 export interface CellEditDeltaMessage {
 	type: 'cellEditDelta'; documentId: string; baseRevision: number; revision: number;
@@ -205,5 +206,5 @@ export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibi
 export interface FormulaEditingVisibilityMessage { type: 'formulaEditingVisibility'; visible: boolean; }
 export interface FormulaAssistanceVisibilityMessage { type: 'formulaAssistanceVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

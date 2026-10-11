@@ -7,6 +7,7 @@ import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, 
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell, type CellRange } from './selection';
 import { isCellInVisibleRange } from '../range-selection';
+import { createFillEdits, type FillCell, type FillDirection, type FillMode } from '../fill';
 import { parseClipboardTsv, serializeVisibleSelection } from '../clipboard';
 import { presentXlsxCell, type CellPresentation } from './presentation';
 import { completeFormulaFunction, getFormulaCompletions, insertFormulaReference, type FormulaCompletion } from '../formula-assistance';
@@ -75,6 +76,8 @@ const projectionCount = requiredElement<HTMLOutputElement>('#projection-count');
 const filterStatus = requiredElement<HTMLOutputElement>('#filter-status');
 const filterPopover = requiredElement<HTMLElement>('#filter-popover');
 const resetViewButton = requiredElement<HTMLButtonElement>('#reset-view');
+const fillActionsControl = requiredElement<HTMLSpanElement>('#fill-actions-control');
+const fillRangeButton = requiredElement<HTMLButtonElement>('#fill-range');
 const autoFitMode = requiredElement<HTMLSelectElement>('#auto-fit-mode');
 const autoFitButton = requiredElement<HTMLButtonElement>('#auto-fit-columns');
 const wrapCellsInput = requiredElement<HTMLInputElement>('#wrap-cells');
@@ -232,6 +235,11 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'csvRowActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showCsvRowActions = event.data.visible;
 		updateCsvRowActions();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'fillActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		fillActionsControl.hidden = !event.data.visible;
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'focusCell'
@@ -829,6 +837,63 @@ function clearSelectionContents(): void {
 	for (let row = firstRow; row <= lastRow; row++) {for (let column = firstColumn; column <= lastColumn; column++) {edits.push({ row, column, value: '', targetType: 'string' as const });}}
 	vscodeApi.postMessage({ type: 'editCells', documentId: snapshot.documentId, revision: snapshot.revision,
 		sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0, sheetId: snapshot.sheetId, edits });
+}
+
+fillRangeButton.addEventListener('click', () => {
+	if (!snapshot || !selectionRange || snapshot.readonly || snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods') {
+		showFillMessage('Selecciona un rango editable de CSV o XLSX.'); return;
+	}
+	if (sortCriteria.length || columnFilters.length || searchInput.value) {showFillMessage('Quita orden, filtros y búsqueda antes de rellenar.'); return;}
+	if (editorDirty) {showFillMessage('Aplica o descarta primero el borrador de la celda.'); return;}
+	const firstRow = Math.min(selectionRange.anchor.row, selectionRange.focus.row);
+	const lastRow = Math.max(selectionRange.anchor.row, selectionRange.focus.row);
+	const firstColumn = Math.min(selectionRange.anchor.column, selectionRange.focus.column);
+	const lastColumn = Math.max(selectionRange.anchor.column, selectionRange.focus.column);
+	const height = lastRow - firstRow + 1, width = lastColumn - firstColumn + 1;
+	if (height === 1 && width === 1) {showFillMessage('Selecciona un rango con una celda de destino además del origen.'); return;}
+	const direction = window.prompt('Dirección: escribe abajo o derecha.', height > 1 ? 'abajo' : 'derecha')?.trim().toLowerCase();
+	if (direction !== 'abajo' && direction !== 'derecha') {return;}
+	const axis: FillDirection = direction === 'abajo' ? 'down' : 'right';
+	if (axis === 'down' && height < 2 || axis === 'right' && width < 2) {showFillMessage('El rango no tiene espacio en esa dirección.'); return;}
+	const choice = window.prompt('Modo: escribe repetir o serie. Serie requiere dos valores numéricos iniciales.', 'repetir')?.trim().toLowerCase();
+	if (choice !== 'repetir' && choice !== 'serie') {return;}
+	const mode: FillMode = choice === 'serie' ? 'series' : 'repeat';
+	const seedHeight = axis === 'down' ? (mode === 'series' ? 2 : 1) : height;
+	const seedWidth = axis === 'right' ? (mode === 'series' ? 2 : 1) : width;
+	const source: FillCell[][] = [];
+	for (let r = 0; r < seedHeight; r++) {
+		const row: FillCell[] = [];
+		for (let c = 0; c < seedWidth; c++) {
+			const sourceRow = firstRow + r, sourceColumn = firstColumn + c;
+			if (snapshot.type === 'csvData' && snapshot.rowKinds?.[sourceRow] === 'comment') {showFillMessage('Los comentarios CSV no se pueden usar como origen.'); return;}
+			if (snapshot.type === 'xlsxData' && snapshot.cellCapabilities[sourceRow]?.[sourceColumn]?.editable !== true) {showFillMessage('El origen contiene una celda que no se puede editar.'); return;}
+			const storedType = snapshot.type === 'xlsxData' ? snapshot.cellTypes[sourceRow]?.[sourceColumn] : undefined;
+			if (storedType === 'formula' || storedType === 'error' || storedType === 'unsupported' || storedType === 'duration') {showFillMessage('No se rellenan fórmulas ni celdas XLSX especiales en esta etapa.'); return;}
+			const value = snapshot.rows[sourceRow]?.[sourceColumn] ?? '';
+			const type = storedType === 'number' || storedType === 'boolean' || storedType === 'date' ? storedType : 'string';
+			row.push({ value, type });
+		}
+		source.push(row);
+	}
+	try {
+		const edits = createFillEdits(source, firstRow, firstColumn, height, width, axis, mode);
+		if (!edits.length) {showFillMessage('El rango no contiene celdas de destino.'); return;}
+		for (const edit of edits) {
+			if (snapshot.type === 'csvData' && snapshot.rowKinds?.[edit.row] === 'comment') {throw new Error('El destino incluye un comentario CSV.');}
+			if (snapshot.type === 'xlsxData' && snapshot.cellCapabilities[edit.row]?.[edit.column]?.editable !== true) {throw new Error('El destino incluye una celda protegida o no compatible.');}
+		}
+		const sample = edits.slice(0, 8).map(edit => `${columnName(edit.column)}${edit.row + 1} = ${JSON.stringify(edit.value)}`).join('\n');
+		const suffix = edits.length > 8 ? `\n… y ${edits.length - 8} celdas más.` : '';
+		if (!window.confirm(`Vista previa (${edits.length} celdas):\n${sample}${suffix}\n\n¿Aplicar como una sola operación?`)) {return;}
+		vscodeApi.postMessage({ type: 'editCells', documentId: snapshot.documentId, revision: snapshot.revision,
+			sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0, sheetId: snapshot.sheetId,
+			edits: edits.map(edit => ({ ...edit })) });
+	} catch (error) {showFillMessage(error instanceof Error ? error.message : 'No se pudo preparar el relleno.');}
+});
+
+function showFillMessage(message: string): void {
+	saveStatus.textContent = message;
+	saveStatus.classList.add('save-error');
 }
 
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});

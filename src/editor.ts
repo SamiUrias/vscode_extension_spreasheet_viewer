@@ -96,6 +96,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'csvRowActionsVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showFillActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showFillActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'fillActionsVisibility', visible });}
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', document.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', document.uri);
 				if (visualChanged) {this.postDocument(document);}
@@ -617,6 +621,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private applyEdit(document: SpreadsheetDocument, message: Extract<WebviewToExtensionMessage, { type: 'editCell' }>, scheduleSave = true): void {
 		if (document.isDisposed) {return;}
 		try {
+			if (document.isReadOnly) {throw new Error('El documento está en modo de solo lectura.');}
 			if (message.documentId !== document.documentId || message.revision !== document.revision
 				|| message.sheetId !== document.sheetId(message.sheetIndex)) {
 				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
@@ -647,6 +652,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private async applyFormulaEdit(document: SpreadsheetDocument, message: Extract<WebviewToExtensionMessage, { type: 'editFormula' }>, scheduleSave = true): Promise<boolean> {
 		if (document.isDisposed) {return false;}
 		try {
+			if (document.isReadOnly) {throw new Error('El documento está en modo de solo lectura.');}
 			if (!document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
 				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('La edición de fórmula quedó desactualizada; se recargaron los datos actuales.');}
 			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true)) {
@@ -690,6 +696,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	): boolean {
 		if (document.isDisposed) {return false;}
 		try {
+			if (document.isReadOnly) {throw new Error('El documento está en modo de solo lectura.');}
 			if (message.documentId !== document.documentId || message.revision !== document.revision
 				|| message.sheetId !== document.sheetId(message.sheetIndex)) {
 				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
@@ -758,6 +765,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	private async applyXlsxStructureOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'xlsxStructureOperation' }>): Promise<void> {
 		try {
+			if (document.isReadOnly) {throw new Error('El documento está en modo de solo lectura.');}
 			if (!document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
 				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('La operación quedó desactualizada; se recargaron los datos actuales.');}
 			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showStructureActions', true)) {return;}
@@ -792,6 +800,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	private async applyCsvRowOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'csvRowOperation' }>): Promise<void> {
 		try {
+			if (document.isReadOnly) {throw new Error('El documento está en modo de solo lectura.');}
 			if (!document.csv || message.documentId !== document.documentId || message.revision !== document.revision
 				|| message.sheetId !== document.sheetId(0)) {throw new Error('La operación quedó desactualizada; se recargaron los datos actuales.');}
 			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true)) {return;}
@@ -1240,6 +1249,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showXlsxStructureActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showStructureActions', true);
 		const showWorkbookAppearance = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showWorkbookAppearance', true);
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
+		const showFillActions = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showFillActions', true);
 		const showFormulaEditing = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('allowFormulaEditing', true);
 		const showFormulaAssistance = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaAssistance', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
@@ -1271,6 +1281,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">Copiar mostrado</button><span id="copy-displayed-tooltip" role="tooltip">Copia los valores tal como aparecen en la cuadrícula con la presentación actual.</span></span>
 						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
 					</div>
+					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">Rellenar rango</button><span id="fill-range-tooltip" role="tooltip">Repite los valores o extiende una serie numérica en el rango seleccionado. Muestra una vista previa antes de aplicar; se puede deshacer.</span></span>
 					<span class="copy-control"><button id="toggle-display-mode" type="button"${showDisplayModeButton ? '' : ' hidden'} aria-describedby="display-mode-tooltip">Ver libro</button><span id="display-mode-tooltip" role="tooltip">Alterna entre valores crudos y su formato numérico de presentación. No modifica el archivo.</span></span>
 					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="Acciones de registros CSV">
 						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>

@@ -237,6 +237,11 @@
           "default": true,
           "description": "Muestra los controles para copiar la selección como TSV."
         },
+        "spreadsheet-viewer.view.showFillActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra la acción para rellenar rangos con valores repetidos o series numéricas."
+        },
         "spreadsheet-viewer.view.showDisplayModeButton": {
           "type": "boolean",
           "default": true,
@@ -272,6 +277,7 @@
     "test:runtime": "npm run compile-tests && node scripts/test-runtime.js",
     "test:web-target": "npm run package && node scripts/test-web-target.js",
     "test:xlsm-format": "npm run compile-tests && node scripts/test-xlsm-format.js",
+    "test:fill": "npm run compile-tests && node scripts/test-fill.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",

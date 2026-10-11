@@ -9,6 +9,7 @@
 - **One table for common spreadsheet files:** open CSV, TSV, TAB, XLSX, XLSM, and ODS files in an editor tab. XLSM workbooks are read-only.
 - **Edit and save cells:** edit values in place or in the cell editor and save changes to the original file.
 - **Manage CSV records:** insert or append an empty row, or delete selected rows with confirmation. These actions can be undone and are configurable in Settings.
+- **Fill selected ranges:** repeat a value pattern or extend an explicitly chosen numeric series, review a preview, and undo the single resulting operation. Formulas and filtered/sorted views are excluded.
 - **Choose when changes are written:** automatic saving after confirming an edit is on by default; it can be disabled to save with `Ctrl+S` (`Cmd+S` on macOS).
 - **Keep raw values visible:** values are not silently converted to dates, percentages, or display-formatted numbers.
 - **Find data quickly:** search the active sheet and jump to a cell by reference, such as `B54`.
@@ -106,6 +107,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
 | `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
+| `spreadsheet-viewer.view.showFillActions` | `true` | Show or hide range fill for repeated values and explicit numeric series. |
 | `spreadsheet-viewer.view.showDisplayModeButton` | `true` | Show or hide **Ver libro**, the XLSX raw/formatted display toggle. |
 | `spreadsheet-viewer.xlsx.showStructureActions` | `true` | Show or hide XLSX row and column insertion/deletion actions for compatible workbooks. |
 | `spreadsheet-viewer.xlsx.allowFormulaEditing` | `true` | Allow formula creation and editing through the explicit formula mode. Syntax is validated before applying. |
