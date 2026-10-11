@@ -921,7 +921,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir tabs con scroll, navegación por flechas/Home/End, selector respaldo y etiquetas para hojas ocultas/muy ocultas.
 - [x] Aplicar anchos/altos importados y ocultar geométricamente filas/columnas colapsadas; mantener sobreescrituras de usuario y pane congelado original al restaurar/resetear.
 - [x] Corregir la fila de inicio de geometría ODS tras una fila repetida y probar límites de expansión.
-- [ ] Verificación visual y de navegación en Extension Host pendiente por bloqueo de Node 18 (`/v`); ejecutar cuando se actualice runtime.
+- [ ] Verificación visual y de navegación en Extension Host pendiente. Con Node 24.21, el runner necesita descargar VS Code y DNS devuelve `ENOTFOUND update.code.visualstudio.com`; los tests locales de metadata/layout sí pasan.
 
 ##### V2-16B2 — Estilos y celdas combinadas
 
@@ -934,7 +934,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Renderizar merges horizontales y verticales bajo virtualización manteniendo visible el ancla, sin dibujar sobre el corte de panes; covered cells llevan a su ancla.
 - [x] Pasar a vista tabular cuando el sort/filtro reordena o quita filas, mostrar la razón y restaurar merges al volver a orden original; exponer notas y destinos de hyperlinks como texto inerte.
 - [x] Exponer `spreadsheet-viewer.view.showWorkbookAppearance` (booleano, default `true`) en `settings.json`, documentarlo y actualizarlo en paneles abiertos.
-- [ ] Verificación visual de tema claro/oscuro/alto contraste y editor estrecho en Extension Host sigue pendiente por Node 18 (`/v`).
+- [ ] Verificación visual de tema claro/oscuro/alto contraste y editor estrecho en Extension Host pendiente; la descarga del runtime de pruebas falla por `ENOTFOUND update.code.visualstudio.com`.
 
 #### V2-17A — Estructura XLSX segura en modelo
 
@@ -946,7 +946,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Insertar/borrar filas o columnas con coordenadas XML, `dimension`, `spans` y geometría de columnas actualizadas; imponer límites de filas, columnas y celdas antes de materializar celdas nuevas.
 - [x] Guardar snapshots byte a byte en el journal de undo/redo; reconstruir los cambios estructurales desde la copia de recuperación.
 - [x] Probar inserción de filas/columnas, parts ajenas, dimensiones, spans, perfil con fórmulas y undo/redo del modelo; tipos, lint, pruebas focalizadas y paquete pasan.
-- [ ] Verificar ciclo de recuperación y undo desde Extension Host; el runner automatizado sigue bloqueado por Node 18.20.4 y dependencia `/v`.
+- [ ] Verificar ciclo de recuperación y undo desde Extension Host; el runner con Node 24.21 no descarga VS Code por `ENOTFOUND update.code.visualstudio.com`; los snapshots/journal se prueban localmente.
 
 #### V2-17B — Menú estructural XLSX
 
@@ -959,7 +959,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Deshabilitar acciones con orden/filtros activos o cuando el preflight informa una causa; host revalida archivo, revisión, límites y perfil antes de operar.
 - [x] Confirmar eliminaciones; bloquear cambios pendientes y proyectar selección; registrar cada operación en el journal de undo/redo.
 - [x] Verificar tipos, lint, paquete de producción, capability/preflight y operaciones estructurales del modelo: 41 pruebas focalizadas pasan.
-- [ ] Verificar visualmente el menú, los modales, la selección, auto-save/guardado manual y undo/redo en Extension Host; el runner sigue bloqueado por Node 18.20.4 y dependencia `/v`.
+- [ ] Verificar visualmente el menú, los modales, la selección, auto-save/guardado manual y undo/redo en Extension Host; el runner con Node 24.21 no descarga VS Code por `ENOTFOUND update.code.visualstudio.com`.
 
 #### V2-18A — Ajuste de referencias de fórmulas
 
@@ -1189,7 +1189,7 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 | F30 | Parcial | README, changelog, iconos, licencias y VSIX local inspeccionado; instalación limpia en VS Code queda pendiente. |
 | F31 | Diferido | OLAP, barcode, PDF, cloud, search especializado, touch y paquetes no cargados no se incluyen en V2. |
 
-**Evidencia V2-25 ejecutada:** Node 24.21.0; `check-types`, `lint`, build de producción, `test:formulas` y `test:formula-references` pasan. También pasan `test:formula-edits`, `test:cell-deltas`, `test:grid-layout`, `test:csv-dialect`, `test:filesystem-capability`, `test:runtime`, `test:xlsm-format`, `test:fill`, `test:xlsx-tables`, `test:xlsx-sheets`, `test:xlsx-structure`, `test:move-range` y `test:xlsx-styles`. `test:web-target` pasa. `vsce package --no-dependencies` generó `spreadsheet-viewer-0.0.1.vsix` (28 archivos, 6.65 MB); inspección del ZIP confirma WASM Node/Web, parser, worker, CSS/JS, SSF y licencias, sin `out/`, `src/`, scripts ni diagnósticos. Los warnings de webpack son por los WASM de 9.26 MiB.
+**Evidencia V2-25 ejecutada:** Node 24.21.0; `check-types`, `lint`, build de producción, `test:formulas` y `test:formula-references` pasan. También pasan `test:formula-edits`, `test:cell-deltas`, `test:grid-layout`, `test:csv-dialect`, `test:filesystem-capability`, `test:runtime`, `test:xlsm-format`, `test:fill`, `test:xlsx-tables`, `test:xlsx-sheets`, `test:xlsx-structure`, `test:move-range` y `test:xlsx-styles`. En esta continuación también pasan `test:clipboard`, `test:edit-transactions`, `test:edit-batch-host`, `test:csv-row-operations` y `test:presentation`; `npm run package` y `vsce package --no-dependencies` pasan. El VSIX `spreadsheet-viewer-0.0.1.vsix` se regeneró después de los cambios verificados (28 archivos, 6.65 MB); inspección del ZIP confirma WASM Node/Web, parser, worker, CSS/JS, SSF y licencias, incluye el arreglo de encabezado, el parser TSV estricto y el bloqueo de borrado del encabezado CSV, sin `out/`, `src/`, scripts ni diagnósticos. Los warnings de webpack son por los WASM de 9.26 MiB.
 
 **Pendientes que impiden declarar V2-25 verificada:** con Node 18.20.4, `npm test` falla antes del runner por la bandera RegExp `/v` de `string-width`; el README ahora requiere Node 22+ para desarrollo. Con Node 24.21.0, `npm test` intenta descargar VS Code y DNS no resuelve `update.code.visualstudio.com`. El VS Code local 1.141.0 sí satisface el mínimo, pero `test:save-lifecycle` al lanzarlo directamente termina en `SIGABRT`. El reporte de macOS `Code-2026-10-11-103233.ips` ubica el abort en AppKit/LaunchServices (`NSMenuBarPresentationInstance`, `_RegisterApplication`), antes de que el proceso de pruebas pueda certificar el Extension Host. Probar el launcher `Resources/app/bin/code` solo confirma su salida `0`, no la ejecución de las pruebas, y no se toma como pase. Sin embargo, iniciar `Run Extension` con F5 desde el VS Code ya abierto sí inicia el Extension Development Host y carga la extensión. En un smoke test abrí una copia XLSX temporal fuera de la carpeta de trabajo restaurada, apliqué un cambio en A1 y seleccioné «Aplicar borradores y guardar»: el host quedó en «Guardando…» por más de un minuto y el archivo no cambió en disco. El canal de salida no mostró un error de la extensión. Como el recurso estaba fuera del workspace activo, esto queda inconcluso y debe repetirse con una copia dentro del workspace antes de atribuirlo al producto. `test:untrusted` sigue pendiente de ejecución automatizada. LibreOfficeDev 26.8 abrió y volvió a guardar una copia de la fixture real con una fila insertada mediante `--headless --convert-to xlsx`; el parser leyó la salida con sus 8 hojas, 102 filas y la fila vacía en la posición insertada. Esta comprobación cubre una operación estructural concreta, no el conjunto de writers. No se validó el ciclo equivalente en Excel ni la interacción de la UI en una instancia limpia. También siguen pendientes instalar el VSIX en una instancia limpia, validar E2E/accesibilidad y certificar VS Code Web/remotos. No declarar V2 completa con estos checks pendientes.
 
