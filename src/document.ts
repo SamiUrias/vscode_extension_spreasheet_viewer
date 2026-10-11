@@ -102,6 +102,13 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 					for (let column = 0; column < beforeSheet.columnCount; column++) {
 						const before = this.editSession.getCell(sheetIndex, row, column), after = workingSession.getCell(sheetIndex, row, column);
 						if (before.value !== after.value || before.type !== after.type || before.exists !== after.exists) {
+							if (this.xlsx && working.xlsx && after.storedType === 'formula') {
+								this.xlsx = working.xlsx;
+								this.xlsxStructureCapability = getXlsxStructureCapability(workingBytes);
+								this.editSession = new SpreadsheetEditSession(undefined, working.xlsx, workingBytes);
+								this.revision++;
+								return;
+							}
 							if (!after.exists || ['formula', 'error', 'unsupported'].includes(after.storedType)) {throw new Error('La copia contiene un cambio de celda que esta versión no puede recuperar.');}
 							edits.push({ sheetIndex, row, column, value: after.value, targetType: after.type });
 						}
@@ -138,6 +145,12 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 
 	editCells(edits: readonly CellEditInput[]): number | undefined {
 		const transactionId = this.editSession.editCells(edits);
+		if (transactionId !== undefined) {this.revision++;}
+		return transactionId;
+	}
+
+	async editFormula(sheetIndex: number, row: number, column: number, formula: string, parser: FormulaParserService): Promise<number | undefined> {
+		const transactionId = await this.editSession.editFormula(sheetIndex, row, column, formula, parser);
 		if (transactionId !== undefined) {this.revision++;}
 		return transactionId;
 	}

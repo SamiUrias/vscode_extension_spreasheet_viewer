@@ -6,6 +6,7 @@ import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { applyXlsxStructureOperation, getXlsxStructureCapability } from '../formats/xlsx-structure';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
+import type { FormulaParserService } from '../formula-reference';
 
 suite('CSV reader', () => {
 	test('keeps numeric-looking and date-looking values as text', () => {
@@ -292,6 +293,34 @@ suite('XLSX reader', () => {
 		assert.strictEqual(reopened.sheets[1].rowCount, 0);
 		const parts = unzipSync(copy);
 		assert.deepStrictEqual(parts['xl/sharedStrings.xml'], unzipSync(original)['xl/sharedStrings.xml']);
+	});
+
+	test('XLSX formula edits validate before journaling, clear caches, request recalculation, and undo/redo', async () => {
+		const original = createXlsxFixture();
+		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);
+		const parser = {
+			parseFormula: async (formula: string) => ({ type: formula === '=SUM(' ? 'error' : 'number' }),
+			tokenizeFormula: async () => [],
+		} as unknown as FormulaParserService;
+		await assert.rejects(session.editFormula(0, 0, 0, '=SUM(', parser), /parser no puede validar/);
+		assert.equal(session.hasEdits, false);
+		const transactionId = await session.editFormula(0, 0, 0, '=Other!A1+2', parser);
+		assert.equal(typeof transactionId, 'number');
+		const snapshot = session.getSheetSnapshot(0);
+		assert.equal(snapshot.rows[0]?.[0], '=Other!A1+2');
+		assert.equal(snapshot.cellKinds?.[0]?.[0], 'formula');
+		assert.equal(snapshot.cellTypes?.[0]?.[0], 'formula');
+		assert.equal(snapshot.formulaCaches?.A1, '');
+		const edited = session.serializeCopy();
+		assert.equal(parseXlsxBytes(edited).sheets[0]?.rows[0]?.[0], '=Other!A1+2');
+		const parts = unzipSync(edited);
+		assert.match(new TextDecoder().decode(parts['xl/workbook.xml']), /fullCalcOnLoad="1"/);
+		assert.equal(parts['xl/calcChain.xml'], undefined);
+		assert.equal(session.undo(transactionId), true);
+		assert.equal(parseXlsxBytes(session.serializeCopy()).sheets[0]?.rows[0]?.[0], '0.25');
+		assert.equal(session.redo(transactionId), true);
+		assert.equal(parseXlsxBytes(session.serializeCopy()).sheets[0]?.rows[0]?.[0], '=Other!A1+2');
+		assert.deepStrictEqual(original, createXlsxFixture(), 'editing must not mutate the original XLSX bytes');
 	});
 
 	test('XLSX rejects an invalid edit without changing the source value and preserves date-formatted raw numbers', () => {

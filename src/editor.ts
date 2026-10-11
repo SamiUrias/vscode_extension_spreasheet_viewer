@@ -10,6 +10,8 @@ import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewSta
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
 import { isCellCoveredByRange } from './cell-reference';
+import { validateFormulaExpression } from './formula-reference';
+import { serializeXlsxEdits } from './formats/xlsx';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import type { CellEditDeltaMessage, WorkbookCellEditDeltaMessage } from './protocol';
 
@@ -75,6 +77,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showStructureActions', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showStructureActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'xlsxStructureActionsVisibility', visible });}
+				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.allowFormulaEditing', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'formulaEditingVisibility', visible });}
 				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
@@ -224,6 +230,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				this.applyEdit(document, message);
 				return;
 			}
+			if (isEditFormulaMessage(message)) {
+				void this.applyFormulaEdit(document, message);
+				return;
+			}
 			if (isEditCellsMessage(message)) {
 				this.applyEditBatch(document, message, message.edits.map(edit => ({ ...edit, sheetIndex: message.sheetIndex })));
 				return;
@@ -321,13 +331,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 		const sheet = workbook.sheets[sheetIndex];
 		const snapshot = document.editSession.getSheetSnapshot(sheetIndex);
-		const workbookHasFormulas = document.xlsx?.sheets.some(item => item.cellTypes.some(row => row.includes('formula'))) ?? false;
+		const workbookHasFormulas = document.xlsx?.sheets.some((_, index) => document.editSession.getSheetSnapshot(index).cellTypes?.some(row => row.includes('formula'))) ?? false;
 		const formulaSnapshot = workbookHasFormulas ? this.getFormulaSnapshot(document) : undefined;
 		const sentSnapshot = this.formulaSnapshotsSent.get(panel);
 		const workbookBase64 = formulaSnapshot && (sentSnapshot?.documentId !== document.documentId || sentSnapshot.revision !== document.revision)
 			? formulaSnapshot : undefined;
 		const workbookMatchesSavedBytes = formulaSnapshot === undefined || formulaSnapshot === Buffer.from(document.sourceBytes).toString('base64');
 		const sheetProtected = document.ods?.sheets[sheetIndex]?.odsMetadata?.protected === true;
+		const formulaEditingAllowed = Boolean(document.xlsx) && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true);
 		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
 		const data: XlsxDataMessage = {
 			type: 'xlsxData',
@@ -364,8 +375,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				const protectedSheet = sheetProtected || document.xlsx?.sheets[sheetIndex]?.metadata?.protected === true;
 				const covered = mergedRanges.some(range => isCellCoveredByRange(range, rowIndex, columnIndex));
 				const editable = !protectedSheet && !covered && storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported' && storedType !== 'duration';
+				const formulaEditable = formulaEditingAllowed && !protectedSheet && !covered && storedType !== 'error' && storedType !== 'unsupported' && storedType !== 'duration';
 				const reason = protectedSheet ? 'La hoja está protegida.' : covered ? 'Celda cubierta por una combinación.' : `Tipo ${storedType} protegido en esta etapa.`;
-				return { storedType, editable, ...(!editable ? { reason } : {}) };
+				return { storedType, editable, formulaEditable, ...(!editable ? { reason } : {}) };
 			})),
 			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
 			...(document.xlsx ? {
@@ -609,6 +621,44 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 	}
 
+	private async applyFormulaEdit(document: SpreadsheetDocument, message: Extract<WebviewToExtensionMessage, { type: 'editFormula' }>, scheduleSave = true): Promise<boolean> {
+		if (document.isDisposed) {return false;}
+		try {
+			if (!document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('La edición de fórmula quedó desactualizada; se recargaron los datos actuales.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true)) {
+				throw new Error('La edición de fórmulas XLSX está desactivada en Settings.');
+			}
+			const initialRevision = document.revision;
+			const parser = await loadFormulaParserService(this.extensionUri);
+			if (document.isDisposed || initialRevision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {
+				throw new Error('El libro cambió mientras se validaba la fórmula; vuelve a intentarlo.');
+			}
+			const before = document.editSession.getCell(message.sheetIndex, message.row, message.column);
+			if (before.value === message.formula && before.type === 'formula') {return true;}
+			const transactionId = await document.editFormula(message.sheetIndex, message.row, message.column, message.formula, parser);
+			if (transactionId === undefined) {return true;}
+			const editedCell = { sheetIndex: message.sheetIndex, row: message.row, column: message.column, value: message.formula };
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({
+				document,
+				label: `Editar fórmula ${columnName(message.column + 1)}${message.row + 1}`,
+				undo: () => {if (document.undo(transactionId)) {update();}},
+				redo: () => {if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, [editedCell]); update();}},
+			});
+			this.clearPendingDraftsForCells(document, [editedCell]);
+			this.postDocument(document);
+			this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
+			return true;
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
+			void vscode.window.showErrorMessage(`No se pudo aplicar la fórmula: ${messageText}`);
+			return false;
+		}
+	}
+
 	private applyEditBatch(
 		document: SpreadsheetDocument,
 		message: Pick<Extract<WebviewToExtensionMessage, { type: 'editCells' }>, 'documentId' | 'revision' | 'sheetIndex' | 'sheetId'>,
@@ -758,14 +808,42 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		);
 		if (choice === 'Cancelar' || choice === undefined) {throw new vscode.CancellationError();}
 		if (choice === 'Aplicar borradores y guardar') {
-			const edits = entries.map(({ draft }) => ({ sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value }));
+			const formulaDrafts = entries.filter(({ draft }) => draft.formula);
+			if (formulaDrafts.length) {
+				if (!document.xlsx) {throw new Error('Las fórmulas solo se pueden aplicar a borradores de libros XLSX.');}
+				const parser = await loadFormulaParserService(this.extensionUri);
+				const coordinates = new Set<string>();
+				const formulaEdits = [] as Array<{ sheetIndex: number; row: number; column: number; value: string; type: 'formula' }>;
+				for (const { draft } of entries) {
+					const key = `${draft.sheetIndex}:${draft.row}:${draft.column}`;
+					if (coordinates.has(key)) {throw new Error('Hay borradores duplicados para la misma celda; confirma uno antes de guardar.');}
+					coordinates.add(key);
+					if (!draft.formula) {continue;}
+					const sheet = document.xlsx.sheets[draft.sheetIndex];
+					if (!sheet || draft.row < 0 || draft.row >= sheet.rowCount || draft.column < 0 || draft.column >= sheet.columnCount
+						|| sheet.metadata?.protected || sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, draft.row, draft.column))) {
+						throw new Error('Un borrador de fórmula apunta a una celda que no se puede editar.');
+					}
+					await validateFormulaExpression(draft.value, parser);
+					formulaEdits.push({ sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value, type: 'formula' });
+				}
+				// Preflight the entire formula set before applying any draft to the working copy.
+				serializeXlsxEdits(document.serializeCopy(), formulaEdits);
+			}
+			const edits = entries.filter(({ draft }) => !draft.formula).map(({ draft }) => ({ sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value }));
 			const changed = edits.some(edit => {
 				const current = document.editSession.getCell(edit.sheetIndex, edit.row, edit.column);
 				return current.value !== edit.value || !current.exists;
 			});
-			if (!changed) {this.clearAllDrafts(document); return;}
-			const message = { documentId: document.documentId, revision: document.revision, sheetIndex: edits[0]!.sheetIndex, sheetId: document.sheetId(edits[0]!.sheetIndex) };
-			if (!this.applyEditBatch(document, message, edits, false)) {throw new Error('No se pudo aplicar el borrador; no se guardó el archivo.');}
+			if (changed) {
+				const message = { documentId: document.documentId, revision: document.revision, sheetIndex: edits[0]!.sheetIndex, sheetId: document.sheetId(edits[0]!.sheetIndex) };
+				if (!this.applyEditBatch(document, message, edits, false)) {throw new Error('No se pudo aplicar el borrador; no se guardó el archivo.');}
+			}
+			for (const { draft } of formulaDrafts) {
+				const message = { type: 'editFormula' as const, documentId: document.documentId, revision: document.revision,
+					sheetIndex: draft.sheetIndex, sheetId: document.sheetId(draft.sheetIndex), row: draft.row, column: draft.column, formula: draft.value };
+				if (!await this.applyFormulaEdit(document, message, false)) {throw new Error('No se pudo aplicar el borrador de fórmula; no se guardó el archivo.');}
+			}
 			this.clearAllDrafts(document);
 		} else {this.markPendingDraftsDirty(document);}
 	}
@@ -806,7 +884,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				const current = { ...state.current, revision: document.revision, sheetId: document.sheetId(state.current.sheetIndex) };
 				state.current = current;
 				this.panelDrafts.set(panel, current);
-				void panel.webview.postMessage({ type: 'restoreCellDraft', draft: { sheetIndex: current.sheetIndex, row: current.row, column: current.column, value: current.value } });
+				void panel.webview.postMessage({ type: 'restoreCellDraft', draft: { sheetIndex: current.sheetIndex, row: current.row, column: current.column, value: current.value, ...(current.formula ? { formula: true } : {}) } });
 				this.postSaveState(document, { type: 'saveState', state: 'pending' });
 			},
 		});
@@ -1107,7 +1185,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const draft = drafts.at(-1);
 		const bytes = serializeRecoveryEnvelope({
 			uri: document.uri.toString(), baselineBytes: document.sourceBytes, workingBytes,
-			...(draft ? { draft: { sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value } } : {}),
+			...(draft ? { draft: { sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value, ...(draft.formula ? { formula: true } : {}) } } : {}),
 		});
 		await writeBackup(context.destination, bytes);
 		return { id, delete: () => { void deleteBackup(id); } };
@@ -1138,6 +1216,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showXlsxStructureActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showStructureActions', true);
 		const showWorkbookAppearance = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showWorkbookAppearance', true);
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
+		const showFormulaEditing = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('allowFormulaEditing', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
@@ -1256,6 +1335,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				<pre id="cell-value"></pre>
 			</div>
 			<div id="cell-editor-group">
+				<label id="formula-mode-control"${showFormulaEditing ? '' : ' hidden'}><input id="formula-edit-mode" type="checkbox" data-setting-enabled="${showFormulaEditing}" aria-describedby="formula-mode-tooltip"> Editar como fórmula <span id="formula-mode-tooltip" role="tooltip">Habilita la edición o creación explícita de una fórmula XLSX. La sintaxis se valida antes de guardarla.</span></label>
 				<label id="cell-edit-label" class="control-label" for="cell-editor">Editar valor crudo</label>
 				<textarea id="cell-editor" rows="2" spellcheck="false" aria-label="Editar valor crudo" disabled></textarea>
 				<button id="apply-cell-edit" type="button" disabled>Aplicar</button>
@@ -1344,6 +1424,14 @@ function isEditCellMessage(message: unknown): message is Extract<WebviewToExtens
 		&& Number.isInteger(candidate.column) && typeof candidate.value === 'string';
 }
 
+function isEditFormulaMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'editFormula' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'editFormula') {return false;}
+	const candidate = message as Record<string, unknown>;
+	return typeof candidate.documentId === 'string' && Number.isInteger(candidate.revision) && typeof candidate.sheetId === 'string'
+		&& Number.isInteger(candidate.sheetIndex) && Number.isInteger(candidate.row) && Number.isInteger(candidate.column)
+		&& typeof candidate.formula === 'string' && candidate.formula.length <= 32 * 1024;
+}
+
 function isEditCellsMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'editCells' }> {
 	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'editCells') {return false;}
 	const candidate = message as Record<string, unknown>;
@@ -1391,7 +1479,8 @@ function isDraftStateMessage(message: unknown): message is Extract<WebviewToExte
 	const candidate = message as Record<string, unknown>;
 	return typeof candidate.dirty === 'boolean' && typeof candidate.documentId === 'string' && Number.isInteger(candidate.revision)
 		&& typeof candidate.sheetId === 'string' && Number.isInteger(candidate.sheetIndex)
-		&& Number.isInteger(candidate.row) && Number.isInteger(candidate.column) && typeof candidate.value === 'string';
+		&& Number.isInteger(candidate.row) && Number.isInteger(candidate.column) && typeof candidate.value === 'string'
+		&& (candidate.formula === undefined || typeof candidate.formula === 'boolean');
 }
 
 function isDraftCaptureResultMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'draftCaptureResult' }> {
@@ -1401,7 +1490,7 @@ function isDraftCaptureResultMessage(message: unknown): message is Extract<Webvi
 	const draft = message.draft;
 	return typeof draft === 'object' && draft !== null && 'sheetIndex' in draft && Number.isInteger(draft.sheetIndex)
 		&& 'row' in draft && Number.isInteger(draft.row) && 'column' in draft && Number.isInteger(draft.column)
-		&& 'value' in draft && typeof draft.value === 'string';
+		&& 'value' in draft && typeof draft.value === 'string' && (!('formula' in draft) || typeof draft.formula === 'boolean');
 }
 
 function isSetSortMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'setSort' }> {

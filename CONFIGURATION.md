@@ -37,6 +37,7 @@ Para probar el comportamiento de la extensión en este repositorio, `.vscode/set
 | `spreadsheet-viewer.csv.headerCase` | Cadena: `"none"`, `"upper"` o `"lower"` | `"none"` | Deja igual, convierte a mayúsculas o convierte a minúsculas las etiquetas visuales del encabezado. No cambia el texto guardado en el CSV. |
 | `spreadsheet-viewer.csv.showRowActions` | Booleano: `true` o `false` | `true` | Muestra u oculta las acciones **Insertar fila**, **Añadir fila** y **Eliminar fila(s)** en el editor CSV. No afecta a XLSX/ODS ni a las vistas previas. |
 | `spreadsheet-viewer.xlsx.showStructureActions` | Booleano: `true` o `false` | `true` | Muestra u oculta el menú para insertar o eliminar filas y columnas en el editor XLSX. Solo se aplican a libros que pasan el preflight de seguridad; no afecta CSV/ODS ni vistas previas. |
+| `spreadsheet-viewer.xlsx.allowFormulaEditing` | Booleano: `true` o `false` | `true` | Permite crear o editar fórmulas XLSX con el modo explícito **Editar como fórmula**. El host valida la sintaxis antes de aplicar y una fórmula válida puede guardarse aunque el motor no la calcule. No habilita edición de fórmulas ODS, compartidas ni matriciales. El cambio se aplica a los paneles abiertos. |
 | `spreadsheet-viewer.view.restoreState` | Booleano: `true` o `false` | `true` | Guarda y restaura por archivo, hoja y modo de vista la selección, scroll, búsqueda, orden, visibilidad de comentarios y tamaños manuales de columnas/filas. Con `false` no lee ni guarda este estado. No afecta el contenido, los cambios pendientes ni los backups del documento. |
 | `spreadsheet-viewer.view.showResetButton` | Booleano: `true` o `false` | `true` | Muestra u oculta el botón **Restablecer vista** en el editor y las vistas previas. Con `false` el botón no aparece; la acción de restablecimiento sigue disponible como **Spreadsheet Viewer: Restablecer vista de hoja** en la paleta de comandos. El cambio se refleja en las vistas que ya están abiertas. |
 | `spreadsheet-viewer.view.showClearSortButton` | Booleano: `true` o `false` | `true` | Permite mostrar **Limpiar orden** cuando hay criterios de orden activos. Con `false` oculta el botón en el editor y las vistas previas; el orden se puede quitar haciendo clic en el encabezado o usando el comando **Restablecer vista**. El cambio se refleja en las vistas abiertas. |
@@ -54,6 +55,7 @@ Ejemplo para desactivar los comentarios convencionales y la persistencia:
   "spreadsheet-viewer.view.showResetButton": false,
   "spreadsheet-viewer.view.showClearSortButton": false,
   "spreadsheet-viewer.view.showCopyButtons": false,
+  "spreadsheet-viewer.xlsx.allowFormulaEditing": false,
   "spreadsheet-viewer.edit.saveOnCommit": false
 }
 ```

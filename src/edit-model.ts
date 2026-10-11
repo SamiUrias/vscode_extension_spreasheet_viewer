@@ -1,11 +1,11 @@
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { parseXlsxBytes, serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
 import { applyXlsxStructureOperation, type XlsxStructureOperation } from './formats/xlsx-structure';
-import type { FormulaParserService } from './formula-reference';
+import { validateFormulaExpression, type FormulaParserService } from './formula-reference';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 import { isCellCoveredByRange } from './cell-reference';
 
-export type EditableCellType = 'string' | 'number' | 'boolean' | 'date';
+export type EditableCellType = 'string' | 'number' | 'boolean' | 'date' | 'formula';
 
 export interface CellValue {
 	readonly value: string;
@@ -93,17 +93,19 @@ export class SpreadsheetEditSession {
 		const sheet = (this.xlsx ?? this.ods)?.sheets[sheetIndex];
 		const cellKinds = sheet?.cellKinds.map(row => [...row]);
 		const cellTypes = sheet?.cellTypes.map(row => [...row]);
+		const formulaCaches = sheet ? { ...sheet.formulaCaches } : undefined;
 		for (const edit of this.edits.values()) {
 			if (edit.sheetIndex !== sheetIndex || !rows[edit.row]) {continue;}
 			rows[edit.row]![edit.column] = edit.value;
 			if (cellKinds && cellTypes) {
 				while (cellKinds[edit.row]!.length <= edit.column) {cellKinds[edit.row]!.push('missing');}
 				while (cellTypes[edit.row]!.length <= edit.column) {cellTypes[edit.row]!.push('missing');}
-				cellKinds[edit.row]![edit.column] = edit.value.length === 0 ? 'empty' : 'value';
-				cellTypes[edit.row]![edit.column] = edit.storedType as XlsxStoredType;
+				cellKinds[edit.row]![edit.column] = edit.type === 'formula' ? 'formula' : edit.value.length === 0 ? 'empty' : 'value';
+				cellTypes[edit.row]![edit.column] = edit.type === 'formula' ? 'formula' : edit.storedType as XlsxStoredType;
+				if (edit.type === 'formula') {formulaCaches![cellReference(edit.row, edit.column)] = '';}
 			}
 		}
-		return { rows, ...(cellKinds ? { cellKinds } : {}), ...(cellTypes ? { cellTypes } : {}), ...(sheet ? { formulaCaches: { ...sheet.formulaCaches } } : {}) };
+		return { rows, ...(cellKinds ? { cellKinds } : {}), ...(cellTypes ? { cellTypes } : {}), ...(formulaCaches ? { formulaCaches } : {}) };
 	}
 
 	getCell(sheetIndex: number, row: number, column: number): CellValue {
@@ -148,6 +150,33 @@ export class SpreadsheetEditSession {
 		if (changes.length === 0) {return undefined;}
 		for (const change of changes) {this.assign(change.key, change.after);}
 		const transaction = { id: this.nextTransactionId++, changes };
+		this.undoStack.push(transaction);
+		this.redoStack.length = 0;
+		return transaction.id;
+	}
+
+	async editFormula(sheetIndex: number, row: number, column: number, formula: string, parser: FormulaParserService): Promise<number | undefined> {
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La edición de fórmulas solo está disponible en libros XLSX.');}
+		if (this.xlsx.sheets[sheetIndex]?.metadata?.protected) {throw new Error('La hoja XLSX está protegida y no se puede editar.');}
+		const sheet = this.xlsx.sheets[sheetIndex];
+		if (!sheet || !Number.isInteger(row) || !Number.isInteger(column) || row < 0 || column < 0 || row >= sheet.rowCount || column >= sheet.columnCount) {
+			throw new Error('La celda está fuera del rango actual.');
+		}
+		if (sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, row, column))) {
+			throw new Error('La celda está cubierta por una combinación y no se puede editar directamente.');
+		}
+		await validateFormulaExpression(formula, parser);
+		// Exercise ZIP/XML constraints before mutating the undo journal. This also blocks edits to
+		// shared/array formulas and unsupported cell records that the writer cannot safely replace.
+		serializeXlsxEdits(this.serializeCopy(), [{ sheetIndex, row, column, value: formula, type: 'formula' }]);
+		const key = cellKey(sheetIndex, row, column);
+		const before = this.edits.get(key);
+		const original = this.original(sheetIndex, row, column);
+		const after: CellEdit = { sheetIndex, row, column, value: formula, type: 'formula', storedType: 'formula', exists: true };
+		const normalized = equivalent(after, original) ? undefined : after;
+		if (sameEdit(before, normalized)) {return undefined;}
+		this.assign(key, normalized);
+		const transaction = { id: this.nextTransactionId++, changes: [{ key, before, after: normalized }] };
 		this.undoStack.push(transaction);
 		this.redoStack.length = 0;
 		return transaction.id;
@@ -211,7 +240,7 @@ export class SpreadsheetEditSession {
 		}
 		const sheet = (this.xlsx ?? this.ods)?.sheets[sheetIndex];
 		const storedType = sheet?.cellTypes[row]?.[column] ?? 'missing';
-		const type: EditableCellType = storedType === 'number' ? 'number'
+		const type: EditableCellType = storedType === 'formula' ? 'formula' : storedType === 'number' ? 'number'
 			: storedType === 'boolean' ? 'boolean' : storedType === 'date' ? 'date' : 'string';
 		return { value: sheet?.rows[row]?.[column] ?? '', type, storedType, exists: storedType !== 'missing' };
 	}
@@ -248,6 +277,7 @@ export class SpreadsheetEditSession {
 }
 
 function validateValue(type: EditableCellType, value: string): void {
+	if (type === 'formula') {throw new Error('Las fórmulas requieren el flujo explícito de edición de fórmulas.');}
 	if (type === 'number' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) {
 		throw new Error('Número inválido.');
 	}
@@ -257,6 +287,12 @@ function validateValue(type: EditableCellType, value: string): void {
 	if (type === 'date' && !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(value)) {
 		throw new Error('Fecha inválida; usa el valor ISO sin conversión.');
 	}
+}
+
+function cellReference(row: number, column: number): string {
+	let name = '';
+	for (let value = column + 1; value > 0; value = Math.floor((value - 1) / 26)) {name = String.fromCharCode(65 + (value - 1) % 26) + name;}
+	return `${name}${row + 1}`;
 }
 
 function equivalent(left: CellValue, right: CellValue): boolean {

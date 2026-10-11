@@ -14,6 +14,16 @@ export type FormulaTransformResult =
 	| { readonly status: 'unchanged'; readonly formula: string }
 	| { readonly status: 'unsupported'; readonly formula: string; readonly reason: string };
 
+/** Validates formula syntax without restricting valid functions the calculation engine cannot evaluate. */
+export async function validateFormulaExpression(formula: string, parser: FormulaParserService): Promise<void> {
+	if (formula.length > MAX_FORMULA_LENGTH) {throw new Error(`La fórmula supera el límite de ${MAX_FORMULA_LENGTH.toLocaleString()} caracteres.`);}
+	if (!formula.startsWith('=') || formula.length < 2 || formula.slice(1).trim().length === 0) {
+		throw new Error('La fórmula debe comenzar con = y contener una expresión.');
+	}
+	const ast = await parser.parseFormula(formula);
+	if (containsUnsupportedAstError(ast)) {throw new Error('La fórmula contiene una expresión que el parser no puede validar.');}
+}
+
 const MAX_FORMULA_LENGTH = 32 * 1024;
 const MAX_ROW = 1_048_576;
 const MAX_COLUMN = 16_384;

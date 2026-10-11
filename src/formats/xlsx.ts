@@ -69,7 +69,7 @@ export interface XlsxCellEdit {
 	readonly row: number;
 	readonly column: number;
 	readonly value: string;
-	readonly type: 'string' | 'number' | 'boolean' | 'date';
+	readonly type: 'string' | 'number' | 'boolean' | 'date' | 'formula';
 }
 
 /** Reads the stored XML values. Number formats and styles are intentionally ignored. */
@@ -188,7 +188,7 @@ export function serializeXlsxEdits(bytes: Uint8Array, edits: readonly XlsxCellEd
 		if (sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, edit.row, edit.column))) {
 			throw new Error('La celda XLSX está cubierta por una combinación y no se puede editar directamente.');
 		}
-		if (currentType === 'formula' || currentType === 'unsupported' || currentType === 'error') {throw new Error('Esta celda XLSX no se puede editar de forma segura.');}
+		if ((currentType === 'formula' && edit.type !== 'formula') || currentType === 'unsupported' || currentType === 'error') {throw new Error('Esta celda XLSX no se puede editar de forma segura.');}
 		validateXlsxLexeme(edit.type, edit.value);
 		const sheetNode = elements(book, 'sheet')[edit.sheetIndex];
 		const path = targets.get(sheetNode?.getAttribute('r:id') ?? '');
@@ -199,13 +199,19 @@ export function serializeXlsxEdits(bytes: Uint8Array, edits: readonly XlsxCellEd
 	}
 	for (const [part, sheetEdits] of grouped) {
 		const doc = parseXml(files[part]!, part);
+		if (sheetEdits.some(edit => edit.type === 'formula') && elements(doc, 'f').some(formula =>
+			['array', 'shared'].includes((formula.getAttribute('t') ?? '').toLowerCase()) || formula.hasAttribute('ref'))) {
+			throw new Error('No se pueden editar fórmulas en hojas con fórmulas compartidas o matriciales.');
+		}
 		for (const edit of sheetEdits) {writeXlsxCell(doc, edit);}
 		files[part] = new TextEncoder().encode(new XMLSerializer().serializeToString(doc));
 	}
+	if (edits.some(edit => edit.type === 'formula')) {invalidateFormulaCalculation(files, book, rels);}
 	return zipSync(files);
 }
 
 function validateXlsxLexeme(type: XlsxCellEdit['type'], value: string): void {
+	if (type === 'formula' && (!value.startsWith('=') || value.length < 2 || value.slice(1).trim().length === 0)) {throw new Error('La fórmula debe comenzar con = y contener una expresión.');}
 	if (type === 'number' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) {throw new Error('Número XLSX inválido.');}
 	if (type === 'boolean' && value !== '0' && value !== '1') {throw new Error('Booleano XLSX inválido.');}
 	if (type === 'date' && !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(value)) {throw new Error('Fecha XLSX inválida.');}
@@ -232,7 +238,12 @@ function writeXlsxCell(doc: Document, edit: XlsxCellEdit): void {
 		if (following) {row.insertBefore(cell, following);} else {row.appendChild(cell);}
 	}
 	while (cell.firstChild) {cell.removeChild(cell.firstChild);}
-	if (edit.type === 'string') {
+	if (edit.type === 'formula') {
+		cell.removeAttribute('t');
+		const formula = doc.createElementNS(namespace, 'f');
+		formula.appendChild(doc.createTextNode(edit.value.slice(1)));
+		cell.appendChild(formula);
+	} else if (edit.type === 'string') {
 		cell.setAttribute('t', 'inlineStr');
 		const inline = doc.createElementNS(namespace, 'is');
 		const text = doc.createElementNS(namespace, 't');
@@ -242,6 +253,34 @@ function writeXlsxCell(doc: Document, edit: XlsxCellEdit): void {
 		cell.setAttribute('t', edit.type === 'number' ? 'n' : edit.type === 'boolean' ? 'b' : 'd');
 		const value = doc.createElementNS(namespace, 'v'); value.appendChild(doc.createTextNode(edit.value)); cell.appendChild(value);
 	}
+}
+
+function invalidateFormulaCalculation(files: Record<string, Uint8Array>, workbook: Document, relationships: Document): void {
+	for (const relationship of elements(relationships, 'Relationship')) {
+		if (!relationship.getAttribute('Type')?.endsWith('/calcChain')) {continue;}
+		const target = relationship.getAttribute('Target');
+		if (target) {delete files[resolveWorkbookTarget(target)];}
+		relationship.parentNode?.removeChild(relationship);
+	}
+	const contentTypes = files['[Content_Types].xml'];
+	if (contentTypes) {
+		const document = parseXml(contentTypes, '[Content_Types].xml');
+		for (const override of elements(document, 'Override')) {
+			if ((override.getAttribute('PartName') ?? '').toLowerCase() === '/xl/calcchain.xml') {override.parentNode?.removeChild(override);}
+		}
+		files['[Content_Types].xml'] = new TextEncoder().encode(new XMLSerializer().serializeToString(document));
+	}
+	let calculation = elements(workbook, 'calcPr')[0];
+	if (!calculation) {
+		const root = workbook.documentElement;
+		if (!root) {throw new Error('El XLSX no tiene elemento workbook para solicitar el recálculo.');}
+		calculation = workbook.createElementNS(root.namespaceURI, 'calcPr');
+		const sheets = elements(root, 'sheets')[0];
+		if (sheets?.nextSibling) {root.insertBefore(calculation, sheets.nextSibling);} else {root.appendChild(calculation);}
+	}
+	calculation.setAttribute('calcId', '0'); calculation.setAttribute('fullCalcOnLoad', '1'); calculation.setAttribute('forceFullCalc', '1');
+	files['xl/workbook.xml'] = new TextEncoder().encode(new XMLSerializer().serializeToString(workbook));
+	files['xl/_rels/workbook.xml.rels'] = new TextEncoder().encode(new XMLSerializer().serializeToString(relationships));
 }
 
 function columnName(column: number): string {

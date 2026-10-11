@@ -15,7 +15,7 @@ async function main() {
 			name: 'spreadsheet-save-lifecycle', publisher: 'test', version: '0.0.1',
 			engines: { vscode: '^1.137.0' }, main: './extension.js',
 			contributes: { customEditors: [{ viewType: 'spreadsheet-viewer.editor', displayName: 'Save lifecycle test',
-				selector: [{ filenamePattern: '*.csv' }], priority: 'option' }] },
+				selector: [{ filenamePattern: '*.csv' }, { filenamePattern: '*.xlsx' }], priority: 'option' }] },
 		}));
 		await esbuild.build({
 			stdin: {
@@ -41,6 +41,10 @@ exports.activate = context => {
 			provider.applyEdit(document, { type: 'editCell', documentId: document.documentId,
 				revision: document.revision, sheetId: document.sheetId(0), sheetIndex: 0, row, column, value });
 		},
+		commitFormula(sheetIndex, row, column, formula) {
+			return provider.applyFormulaEdit(document, { type: 'editFormula', documentId: document.documentId,
+				revision: document.revision, sheetId: document.sheetId(sheetIndex), sheetIndex, row, column, formula });
+		},
 	};
 };`,
 			},
@@ -49,9 +53,12 @@ exports.activate = context => {
 		});
 		await writeFile(path.join(directory, 'tests.js'), `
 const assert = require('node:assert/strict');
-const { readFile, writeFile, stat } = require('node:fs/promises');
+const { readFile, writeFile, stat, chmod } = require('node:fs/promises');
 const path = require('node:path');
 const vscode = require('vscode');
+const { copyFile } = require('node:fs/promises');
+const { parseXlsxBytes } = require(path.join(${JSON.stringify(root)}, 'out/formats/xlsx.js'));
+const { unzipSync } = require(path.join(${JSON.stringify(root)}, 'node_modules/fflate'));
 
 exports.run = async () => {
 	const uri = vscode.Uri.file(path.join(__dirname, 'data.csv'));
@@ -60,10 +67,10 @@ exports.run = async () => {
 	await vscode.commands.executeCommand('vscode.openWith', uri, 'spreadsheet-viewer.editor');
 	const tab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
 		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === uri.toString());
-	const waitFor = async (label, predicate) => {
+	const waitFor = async (label, predicate, checkLiveDocument = true) => {
 		const deadline = Date.now() + 8000;
 		while (Date.now() < deadline) {
-			assert.equal(api.document.isDisposed, false, 'CustomDocument was disposed during ' + label);
+			if (checkLiveDocument && api.document) {assert.equal(api.document.isDisposed, false, 'CustomDocument was disposed during ' + label);}
 			if (await predicate()) { return; }
 			await new Promise(resolve => setTimeout(resolve, 50));
 		}
@@ -84,11 +91,32 @@ exports.run = async () => {
 	await waitFor('undo autosave', saved('name,value\\nfirst,30\\nsecond,20\\n'));
 	await vscode.commands.executeCommand('redo');
 	await waitFor('redo autosave', saved(third));
-	if (process.platform !== 'win32') {
-		assert.equal((await stat(uri.fsPath)).mode & 0o777, 0o640, 'Save changed the file permissions');
-	}
 	await vscode.window.tabGroups.close(tab());
-	console.log('PASS: repeated autosaves, rapid edits, undo/redo, live CustomDocument, clean tab, file permissions');
+	const formulaPath = path.join(__dirname, 'formula.xlsx');
+	await copyFile(path.join(${JSON.stringify(root)}, 'src/test/fixtures/xlsx/formula_excel.xlsx'), formulaPath);
+	await chmod(formulaPath, 0o640);
+	const formulaUri = vscode.Uri.file(formulaPath);
+	await vscode.commands.executeCommand('vscode.openWith', formulaUri, 'spreadsheet-viewer.editor');
+	await waitFor('formula workbook open', async () => api.document?.uri.toString() === formulaUri.toString(), false);
+	assert.equal(await api.commitFormula(1, 1, 0, '=1+2'), true, 'the Extension Host accepts a parsed formula edit');
+	await waitFor('formula autosave', async () => parseXlsxBytes(await readFile(formulaPath)).sheets[1].rows[1][0] === '=1+2');
+	const formulaSaved = await readFile(formulaPath);
+	const savedWorkbook = parseXlsxBytes(formulaSaved);
+	assert.equal(savedWorkbook.sheets[1].rows[1][0], '=1+2', 'the XLSX formula expression was saved and reopens');
+	assert.equal(savedWorkbook.sheets[1].formulaCaches.A2, '', 'the edited formula does not retain a stale cached value');
+	const workbookParts = unzipSync(formulaSaved);
+	assert.match(new TextDecoder().decode(workbookParts['xl/workbook.xml']), /fullCalcOnLoad="1"/);
+	await vscode.commands.executeCommand('undo');
+	await waitFor('formula undo autosave', async () => parseXlsxBytes(await readFile(formulaPath)).sheets[1].rows[1][0] !== '=1+2');
+	await vscode.commands.executeCommand('redo');
+	await waitFor('formula redo autosave', async () => parseXlsxBytes(await readFile(formulaPath)).sheets[1].rows[1][0] === '=1+2');
+	if (process.platform !== 'win32') {
+		assert.equal((await stat(formulaPath)).mode & 0o777, 0o640, 'Save changed the file permissions');
+	}
+	const formulaTab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
+		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === formulaUri.toString());
+	await vscode.window.tabGroups.close(formulaTab());
+	console.log('PASS: CSV autosave lifecycle and XLSX formula edit/save/reopen/undo/redo');
 };
 `);
 		// An integrated terminal can inherit this from VS Code's Node processes.

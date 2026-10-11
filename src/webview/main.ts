@@ -94,6 +94,10 @@ const revealHiddenMatchButton = requiredElement<HTMLButtonElement>('#reveal-hidd
 const cellEditor = requiredElement<HTMLTextAreaElement>('#cell-editor');
 const applyCellEditButton = requiredElement<HTMLButtonElement>('#apply-cell-edit');
 const cellEditorGroup = requiredElement<HTMLDivElement>('#cell-editor-group');
+const formulaEditMode = requiredElement<HTMLInputElement>('#formula-edit-mode');
+const formulaModeControl = requiredElement<HTMLLabelElement>('#formula-mode-control');
+const cellEditLabel = requiredElement<HTMLLabelElement>('#cell-edit-label');
+let showFormulaEditing = formulaEditMode.dataset.settingEnabled !== 'false';
 
 const defaultRowHeight = 28;
 const minimumRowHeight = 20;
@@ -178,7 +182,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 			const position = inlineEditorDirty ? editingCell : editorDirty ? selectedCell : undefined;
 			if (position) {
 				draft = { sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0, ...position,
-					value: inlineEditorDirty ? inlineEditValue : cellEditor.value };
+					value: inlineEditorDirty ? inlineEditValue : cellEditor.value,
+					...(formulaEditMode.checked ? { formula: true } : {}) };
 			}
 		}
 		vscodeApi.postMessage({ type: 'draftCaptureResult', requestId: event.data.requestId as number, ...(draft ? { draft } : {}) });
@@ -241,6 +246,13 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'clearSortButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showClearSortButton = event.data.visible;
 		clearSortButton.hidden = !showClearSortButton || sortCriteria.length === 0;
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'formulaEditingVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showFormulaEditing = event.data.visible;
+		if (!showFormulaEditing) {formulaEditMode.checked = false;}
+		updateFormulaEditorControls();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'sortState'
@@ -614,6 +626,10 @@ goToCellButton.addEventListener('click', goToCell);
 cellEditor.addEventListener('input', () => {
 	editorDirty = true;
 	sendDraftState(true);
+});
+formulaEditMode.addEventListener('change', () => {
+	if (editorDirty) {formulaEditMode.checked = !formulaEditMode.checked; return;}
+	updateFormulaEditorControls();
 });
 cellEditor.addEventListener('blur', commitSelectedEdit);
 cellEditor.addEventListener('keydown', event => {
@@ -1024,7 +1040,28 @@ function selectCell(row: number, column: number, extend = false, coveredMode: 's
 		cellEditor, applyCellEditButton, setEditorDirty: value => {editorDirty = value;},
 		ensureSelectionVisible, renderGrid,
 	}, row, column);
+	formulaEditMode.checked = snapshot?.type === 'xlsxData' && snapshot.cellTypes[row]?.[column] === 'formula';
+	updateFormulaEditorControls();
 	schedulePersistViewState();
+}
+
+function updateFormulaEditorControls(): void {
+	const enabled = showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat !== 'ods' && snapshot.readonly !== true;
+	formulaModeControl.hidden = !enabled;
+	formulaEditMode.disabled = !enabled || !selectedCell || !canEditFormulaCell(selectedCell.row, selectedCell.column);
+	if (!formulaEditMode.checked) {
+		cellEditLabel.textContent = 'Editar valor crudo';
+		cellEditor.setAttribute('aria-label', 'Editar valor crudo');
+		const normallyEditable = Boolean(selectedCell && canEditCell(selectedCell.row, selectedCell.column));
+		cellEditor.disabled = !normallyEditable;
+		applyCellEditButton.disabled = !normallyEditable || !editorDirty;
+		return;
+	}
+	const canEditFormula = Boolean(selectedCell && canEditFormulaCell(selectedCell.row, selectedCell.column));
+	cellEditLabel.textContent = 'Editar fórmula';
+	cellEditor.setAttribute('aria-label', 'Editar fórmula XLSX');
+	cellEditor.disabled = !canEditFormula;
+	applyCellEditButton.disabled = !canEditFormula || !editorDirty;
 }
 
 function updateCsvRowActions(): void {
@@ -1038,8 +1075,14 @@ function updateCsvRowActions(): void {
 }
 
 function commitSelectedEdit(): void {
-	if (!editorDirty || !snapshot || !selectedCell || !canEditCell(selectedCell.row, selectedCell.column)) {return;}
-	sendCellEdit(selectedCell, cellEditor.value);
+	if (!editorDirty || !snapshot || !selectedCell) {return;}
+	if (formulaEditMode.checked) {
+		if (!canEditFormulaCell(selectedCell.row, selectedCell.column)) {return;}
+		sendFormulaEdit(selectedCell, cellEditor.value);
+	} else {
+		if (!canEditCell(selectedCell.row, selectedCell.column)) {return;}
+		sendCellEdit(selectedCell, cellEditor.value);
+	}
 	editorDirty = false;
 	saveStatus.textContent = 'Cambios pendientes…';
 }
@@ -1086,6 +1129,13 @@ function sendCellEdit(position: { row: number; column: number }, value: string):
 		sheetIndex, sheetId: snapshot.sheetId, ...position, value });
 }
 
+function sendFormulaEdit(position: { row: number; column: number }, formula: string): void {
+	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.fileFormat === 'ods' || snapshot.readonly) {return;}
+	sendDraftState(false, formula, position);
+	vscodeApi.postMessage({ type: 'editFormula', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetIndex: snapshot.activeSheetIndex, sheetId: snapshot.sheetId, ...position, formula });
+}
+
 function cancelCellEdit(): void {
 	if (!snapshot || !selectedCell) {return;}
 	sendDraftState(false);
@@ -1106,19 +1156,22 @@ function sendDraftState(
 		sheetId: snapshot.sheetId,
 		...position,
 		value,
+		...(formulaEditMode.checked ? { formula: true } : {}),
 	});
 }
 
-function isRecoveredDraft(value: unknown): value is { sheetIndex: number; row: number; column: number; value: string } {
+function isRecoveredDraft(value: unknown): value is { sheetIndex: number; row: number; column: number; value: string; formula?: boolean } {
 	return typeof value === 'object' && value !== null && 'sheetIndex' in value && Number.isInteger(value.sheetIndex)
 		&& 'row' in value && Number.isInteger(value.row) && 'column' in value && Number.isInteger(value.column)
-		&& 'value' in value && typeof value.value === 'string';
+		&& 'value' in value && typeof value.value === 'string' && (!('formula' in value) || typeof value.formula === 'boolean');
 }
 
-function restoreCellDraft(draft: { sheetIndex: number; row: number; column: number; value: string }): void {
+function restoreCellDraft(draft: { sheetIndex: number; row: number; column: number; value: string; formula?: boolean }): void {
 	if (!snapshot || snapshot.readonly || draft.sheetIndex !== (snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0)
-		|| draft.row >= snapshot.rowCount || draft.column >= snapshot.columnCount || !canEditCell(draft.row, draft.column)) {return;}
+		|| draft.row >= snapshot.rowCount || draft.column >= snapshot.columnCount
+		|| (draft.formula ? !canEditFormulaCell(draft.row, draft.column) : !canEditCell(draft.row, draft.column))) {return;}
 	selectCell(draft.row, draft.column);
+	if (draft.formula) {formulaEditMode.checked = true; updateFormulaEditorControls();}
 	cellEditor.value = draft.value;
 	editorDirty = true;
 	applyCellEditButton.disabled = false;
@@ -2237,6 +2290,11 @@ function canEditCell(row: number, column: number): boolean {
 	if (snapshot.readonly) {return false;}
 	if (snapshot.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {return false;}
 	return snapshot.type !== 'xlsxData' || snapshot.cellCapabilities[row]?.[column]?.editable === true;
+}
+
+function canEditFormulaCell(row: number, column: number): boolean {
+	return showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat !== 'ods'
+		&& snapshot.readonly !== true && snapshot.cellCapabilities[row]?.[column]?.formulaEditable === true;
 }
 
 function getFormulaCache(row: number, column: number): string {

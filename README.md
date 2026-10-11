@@ -18,7 +18,7 @@
 - **Adjust the table layout:** resize columns and rows, auto-fit columns, wrap text, and freeze visible rows or columns.
 - **Remember your view:** restore selection, scroll position, search, sort, filters, and sizes per file and sheet. This can be disabled in Settings.
 - **Preview without editing:** inspect a file from disk, preview unsaved CSV/TSV/TAB text, or explicitly preview another text file as CSV.
-- **Inspect XLSX formulas:** supported formulas are calculated in a local Web Worker so they do not run on the grid's UI thread. A calculation that takes over 60 seconds is stopped; calculated results are for display and are never written to the workbook.
+- **Inspect and edit XLSX formulas:** supported formulas are calculated in a local Web Worker so they do not run on the grid's UI thread. Select a formula cell to edit its expression, or enable **Editar como fórmula** to create one. Syntax is checked before applying; valid functions the calculator does not support can still be saved. Shared and array formulas cannot be edited. Calculated results are for display and are never written to the workbook.
 
 ## Get started
 
@@ -82,7 +82,7 @@ XLSX and ODS support focuses on tabular data. Macros, charts, pivot tables, sign
 
 Workbook sheets can be switched with scrollable tabs or the sheet selector. Hidden and very hidden sheets are labeled explicitly. Imported row/column dimensions and XLSX frozen panes are used for the grid. Basic XLSX bold, italic, alignment, wrapping, borders, and direct RGB font/fill colors are rendered; theme/indexed colors and advanced conditional or rich-text styles are not. Merged cells render when their rows remain in source order and the merge does not cross a frozen pane. When sorting or filtering changes row positions, the grid temporarily uses tabular cells and explains why. Selecting a covered cell moves to its merge anchor. Cell notes and links appear as text and are never opened automatically.
 
-The XLSX editor can insert or delete selected rows and columns in a conservative workbook profile. It blocks structural edits when formulas, external references, merges, filters, protection, or workbook parts that it cannot update are present. **Estructura XLSX** can be hidden with `spreadsheet-viewer.xlsx.showStructureActions`.
+The XLSX editor can insert or delete selected rows and columns in a conservative workbook profile. It blocks structural edits when formulas, external references, merges, filters, protection, or workbook parts that it cannot update are present. **Estructura XLSX** can be hidden with `spreadsheet-viewer.xlsx.showStructureActions`. Formula editing is available by default and can be disabled with `spreadsheet-viewer.xlsx.allowFormulaEditing`.
 
 ## Settings
 
@@ -99,6 +99,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
 | `spreadsheet-viewer.view.showDisplayModeButton` | `true` | Show or hide **Ver libro**, the XLSX raw/formatted display toggle. |
 | `spreadsheet-viewer.xlsx.showStructureActions` | `true` | Show or hide XLSX row and column insertion/deletion actions for compatible workbooks. |
+| `spreadsheet-viewer.xlsx.allowFormulaEditing` | `true` | Allow formula creation and editing through the explicit formula mode. Syntax is validated before applying. |
 | `spreadsheet-viewer.view.showWorkbookAppearance` | `true` | Apply basic workbook cell styles and merged-cell layout; set to `false` to use plain cells. |
 | `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. |
 

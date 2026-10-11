@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import initializeWasm, { parse, tokenize } from 'formualizer';
 import { unzipSync, zipSync } from 'fflate';
 import { applyXlsxStructureOperation } from '../formats/xlsx-structure';
-import { parseXlsxBytes } from '../formats/xlsx';
-import { transformFormulaReferences, type FormulaParserService } from '../formula-reference';
+import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
+import { transformFormulaReferences, validateFormulaExpression, type FormulaParserService } from '../formula-reference';
 
 async function run(): Promise<void> {
 	await initializeWasm();
@@ -11,6 +11,8 @@ async function run(): Promise<void> {
 		parseFormula: formula => parse(formula),
 		tokenizeFormula: async formula => (await tokenize(formula)).tokens,
 	};
+	await validateFormulaExpression('=SUM(A1:A2)', parser);
+	await assert.rejects(validateFormulaExpression('=SUM(', parser));
 
 	assert.deepEqual(await transformFormulaReferences("=SUM('My Sheet'!$A1:B$2)+IF(C3=\"B2\",D4,D5)",
 		{ kind: 'insert', axis: 'row', index: 2, count: 1, formulaSheet: 'My Sheet', targetSheet: 'My Sheet' }, parser),
@@ -43,6 +45,12 @@ async function run(): Promise<void> {
 		{ kind: 'insert', axis: 'row', index: 1, count: 1, formulaSheet: 'Data', targetSheet: 'Data' }, parser)).status, 'unsupported');
 
 	const original = formulaWorkbook();
+	const formulaEditedBytes = serializeXlsxEdits(original, [{ sheetIndex: 0, row: 0, column: 0, value: '=Other!A1+2', type: 'formula' }]);
+	assert.equal(parseXlsxBytes(formulaEditedBytes).sheets[0]?.rows[0]?.[0], '=Other!A1+2');
+	const formulaEditedParts = unzipSync(formulaEditedBytes);
+	assert.equal(formulaEditedParts['xl/calcChain.xml'], undefined);
+	assert.match(new TextDecoder().decode(formulaEditedParts['xl/workbook.xml']), /fullCalcOnLoad="1"/);
+
 	const snapshot = await applyXlsxStructureOperation(original, { kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 }, parser);
 	const changed = parseXlsxBytes(snapshot.after);
 	assert.equal(changed.sheets[0]!.rows[2]![1], '=SUM(A1:A4)');

@@ -193,6 +193,11 @@
           "default": true,
           "description": "Muestra las acciones para insertar y eliminar filas o columnas en libros XLSX compatibles."
         },
+        "spreadsheet-viewer.xlsx.allowFormulaEditing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Permite crear y editar fórmulas XLSX mediante el modo explícito de edición de fórmula."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,
@@ -240,9 +245,10 @@
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "test:formulas": "node scripts/test-formulas.js",
+    "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
-    "test:save-lifecycle": "node scripts/test-save-lifecycle.js",
+    "test:save-lifecycle": "npm run compile-tests && node scripts/test-save-lifecycle.js",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit && npm run check-types:webview",

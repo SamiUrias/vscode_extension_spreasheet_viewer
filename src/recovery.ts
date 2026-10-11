@@ -4,7 +4,7 @@ const MAGIC = 'SPREADSHEET-VIEWER-RECOVERY\n';
 const MAX_RECOVERY_BYTES = 32 * 1024 * 1024;
 
 export interface RecoveryDraft {
-	readonly sheetIndex: number; readonly row: number; readonly column: number; readonly value: string;
+	readonly sheetIndex: number; readonly row: number; readonly column: number; readonly value: string; readonly formula?: boolean;
 }
 
 export interface RecoveryEnvelopeV1 {
@@ -63,7 +63,8 @@ function isEnvelope(value: unknown): value is SerializedEnvelopeV1 {
 	return Number.isInteger(draft.sheetIndex) && Number(draft.sheetIndex) >= 0 && Number(draft.sheetIndex) < 50
 		&& Number.isInteger(draft.row) && Number(draft.row) >= 0 && Number(draft.row) < 50_000
 		&& Number.isInteger(draft.column) && Number(draft.column) >= 0 && Number(draft.column) < 256
-		&& typeof draft.value === 'string' && draft.value.length <= 10 * 1024 * 1024;
+		&& typeof draft.value === 'string' && draft.value.length <= 10 * 1024 * 1024
+		&& (draft.formula === undefined || typeof draft.formula === 'boolean');
 }
 
 function sha256(bytes: Uint8Array): string {return createHash('sha256').update(bytes).digest('hex');}
