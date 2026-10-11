@@ -1,4 +1,4 @@
-import * as path from 'node:path';
+import { uriBasename, uriDirname } from './uri-path';
 
 /** Resolve well-known language IDs to a CSV separator without depending on a language extension. */
 export function delimiterForLanguageId(languageId: string | undefined): string | undefined {
@@ -27,7 +27,8 @@ export function isSupportedCsvLanguageId(languageId: string | undefined): boolea
 
 /** VS Code materializes `code -` as a temporary file using the `code-stdin` basename prefix. */
 export function isStdinTempPath(filePath: string, tempDirectory: string): boolean {
-	return path.resolve(path.dirname(filePath)) === path.resolve(tempDirectory)
-		&& path.basename(filePath).startsWith('code-stdin');
+	const normalize = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+	return normalize(uriDirname(filePath)) === normalize(tempDirectory)
+		&& uriBasename(filePath).startsWith('code-stdin');
 }
 

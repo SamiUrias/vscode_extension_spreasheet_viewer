@@ -1,11 +1,11 @@
-import { randomBytes } from 'node:crypto';
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SpreadsheetDocument } from './document';
 import { loadFormulaParserService } from './formula-parser-loader';
 import { CsvDelimiterAmbiguityError, type CsvParseOptions } from './formats/csv';
 import { delimiterForCsvResource } from './csv-dialect';
 import { isDocumentMutationMessageType } from './filesystem-capability';
+import { bytesToBase64, randomBase64 } from './runtime';
+import { uriBasename, uriDirname, uriExtname, uriJoin } from './uri-path';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
@@ -126,7 +126,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	async openCustomDocument(uri: vscode.Uri, openContext: vscode.CustomDocumentOpenContext): Promise<SpreadsheetDocument> {
 		if (!await resolveDirtyTextBuffer(uri)) {throw new Error('Se canceló la apertura para conservar los cambios de texto sin guardar.');}
 		const backupBytes = openContext.backupId ? await readBackup(openContext.backupId) : undefined;
-		const recovery = backupBytes ? parseRecoveryEnvelope(backupBytes) : undefined;
+		const recovery = backupBytes ? await parseRecoveryEnvelope(backupBytes) : undefined;
 		const open = async (options?: CsvParseOptions): Promise<SpreadsheetDocument> => {
 			if (recovery) {return SpreadsheetDocument.restoreRecovery(uri, recovery, options);}
 			const document = await SpreadsheetDocument.open(uri, backupBytes, options);
@@ -348,7 +348,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const sentSnapshot = this.formulaSnapshotsSent.get(panel);
 		const workbookBase64 = formulaSnapshot && (sentSnapshot?.documentId !== document.documentId || sentSnapshot.revision !== document.revision)
 			? formulaSnapshot : undefined;
-		const workbookMatchesSavedBytes = formulaSnapshot === undefined || formulaSnapshot === Buffer.from(document.sourceBytes).toString('base64');
+		const workbookMatchesSavedBytes = formulaSnapshot === undefined || formulaSnapshot === bytesToBase64(document.sourceBytes);
 		const sheetProtected = document.ods?.sheets[sheetIndex]?.odsMetadata?.protected === true;
 		const formulaEditingAllowed = Boolean(document.xlsx) && !document.isReadOnly && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true);
 		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
@@ -420,13 +420,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private getFormulaSnapshot(document: SpreadsheetDocument): string {
 		const cached = this.formulaSnapshots.get(document);
 		if (cached?.revision === document.revision) {return cached.base64;}
-		const entry = { revision: document.revision, base64: Buffer.from(document.serializeCopy()).toString('base64') };
+		const entry = { revision: document.revision, base64: bytesToBase64(document.serializeCopy()) };
 		this.formulaSnapshots.set(document, entry);
 		return entry.base64;
 	}
 
 	async open(uri: vscode.Uri): Promise<void> {
-		const extension = path.posix.extname(uri.path).toLowerCase();
+		const extension = uriExtname(uri.path).toLowerCase();
 		if (!['.csv', '.tsv', '.tab', '.xlsx', '.ods'].includes(extension)) {
 			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx y .ods.');
 		}
@@ -520,7 +520,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				}
 				const message = errorMessage(error);
 				this.postSaveState(document, { type: 'saveState', state: 'error', message });
-				void vscode.window.showErrorMessage(`No se pudo guardar ${path.posix.basename(document.uri.path)}: ${message}`);
+				void vscode.window.showErrorMessage(`No se pudo guardar ${uriBasename(document.uri.path)}: ${message}`);
 				if (message.includes('cambió en disco')) {this.scheduleExternalCheck(document);}
 				throw error;
 			} finally {
@@ -542,7 +542,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	async saveCustomDocumentAs(document: SpreadsheetDocument, destination: vscode.Uri, _cancellation: vscode.CancellationToken): Promise<void> {
 		await this.confirmDraftsBeforeSave(document);
-		if (path.posix.extname(destination.path).toLowerCase() !== path.posix.extname(document.uri.path).toLowerCase()) {
+		if (uriExtname(destination.path).toLowerCase() !== uriExtname(document.uri.path).toLowerCase()) {
 			throw new Error('Save As debe conservar la extensión del formato actual.');
 		}
 		const bytes = document.serializeCopy();
@@ -605,7 +605,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			this.output.appendLine(`No se pudo recargar ${document.uri.toString()}: ${message}`);
 			this.postReloadState(document, { type: 'reloadState', state: 'error', message });
 			this.postSaveState(document, { type: 'saveState', state: 'error', message });
-			void vscode.window.showErrorMessage(`No se pudo recargar ${path.posix.basename(document.uri.path)}: ${message}`);
+			void vscode.window.showErrorMessage(`No se pudo recargar ${uriBasename(document.uri.path)}: ${message}`);
 		}
 	}
 
@@ -934,10 +934,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private watchDocument(document: SpreadsheetDocument): void {
 		const key = document.uri.toString();
 		if (this.watchers.has(key)) {return;}
-		const directory = document.uri.with({ path: path.posix.dirname(document.uri.path) });
+		const directory = document.uri.with({ path: uriDirname(document.uri.path) });
 		try {
 			const watcher = vscode.workspace.createFileSystemWatcher(
-				new vscode.RelativePattern(directory, path.posix.basename(document.uri.path)),
+				new vscode.RelativePattern(directory, uriBasename(document.uri.path)),
 			);
 			this.watcherListeners.set(key, [
 				watcher.onDidChange(() => this.scheduleExternalCheck(document)),
@@ -946,7 +946,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			]);
 			this.watchers.set(key, watcher);
 		} catch (error) {
-			void vscode.window.showWarningMessage(`No se pudo observar cambios externos de ${path.posix.basename(document.uri.path)}: ${errorMessage(error)}. El guardado aún comprobará la versión en disco.`);
+			void vscode.window.showWarningMessage(`No se pudo observar cambios externos de ${uriBasename(document.uri.path)}: ${errorMessage(error)}. El guardado aún comprobará la versión en disco.`);
 		}
 	}
 
@@ -982,11 +982,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			const message = errorMessage(error);
 			if (document.hasUnsavedChanges || this.hasPendingDraft(document)) {
-				this.handleExternalConflict(document, false, false, `No se pudo leer ${path.posix.basename(document.uri.path)} tras un cambio externo: ${message} El borrador se conserva.`);
+				this.handleExternalConflict(document, false, false, `No se pudo leer ${uriBasename(document.uri.path)} tras un cambio externo: ${message} El borrador se conserva.`);
 				return;
 			}
 			this.postSaveState(document, { type: 'saveState', state: 'error', message });
-			void vscode.window.showErrorMessage(`No se pudo recargar ${path.posix.basename(document.uri.path)}: ${message}`);
+			void vscode.window.showErrorMessage(`No se pudo recargar ${uriBasename(document.uri.path)}: ${message}`);
 			return;
 		}
 
@@ -1015,7 +1015,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				this.conflictPrompts.delete(key);
 				this.postDocument(document);
 				this.postSaveState(document, { type: 'saveState', state: 'clean' });
-				void vscode.window.showInformationMessage(`${path.posix.basename(document.uri.path)} cambió en disco y se recargó.`);
+				void vscode.window.showInformationMessage(`${uriBasename(document.uri.path)} cambió en disco y se recargó.`);
 			} catch (error) {
 				const message = errorMessage(error);
 				this.postSaveState(document, { type: 'saveState', state: 'error', message });
@@ -1033,8 +1033,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		if (timer) {clearTimeout(timer);}
 		this.saveTimers.delete(key);
 		const message = messageOverride ?? (deleted
-			? `Se eliminó ${path.posix.basename(document.uri.path)} en disco. El borrador se conserva.`
-			: `${path.posix.basename(document.uri.path)} cambió en disco mientras tenías cambios pendientes. No se sobrescribirá.`);
+			? `Se eliminó ${uriBasename(document.uri.path)} en disco. El borrador se conserva.`
+			: `${uriBasename(document.uri.path)} cambió en disco mientras tenías cambios pendientes. No se sobrescribirá.`);
 		this.postSaveState(document, { type: 'saveState', state: 'error', message });
 		if (this.conflictPrompts.has(key)) {return;}
 		this.conflictPrompts.add(key);
@@ -1063,10 +1063,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 		}
 		this.clearAllDrafts(document);
-		const extension = path.posix.extname(document.uri.path);
-		const baseName = path.posix.basename(document.uri.path, extension);
+		const extension = uriExtname(document.uri.path);
+		const baseName = uriBasename(document.uri.path, extension);
 		const destination = await vscode.window.showSaveDialog({
-			defaultUri: document.uri.with({ path: path.posix.join(path.posix.dirname(document.uri.path), `${baseName}.conflict${extension}`) }),
+			defaultUri: document.uri.with({ path: uriJoin(uriDirname(document.uri.path), `${baseName}.conflict${extension}`) }),
 		});
 		if (!destination) {return;}
 		try {
@@ -1150,7 +1150,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					return caseMode === 'upper' ? label.toUpperCase() : caseMode === 'lower' ? label.toLowerCase() : label;
 				});
 				const data: CsvDataMessage = {
-					type: 'csvData', revision: document.revision, documentId: document.documentId, sheetId: document.sheetId(0), fileName: path.posix.basename(document.uri.path), rows: csvRows,
+					type: 'csvData', revision: document.revision, documentId: document.documentId, sheetId: document.sheetId(0), fileName: uriBasename(document.uri.path), rows: csvRows,
 					readonly: document.isReadOnly,
 					rowCount: document.csv.rowCount, columnCount: document.csv.columnCount,
 					rowKinds: document.csv.rowKinds, physicalLines: document.csv.physicalLines,
@@ -1206,7 +1206,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const drafts = [...(this.panels.get(document.uri.toString()) ?? [])]
 			.map(panel => this.panelDrafts.get(panel)).filter((draft): draft is NonNullable<typeof draft> => Boolean(draft));
 		const draft = drafts.at(-1);
-		const bytes = serializeRecoveryEnvelope({
+		const bytes = await serializeRecoveryEnvelope({
 			uri: document.uri.toString(), baselineBytes: document.sourceBytes, workingBytes,
 			...(draft ? { draft: { sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value, ...(draft.formula ? { formula: true } : {}) } } : {}),
 		});
@@ -1245,7 +1245,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
 		const formulaWasmBaseUri = `${webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist')).toString()}/`;
-		const nonce = randomBytes(16).toString('base64');
+		const nonce = randomBase64(16);
 
 		return `<!DOCTYPE html>
 <html lang="es">

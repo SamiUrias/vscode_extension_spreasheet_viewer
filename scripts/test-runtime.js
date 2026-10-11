@@ -1,0 +1,25 @@
+const assert = require('node:assert/strict');
+const { base64ToBytes, bytesToBase64, createUuid, randomBase64, sha256Hex } = require('../out/runtime.js');
+const { uriBasename, uriDirname, uriExtname, uriJoin } = require('../out/uri-path.js');
+const { parseRecoveryEnvelope, serializeRecoveryEnvelope } = require('../out/recovery.js');
+const { webcrypto } = require('node:crypto');
+const { setRuntimeCrypto } = require('../out/runtime.js');
+setRuntimeCrypto(webcrypto);
+
+(async () => {
+	const bytes = new TextEncoder().encode('spreadsheet ✓');
+	assert.deepEqual(base64ToBytes(bytesToBase64(bytes)), bytes);
+	assert.match(createUuid(), /^[0-9a-f-]{36}$/i);
+	assert.equal(randomBase64(16).length, 24);
+	assert.equal(await sha256Hex(new TextEncoder().encode('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+	assert.equal(uriBasename('/work/file.csv'), 'file.csv');
+	assert.equal(uriBasename('/work/file.csv', '.csv'), 'file');
+	assert.equal(uriDirname('/work/file.csv'), '/work');
+	assert.equal(uriExtname('/work/file.csv'), '.csv');
+	assert.equal(uriJoin('/work', '../other/file.csv'), '/other/file.csv');
+	const envelope = { uri: 'file:///work/data.csv', baselineBytes: bytes, workingBytes: new TextEncoder().encode('edited') };
+	const recovered = await parseRecoveryEnvelope(await serializeRecoveryEnvelope(envelope));
+	assert.deepEqual(recovered?.baselineBytes, envelope.baselineBytes);
+	assert.deepEqual(recovered?.workingBytes, envelope.workingBytes);
+	console.log('Web-safe runtime and recovery tests passed');
+})().catch(error => {console.error(error); process.exitCode = 1;});

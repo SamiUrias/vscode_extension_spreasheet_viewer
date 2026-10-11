@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import * as path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createUuid } from './runtime';
+import { uriExtname } from './uri-path';
 import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
 import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
@@ -11,7 +11,7 @@ import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 import { isWritableFileSystem } from './filesystem-capability';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
-	readonly documentId = randomUUID();
+	readonly documentId = createUuid();
 	csv: CsvTable | undefined;
 	xlsx: XlsxWorkbook | undefined;
 	xlsxStructureCapability: XlsxStructureCapability = { allowed: false, reason: 'El documento no es XLSX.' };
@@ -126,7 +126,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		if ((stat.type & vscode.FileType.File) === 0) {
 			throw new Error('El recurso seleccionado no es un archivo.');
 		}
-		const extension = path.posix.extname(uri.path).toLowerCase();
+		const extension = uriExtname(uri.path).toLowerCase();
 		const limit = ['.csv', '.tsv', '.tab'].includes(extension) ? MAX_CSV_BYTES : extension === '.xlsx' ? MAX_XLSX_BYTES : MAX_ODS_BYTES;
 		if (!['.csv', '.tsv', '.tab', '.xlsx', '.ods'].includes(extension)) {
 			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx y .ods.');
@@ -216,14 +216,14 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 function optionsForUri(uri: vscode.Uri): CsvParseOptions {
-	const extension = path.posix.extname(uri.path).toLowerCase();
+	const extension = uriExtname(uri.path).toLowerCase();
 	const configuration = vscode.workspace.getConfiguration('spreadsheet-viewer.csv');
 	const commentPrefix = configuration.get<string>('commentPrefix', '#');
 	return { ...(['.tsv', '.tab'].includes(extension) ? { delimiter: '\t' } : {}), commentPrefix: commentPrefix || undefined };
 }
 
 function parseDocument(uri: vscode.Uri, bytes: Uint8Array, csvOptions: CsvParseOptions = optionsForUri(uri)): { csv: CsvTable | undefined; xlsx: XlsxWorkbook | undefined; ods: OdsWorkbook | undefined } {
-	const extension = path.posix.extname(uri.path).toLowerCase();
+	const extension = uriExtname(uri.path).toLowerCase();
 	if (['.csv', '.tsv', '.tab'].includes(extension)) {return { csv: parseCsvBytes(bytes, csvOptions), xlsx: undefined, ods: undefined };}
 	if (extension === '.xlsx') {return { csv: undefined, xlsx: parseXlsxBytes(bytes), ods: undefined };}
 	if (extension === '.ods') {return { csv: undefined, xlsx: undefined, ods: parseOdsBytes(bytes) };}

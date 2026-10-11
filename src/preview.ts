@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import * as path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createUuid, bytesToBase64 } from './runtime';
+import { uriBasename } from './uri-path';
 import { SpreadsheetDocument } from './document';
 import { CsvDelimiterAmbiguityError, MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvTable } from './formats/csv';
 import type { CsvDataMessage, ExtensionToWebviewMessage, SelectSheetMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
@@ -139,10 +139,10 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 	): Promise<void> {
 		const key = sessionKey(uri, mode);
 		const panel = vscode.window.createWebviewPanel('spreadsheet-viewer.preview',
-			`${path.posix.basename(uri.path) || 'CSV'} · Vista previa`, vscode.ViewColumn.Beside,
+			`${uriBasename(uri.path) || 'CSV'} · Vista previa`, vscode.ViewColumn.Beside,
 			{ enableScripts: true, retainContextWhenHidden: false, localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')] });
 		const session: PreviewSession = {
-			key, uri, mode, panel, documentId: randomUUID(),
+			key, uri, mode, panel, documentId: createUuid(),
 			revision: 0, activeSheetIndex: 0, ready: false, ...state,
 		};
 		this.sessions.set(key, session);
@@ -226,7 +226,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 			});
 			message = {
 				type: 'csvData', documentId: session.documentId, sheetId: previewSheetId(session, 0),
-				revision: session.revision, fileName: path.posix.basename(session.uri.path) || 'CSV',
+				revision: session.revision, fileName: uriBasename(session.uri.path) || 'CSV',
 				rows: session.csv.rows.map(row => [...row]), rowCount: session.csv.rowCount,
 				columnCount: session.csv.columnCount, readonly: true, sourceMode: session.mode, sourceStatus,
 				rowKinds: session.csv.rowKinds, physicalLines: session.csv.physicalLines, headerLabels,
@@ -244,7 +244,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 				type: 'xlsxData', fileFormat: document.ods ? 'ods' : 'xlsx', revision: session.revision,
 				documentId: session.documentId, sheetId: previewSheetId(session, index),
 				sheetIds: workbook.sheets.map((_, sheetIndex) => previewSheetId(session, sheetIndex)),
-				fileName: path.posix.basename(session.uri.path), sheetName: sheet.name,
+				fileName: uriBasename(session.uri.path), sheetName: sheet.name,
 				sheetNames: workbook.sheets.map(item => item.name), activeSheetIndex: index,
 				sheetStates: workbook.sheets.map((item, sheetIndex) => item.state ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.state ?? 'visible'),
 				...(document.xlsx?.sheets[index]?.metadata ? {
@@ -277,7 +277,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					cellVisualStyles: document.xlsx.styles?.cellVisualStyles,
 					date1904: document.xlsx.date1904,
 				} : {}),
-				...(document.xlsx && session.bytes ? { workbookBase64: Buffer.from(session.bytes).toString('base64') } : {}),
+				...(document.xlsx && session.bytes ? { workbookBase64: bytesToBase64(session.bytes) } : {}),
 				rowCount: sheet.rowCount, columnCount: sheet.columnCount, warnings: workbook.warnings,
 				readonly: true, sourceMode: session.mode, sourceStatus,
 			};
@@ -357,7 +357,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 			const delimiter = await vscode.window.showQuickPick(error.delimiters.map(value => ({
 				label: value === '\t' ? 'Tabulador (TAB)' : value,
 				description: `Separador ${JSON.stringify(value)}`, value,
-			})), { title: `Elige el separador para ${path.posix.basename(uri.path) || 'CSV'}` });
+			})), { title: `Elige el separador para ${uriBasename(uri.path) || 'CSV'}` });
 			if (!delimiter) {throw new Error('Se canceló la selección del dialecto CSV.');}
 			options.delimiter = delimiter.value;
 			const table = parseCsvBytes(bytes, options);

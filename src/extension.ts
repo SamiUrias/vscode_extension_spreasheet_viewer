@@ -1,16 +1,17 @@
 import * as vscode from 'vscode';
-import * as os from 'node:os';
 import { SpreadsheetEditorProvider, resolveDirtyTextBuffer } from './editor';
 import { SpreadsheetPreviewProvider } from './preview';
 import { isStdinTempPath, isSupportedCsvLanguageId } from './csv-dialect';
+import { getStdinTemporaryDirectory } from './stdin-config';
 
-export function activate(context: vscode.ExtensionContext): void {
+export function activateCore(context: vscode.ExtensionContext): void {
 	const provider = new SpreadsheetEditorProvider(context.extensionUri, context.workspaceState);
 	const previews = new SpreadsheetPreviewProvider(context.extensionUri, (uri, webview, label) => provider.getHtml(uri, webview, label), context.workspaceState);
 	const stdinAttempts = new Set<string>();
 	const maybePreviewStdin = (document: vscode.TextDocument): void => {
 		if (!vscode.workspace.getConfiguration('spreadsheet-viewer.stdin').get<boolean>('openStdin', false)) {return;}
-		if (document.uri.scheme !== 'file' || !isStdinTempPath(document.uri.fsPath, os.tmpdir())) {return;}
+		const stdinDirectory = getStdinTemporaryDirectory();
+		if (document.uri.scheme !== 'file' || !stdinDirectory || !isStdinTempPath(document.uri.path, stdinDirectory)) {return;}
 		if (document.languageId !== 'plaintext' && !isSupportedCsvLanguageId(document.languageId)) {return;}
 		const key = document.uri.toString();
 		if (stdinAttempts.has(key)) {return;}

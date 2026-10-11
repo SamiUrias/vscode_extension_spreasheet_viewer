@@ -27,6 +27,7 @@
     }
   },
   "main": "./dist/extension.js",
+  "browser": "./dist/extension-web.js",
   "contributes": {
     "commands": [
       {
@@ -265,6 +266,8 @@
     "test:grid-layout": "npm run compile-tests && node scripts/test-grid-layout.js",
     "test:csv-dialect": "npm run compile-tests && node scripts/test-csv-dialect.js",
     "test:filesystem-capability": "npm run compile-tests && node scripts/test-filesystem-capability.js",
+    "test:runtime": "npm run compile-tests && node scripts/test-runtime.js",
+    "test:web-target": "npm run package && node scripts/test-web-target.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",

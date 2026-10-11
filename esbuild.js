@@ -47,10 +47,17 @@ async function build(options) {
 async function main() {
 	await Promise.all([
 		build({
-			entryPoints: ['src/extension.ts'],
+			entryPoints: ['src/extension-node.ts'],
 			format: 'cjs',
 			platform: 'node',
 			outfile: 'dist/extension.js',
+			external: ['vscode'],
+		}),
+		build({
+			entryPoints: ['src/extension-web.ts'],
+			format: 'cjs',
+			platform: 'browser',
+			outfile: 'dist/extension-web.js',
 			external: ['vscode'],
 		}),
 		build({
@@ -63,6 +70,7 @@ async function main() {
 	await buildWebview();
 	await buildFormulaWorker();
 	await buildFormulaParserNode();
+	await buildFormulaParserWeb();
 	fs.mkdirSync('dist', { recursive: true });
 	fs.copyFileSync('node_modules/formualizer/LICENSE-MIT', 'dist/FORMUALIZER-LICENSE-MIT');
 	fs.copyFileSync('node_modules/formualizer/LICENSE-APACHE', 'dist/FORMUALIZER-LICENSE-APACHE');
@@ -103,6 +111,41 @@ function buildFormulaParserNode() {
 			if (stats?.hasErrors()) {reject(new Error(stats.toString({ all: false, errors: true, warnings: true }))); return;}
 			reportWebpackBuild(undefined, stats);
 			pruneUnusedFormulaParserAssets(stats);
+			compiler.close(closeError => closeError ? reject(closeError) : resolve());
+		});
+	});
+}
+
+function buildFormulaParserWeb() {
+	const compiler = webpack({
+		mode: production ? 'production' : 'development',
+		context: path.resolve('.'),
+		entry: './src/formula-parser-web.mts',
+		target: ['web', 'es2022'],
+		experiments: { asyncWebAssembly: true, outputModule: true },
+		module: {
+			rules: [
+				{ test: /\.[cm]?tsx?$/, exclude: /node_modules/, use: { loader: 'ts-loader', options: { configFile: 'tsconfig.formula-test.json', transpileOnly: true, compilerOptions: { noEmit: false } } } },
+				{ test: /\.wasm$/, type: 'webassembly/async' },
+			],
+		},
+		resolve: { extensions: ['.mts', '.ts', '.js'] },
+		output: {
+			path: path.resolve('dist'), filename: 'formula-parser-web.mjs', module: true, chunkFormat: 'module', library: { type: 'module' },
+			webassemblyModuleFilename: 'formualizer-web.wasm',
+		},
+		optimization: { minimize: production },
+		devtool: production ? false : 'source-map',
+	});
+	if (watch) {
+		compiler.watch({}, (error, stats) => reportWebpackBuild(error, stats));
+		return Promise.resolve();
+	}
+	return new Promise((resolve, reject) => {
+		compiler.run((error, stats) => {
+			if (error) {reject(error); return;}
+			if (stats?.hasErrors()) {reject(new Error(stats.toString({ all: false, errors: true, warnings: true }))); return;}
+			reportWebpackBuild(undefined, stats);
 			compiler.close(closeError => closeError ? reject(closeError) : resolve());
 		});
 	});
