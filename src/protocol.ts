@@ -134,7 +134,12 @@ export interface XlsxDataMessage {
 	fileName: string;
 	sheetName: string;
 	sheetNames: string[];
+	sheetStates?: Array<'visible' | 'hidden' | 'veryHidden'>;
 	activeSheetIndex: number;
+	columnDimensions?: Array<{ min: number; max: number; width?: number; hidden: boolean }>;
+	rowDimensions?: Array<{ row: number; height?: number; hidden: boolean }>;
+	frozenPane?: { xSplit: number; ySplit: number };
+	mergedRanges?: string[];
 	requestId?: number;
 	rows: string[][];
 	cellKinds: string[][];

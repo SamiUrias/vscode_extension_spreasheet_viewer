@@ -9,6 +9,7 @@ import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewSta
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
 import { isCellCoveredByRange } from './cell-reference';
+import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -312,7 +313,19 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			sheetIds: workbook.sheets.map((_, index) => document.sheetId(index)),
 			sheetName: sheet.name,
 			sheetNames: workbook.sheets.map(item => item.name),
+			sheetStates: workbook.sheets.map((item, index) => item.state ?? document.ods?.sheets[index]?.odsMetadata?.state ?? 'visible'),
 			activeSheetIndex: sheetIndex,
+			...(document.xlsx?.sheets[sheetIndex]?.metadata ? {
+				columnDimensions: xlsxColumnDimensions(document.xlsx.sheets[sheetIndex]!.metadata!),
+				rowDimensions: xlsxRowDimensions(document.xlsx.sheets[sheetIndex]!.metadata!),
+				frozenPane: document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane
+					? { xSplit: document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane!.xSplit, ySplit: document.xlsx.sheets[sheetIndex]!.metadata!.frozenPane!.ySplit } : undefined,
+				mergedRanges: document.xlsx.sheets[sheetIndex]!.metadata!.mergedRanges,
+			} : document.ods?.sheets[sheetIndex]?.odsMetadata ? {
+				columnDimensions: odsColumnDimensions(document.ods.sheets[sheetIndex]!.odsMetadata!, sheet.columnCount),
+				rowDimensions: odsRowDimensions(document.ods.sheets[sheetIndex]!.odsMetadata!, sheet.rowCount),
+				mergedRanges: document.ods.sheets[sheetIndex]!.odsMetadata!.mergedRanges,
+			} : {}),
 			...(requestId === undefined ? {} : { requestId }),
 			...(recoveredDraft ? { recoveredDraft } : {}),
 			rows: snapshot.rows,
@@ -1063,10 +1076,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				<p id="sort-warning" role="status" aria-live="polite"></p>
 		</header>
 		<nav id="navigation-bar" aria-label="Navegación de hoja y celda">
-			<label id="sheet-control" class="navigation-group" hidden>
-				<span class="control-label">Hoja</span>
-				<select id="sheet-selector" aria-label="Hoja activa"></select>
-			</label>
+			<div id="sheet-control" class="navigation-group" hidden>
+				<div id="sheet-tabs" role="tablist" aria-label="Hojas del libro"></div>
+				<label class="sheet-selector-fallback"><span class="control-label">Ir a hoja</span><select id="sheet-selector" aria-label="Hoja activa"></select></label>
+				<output id="sheet-state-status" aria-live="polite"></output>
+			</div>
 			<div id="cell-navigation" class="navigation-group">
 				<label class="control-label" for="cell-reference-input">Ir a celda</label>
 				<div class="control-row">

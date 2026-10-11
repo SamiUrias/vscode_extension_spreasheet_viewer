@@ -99,12 +99,16 @@ function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet
 	const name = table.getAttributeNS(TABLE_NS, 'name') || table.getAttribute('table:name') || `Hoja ${index + 1}`;
 	const rowNodes = descendants(table, 'table-row').filter(row => nearestTable(row) === table);
 	const mergedRanges: string[] = [];
-	const rowGeometry = rowNodes.map((rowNode, row) => ({
-		row: row + 1,
-		repeated: positiveInteger(attr(rowNode, TABLE_NS, 'number-rows-repeated', 'table:number-rows-repeated') || '1', 'filas repetidas'),
-		hidden: attr(rowNode, TABLE_NS, 'visibility', 'table:visibility') === 'collapse',
-		...(attr(rowNode, TABLE_NS, 'style-name', 'table:style-name') ? { styleName: attr(rowNode, TABLE_NS, 'style-name', 'table:style-name') } : {}),
-	}));
+	let geometryRow = 1;
+	const rowGeometry = rowNodes.map(rowNode => {
+		const repeated = positiveInteger(attr(rowNode, TABLE_NS, 'number-rows-repeated', 'table:number-rows-repeated') || '1', 'filas repetidas');
+		const item = { row: geometryRow, repeated,
+			hidden: attr(rowNode, TABLE_NS, 'visibility', 'table:visibility') === 'collapse',
+			...(attr(rowNode, TABLE_NS, 'style-name', 'table:style-name') ? { styleName: attr(rowNode, TABLE_NS, 'style-name', 'table:style-name') } : {}),
+		};
+		geometryRow += repeated;
+		return item;
+	});
 	const columnGeometry = descendants(table, 'table-column').filter(column => nearestTable(column) === table).map(column => ({
 		repeated: positiveInteger(attr(column, TABLE_NS, 'number-columns-repeated', 'table:number-columns-repeated') || '1', 'columnas repetidas'),
 		hidden: attr(column, TABLE_NS, 'visibility', 'table:visibility') === 'collapse',

@@ -301,6 +301,7 @@ suite('ODS reader', () => {
 		assert.equal(sheet.odsMetadata?.styleName, 'ta1');
 		assert.deepStrictEqual(sheet.odsMetadata?.mergedRanges, ['A1:B2']);
 		assert.deepStrictEqual(sheet.odsMetadata?.rowGeometry[0], { row: 1, repeated: 2, hidden: true, styleName: 'ro1' });
+		assert.equal(sheet.odsMetadata?.rowGeometry[1]?.row, 3, 'next geometry row follows the repeated row count');
 		assert.deepStrictEqual(sheet.odsMetadata?.columnGeometry[0], { repeated: 2, hidden: true, styleName: 'co1' });
 		assert.equal(sheet.cellTypes[0]?.[0], 'duration');
 		assert.equal(sheet.cellTypes[0]?.[1], 'unsupported', 'covered cell remains non-editable');
@@ -350,7 +351,7 @@ function createOdsFixture(): Uint8Array {
 
 function createOdsMetadataFixture(protectedSheet: boolean): Uint8Array {
 	const mimetype = new TextEncoder().encode('application/vnd.oasis.opendocument.spreadsheet');
-	const content = xml(`<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"><office:body><office:spreadsheet><table:table table:name="Meta" table:display="false" table:protected="${protectedSheet ? 'true' : 'false'}" table:style-name="ta1"><table:table-column table:number-columns-repeated="2" table:visibility="collapse" table:style-name="co1"/><table:table-row table:number-rows-repeated="2" table:visibility="collapse" table:style-name="ro1"><table:table-cell office:value-type="time" office:time-value="PT1H" table:number-columns-spanned="2" table:number-rows-spanned="2"/><table:covered-table-cell/></table:table-row></table:table></office:spreadsheet></office:body></office:document-content>`);
+	const content = xml(`<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"><office:body><office:spreadsheet><table:table table:name="Meta" table:display="false" table:protected="${protectedSheet ? 'true' : 'false'}" table:style-name="ta1"><table:table-column table:number-columns-repeated="2" table:visibility="collapse" table:style-name="co1"/><table:table-row table:number-rows-repeated="2" table:visibility="collapse" table:style-name="ro1"><table:table-cell office:value-type="time" office:time-value="PT1H" table:number-columns-spanned="2" table:number-rows-spanned="2"/><table:covered-table-cell/></table:table-row><table:table-row><table:table-cell/></table:table-row></table:table></office:spreadsheet></office:body></office:document-content>`);
 	const entries = { mimetype: [mimetype, { level: 0 }] as [Uint8Array, { level: 0 }], 'content.xml': content };
 	return zipSync(entries);
 }

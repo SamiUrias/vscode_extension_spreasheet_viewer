@@ -80,6 +80,8 @@ Opening the editable view while the text buffer has unsaved changes asks whether
 
 XLSX and ODS support focuses on tabular data. Macros, charts, pivot tables, signatures, external links, advanced formatting, and other complex workbook features are not fully supported. The extension may warn about unsupported content; it does not promise full Excel or ODF round-trip fidelity. Validate important workbooks on copies in Excel or LibreOffice before relying on saved results.
 
+Workbook sheets can be switched with scrollable tabs or the sheet selector. Hidden and very hidden sheets are labeled explicitly. Imported row/column dimensions and XLSX frozen panes are used for the grid; full style and merged-cell rendering is still being completed.
+
 ## Settings
 
 All settings default to the values shown below. Add only the settings you want to override to User or Workspace `settings.json`.

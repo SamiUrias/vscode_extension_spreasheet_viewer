@@ -72,8 +72,10 @@ const autoFitButton = requiredElement<HTMLButtonElement>('#auto-fit-columns');
 const wrapCellsInput = requiredElement<HTMLInputElement>('#wrap-cells');
 const freezeRowsInput = requiredElement<HTMLInputElement>('#freeze-rows');
 const freezeColumnsInput = requiredElement<HTMLInputElement>('#freeze-columns');
-const sheetControl = requiredElement<HTMLLabelElement>('#sheet-control');
+const sheetControl = requiredElement<HTMLDivElement>('#sheet-control');
 const sheetSelector = requiredElement<HTMLSelectElement>('#sheet-selector');
+const sheetTabs = requiredElement<HTMLDivElement>('#sheet-tabs');
+const sheetStateStatus = requiredElement<HTMLOutputElement>('#sheet-state-status');
 const cellReferenceInput = requiredElement<HTMLInputElement>('#cell-reference-input');
 const goToCellButton = requiredElement<HTMLButtonElement>('#go-to-cell');
 const searchInput = requiredElement<HTMLInputElement>('#search-input');
@@ -260,6 +262,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		return;
 	}
 	const previousSheetIndex = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : undefined;
+	const previousSheetId = snapshot?.sheetId;
+	const previousDocumentId = snapshot?.documentId;
 	const previousRevision = snapshot?.revision;
 	if (snapshot && snapshot.documentId !== event.data.documentId) {
 		cellPresentation = 'raw';
@@ -281,6 +285,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& (previousSheetIndex !== snapshot.activeSheetIndex || snapshot.requestId !== undefined);
 	formulaResults = {};
 	const restoredView = restoreViewForSnapshot(snapshot, changedSheet);
+	if (!restoredView && (previousDocumentId !== snapshot.documentId || previousSheetId !== snapshot.sheetId)) {applyWorkbookViewDefaults(snapshot);}
 	const changedContent = previousRevision !== undefined && previousRevision !== snapshot.revision;
 	dimensions.textContent = `${snapshot.rowCount.toLocaleString()} filas · ${snapshot.columnCount.toLocaleString()} columnas`;
 	toggleCommentsButton.hidden = snapshot.type !== 'csvData' || snapshot.rowKinds?.includes('comment') !== true;
@@ -302,7 +307,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	}
 	if (snapshot.type === 'xlsxData') {
 		sheetControl.hidden = snapshot.sheetNames.length < 2;
-		updateSheetOptions(snapshot.sheetNames, snapshot.activeSheetIndex);
+		updateSheetOptions(snapshot.sheetNames, snapshot.activeSheetIndex, snapshot.sheetStates);
 		if (snapshot.requestId !== undefined) {
 			pendingSheetRequestId = undefined;
 			pendingSheetIndex = undefined;
@@ -432,7 +437,7 @@ wrapCellsInput.addEventListener('change', () => {
 		const sheet = snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
 		const manual = manualRowHeightsBySheet.get(sheet) ?? new Set<number>();
 		const layout = getActiveRowLayout();
-		for (let row = 0; row < layout.heights.length; row++) {if (!manual.has(row)) {layout.heights[row] = defaultRowHeight;}}
+		for (let row = 0; row < layout.heights.length; row++) {if (!manual.has(row)) {layout.heights[row] = workbookRowHeight(snapshot, row);}}
 		rebuildRowOffsets(layout);
 	}
 	renderGrid(); schedulePersistViewState();
@@ -441,10 +446,11 @@ freezeRowsInput.addEventListener('change', () => updateFreezeCount('rows'));
 freezeColumnsInput.addEventListener('change', () => updateFreezeCount('columns'));
 
 sheetSelector.addEventListener('change', () => {
-	if (snapshot?.type !== 'xlsxData') {
-		return;
-	}
-	const sheetIndex = Number(sheetSelector.value);
+	requestSheetSelection(Number(sheetSelector.value));
+});
+
+function requestSheetSelection(sheetIndex: number): void {
+	if (snapshot?.type !== 'xlsxData') {return;}
 	const currentOrPendingIndex = pendingSheetIndex ?? snapshot.activeSheetIndex;
 	if (!Number.isInteger(sheetIndex)
 		|| sheetIndex < 0
@@ -460,7 +466,7 @@ sheetSelector.addEventListener('change', () => {
 	updateSearchStatus();
 	renderGrid();
 	vscodeApi.postMessage({ type: 'selectSheet', documentId: snapshot.documentId, revision: snapshot.revision, sheetIndex, sheetId: snapshot.sheetIds[sheetIndex]!, requestId });
-});
+}
 
 goToCellButton.addEventListener('click', goToCell);
 cellEditor.addEventListener('input', () => {
@@ -965,15 +971,41 @@ function goToCell(): void {
 	gridScroll.focus({ preventScroll: true });
 }
 
-function updateSheetOptions(names: string[], activeIndex: number): void {
+function updateSheetOptions(names: string[], activeIndex: number, states: Array<'visible' | 'hidden' | 'veryHidden'> = []): void {
 	sheetSelector.replaceChildren();
+	sheetTabs.replaceChildren();
 	for (let index = 0; index < names.length; index++) {
+		const state = states[index] ?? 'visible';
 		const option = document.createElement('option');
 		option.value = String(index);
-		option.textContent = names[index];
+		option.textContent = `${names[index]}${state === 'veryHidden' ? ' (muy oculta)' : state === 'hidden' ? ' (oculta)' : ''}`;
 		sheetSelector.append(option);
+		const tab = document.createElement('button');
+		tab.type = 'button';
+		tab.className = 'sheet-tab';
+		tab.setAttribute('role', 'tab');
+		tab.setAttribute('aria-selected', String(index === activeIndex));
+		tab.dataset.state = state;
+		tab.tabIndex = index === activeIndex ? 0 : -1;
+		tab.textContent = option.textContent;
+		tab.title = state === 'veryHidden' ? `${names[index]}: hoja marcada como muy oculta en el libro.`
+			: state === 'hidden' ? `${names[index]}: hoja marcada como oculta en el libro.` : `Abrir hoja ${names[index]}`;
+		tab.addEventListener('click', () => requestSheetSelection(index));
+		tab.addEventListener('keydown', event => {
+			if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {return;}
+			event.preventDefault();
+			const tabs = Array.from(sheetTabs.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+			const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+				: (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+			tabs[next]?.focus();
+			tabs[next]?.click();
+		});
+		sheetTabs.append(tab);
 	}
 	sheetSelector.value = String(activeIndex);
+	const state = states[activeIndex] ?? 'visible';
+	sheetStateStatus.textContent = state === 'veryHidden' ? 'Hoja muy oculta en el libro.' : state === 'hidden' ? 'Hoja oculta en el libro.' : '';
+	sheetTabs.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function scheduleSearch(): void {
@@ -1412,9 +1444,9 @@ function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage, chang
 	const columnCount = current.columnCount;
 	const rowCount = current.rowCount;
 	const sheetIndex = current.type === 'xlsxData' ? current.activeSheetIndex : 0;
-	const columnWidths = Array.from({ length: columnCount }, (_, column) => Number(sheetState.columnWidths[String(column)]) || columnWidth);
+	const columnWidths = Array.from({ length: columnCount }, (_, column) => Number(sheetState.columnWidths[String(column)]) || workbookColumnWidth(current, column));
 	columnWidthsBySheet.set(sheetIndex, columnWidths);
-	const rowLayout = { heights: Array.from({ length: rowCount }, (_, row) => Number(sheetState.rowHeights[String(row)]) || defaultRowHeight), offsets: [] as number[] };
+	const rowLayout = { heights: Array.from({ length: rowCount }, (_, row) => Number(sheetState.rowHeights[String(row)]) || workbookRowHeight(current, row)), offsets: [] as number[] };
 	const manualHeights = new Set(Object.keys(sheetState.rowHeights).map(Number));
 	const selection = sheetState.selection && rowCount && columnCount
 		? { row: Math.min(sheetState.selection.row, rowCount - 1), column: Math.min(sheetState.selection.column, columnCount - 1) }
@@ -1492,6 +1524,7 @@ function resetSheetView(current: CsvDataMessage | XlsxDataMessage): void {
 	cachedProjection = undefined;
 	gridRendererState.rowsViewport = undefined;
 	manualRowHeightsBySheet.delete(sheetIndex);
+	applyWorkbookViewDefaults(current);
 	toggleCommentsButton.textContent = 'Mostrar comentarios';
 	gridScroll.scrollTop = 0;
 	gridScroll.scrollLeft = 0;
@@ -1511,7 +1544,7 @@ function flushViewState(activeSheetOverride?: string): void {
 	const widths = getActiveColumnWidths();
 	const layout = getActiveRowLayout();
 	const columnWidthOverrides: Record<string, number> = {};
-	widths.forEach((width, index) => {if (width !== columnWidth) {columnWidthOverrides[String(index)] = width;}});
+	widths.forEach((width, index) => {if (width !== workbookColumnWidth(snapshot!, index)) {columnWidthOverrides[String(index)] = width;}});
 	const rowHeightOverrides: Record<string, number> = {};
 	const manualHeights = manualRowHeightsBySheet.get(sheetIndex) ?? new Set<number>();
 	layout.heights.forEach((height, index) => {if (manualHeights.has(index)) {rowHeightOverrides[String(index)] = height;}});
@@ -1536,6 +1569,32 @@ function viewSchema(current: CsvDataMessage | XlsxDataMessage): string {
 
 function sheetSchema(current: CsvDataMessage | XlsxDataMessage): string {return `columns:${current.columnCount}`;}
 
+function workbookColumnWidth(current: CsvDataMessage | XlsxDataMessage, column: number): number {
+	if (current.type !== 'xlsxData') {return columnWidth;}
+	const dimension = current.columnDimensions?.find(item => column >= item.min && column <= item.max);
+	if (!dimension) {return columnWidth;}
+	if (dimension.hidden) {return 1;}
+	if (dimension.width === undefined || !Number.isFinite(dimension.width) || dimension.width <= 0) {return columnWidth;}
+	return Math.max(minimumColumnWidth, Math.min(maximumColumnWidth, Math.round(dimension.width * 7 + 5)));
+}
+
+function workbookRowHeight(current: CsvDataMessage | XlsxDataMessage, row: number): number {
+	if (current.type !== 'xlsxData') {return defaultRowHeight;}
+	const dimension = current.rowDimensions?.find(item => item.row === row);
+	if (!dimension) {return defaultRowHeight;}
+	if (dimension.hidden) {return 1;}
+	if (dimension.height === undefined || !Number.isFinite(dimension.height) || dimension.height <= 0) {return defaultRowHeight;}
+	return Math.max(minimumRowHeight, Math.min(maximumRowHeight, Math.round(dimension.height * 96 / 72)));
+}
+
+function applyWorkbookViewDefaults(current: CsvDataMessage | XlsxDataMessage): void {
+	const pane = current.type === 'xlsxData' ? current.frozenPane : undefined;
+	freezeRows = Math.min(current.rowCount, Math.max(0, Math.min(50, pane?.ySplit ?? 0)));
+	freezeColumns = Math.min(current.columnCount, Math.max(0, Math.min(256, pane?.xSplit ?? 0)));
+	freezeRowsInput.value = String(freezeRows);
+	freezeColumnsInput.value = String(freezeColumns);
+}
+
 function getActiveColumnWidths(): number[] {
 	if (!snapshot) {return [];}
 	const sheetIndex = snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
@@ -1546,7 +1605,7 @@ function getActiveColumnWidths(): number[] {
 	}
 	widths.length = snapshot.columnCount;
 	for (let column = 0; column < snapshot.columnCount; column++) {
-		if (!Number.isFinite(widths[column])) {widths[column] = columnWidth;}
+		if (!Number.isFinite(widths[column])) {widths[column] = workbookColumnWidth(snapshot, column);}
 	}
 	return widths;
 }
@@ -1605,7 +1664,9 @@ function measureColumnWidth(column: number): number {
 	if (header) {maxWidth = Math.max(maxWidth, ctx.measureText(header).width);}
 	for (const row of rows) {
 		if (maxWidth >= maximumColumnWidth - 28 || autoFitTextBudget <= 0) {break;}
-		const text = (snapshot.rows[row]?.[column] ?? '').slice(0, Math.min(4_096, autoFitTextBudget));
+		const raw = snapshot.rows[row]?.[column] ?? '';
+		const shown = snapshot.type === 'xlsxData' && cellPresentation === 'book' ? presentXlsxCell(snapshot, row, column, raw, 'book') : raw;
+		const text = shown.slice(0, Math.min(4_096, autoFitTextBudget));
 		autoFitTextBudget -= text.length;
 		for (const line of text.split(/\r\n|\r|\n/)) {maxWidth = Math.max(maxWidth, ctx.measureText(line).width);}
 	}
@@ -1643,7 +1704,12 @@ function updateWrappedVisibleRowHeights(): void {
 		const sourceRow = Number(element.dataset.sourceRow);
 		const visibleIndex = Number(element.dataset.visibleIndex);
 		if (!Number.isInteger(sourceRow) || manual.has(sourceRow)) {continue;}
-		const height = wrappedTextHeight(snapshot.rows[sourceRow] ?? [], widths, value => ctx.measureText(value).width,
+		const baseHeight = workbookRowHeight(snapshot, sourceRow);
+		if (baseHeight <= 1) {if (layout.heights[sourceRow] !== baseHeight) {layout.heights[sourceRow] = baseHeight; changed = true;} element.style.height = `${baseHeight}px`; continue;}
+		const rowValues = snapshot.rows[sourceRow] ?? [];
+		const displayedValues = snapshot.type === 'xlsxData' && cellPresentation === 'book'
+			? rowValues.map((value, column) => presentXlsxCell(snapshot as XlsxDataMessage, sourceRow, column, value, 'book')) : rowValues;
+		const height = wrappedTextHeight(displayedValues, widths, value => ctx.measureText(value).width,
 			lineHeight, defaultRowHeight, maximumRowHeight);
 		if (layout.heights[sourceRow] !== height) {layout.heights[sourceRow] = height; changed = true;}
 		element.style.height = `${height}px`;
@@ -1713,7 +1779,7 @@ function getActiveRowLayout(): { heights: number[]; offsets: number[] } {
 	if (layout.heights.length !== snapshot.rowCount) {
 		layout.heights.length = snapshot.rowCount;
 		for (let row = 0; row < snapshot.rowCount; row++) {
-			if (!Number.isFinite(layout.heights[row])) {layout.heights[row] = defaultRowHeight;}
+			if (!Number.isFinite(layout.heights[row])) {layout.heights[row] = workbookRowHeight(snapshot, row);}
 		}
 		rebuildRowOffsets(layout);
 	}
@@ -1874,6 +1940,22 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 			&& candidate.cellNumberFormats.every(item => typeof item === 'object' && item !== null
 				&& 'numberFormatId' in item && Number.isInteger(item.numberFormatId)
 				&& (!('formatCode' in item) || typeof item.formatCode === 'string')))
+		&& (candidate.sheetStates === undefined || Array.isArray(candidate.sheetStates)
+			&& candidate.sheetStates.length === candidate.sheetNames.length
+			&& candidate.sheetStates.every(state => ['visible', 'hidden', 'veryHidden'].includes(String(state))))
+		&& (candidate.columnDimensions === undefined || Array.isArray(candidate.columnDimensions)
+			&& candidate.columnDimensions.every(item => typeof item === 'object' && item !== null
+				&& 'min' in item && Number.isInteger(item.min) && 'max' in item && Number.isInteger(item.max)
+				&& 'hidden' in item && typeof item.hidden === 'boolean'
+				&& (!('width' in item) || item.width === undefined || Number.isFinite(item.width))))
+		&& (candidate.rowDimensions === undefined || Array.isArray(candidate.rowDimensions)
+			&& candidate.rowDimensions.every(item => typeof item === 'object' && item !== null
+				&& 'row' in item && Number.isInteger(item.row) && 'hidden' in item && typeof item.hidden === 'boolean'
+				&& (!('height' in item) || item.height === undefined || Number.isFinite(item.height))))
+		&& (candidate.frozenPane === undefined || typeof candidate.frozenPane === 'object' && candidate.frozenPane !== null
+			&& 'xSplit' in candidate.frozenPane && Number.isInteger(candidate.frozenPane.xSplit)
+			&& 'ySplit' in candidate.frozenPane && Number.isInteger(candidate.frozenPane.ySplit))
+		&& (candidate.mergedRanges === undefined || Array.isArray(candidate.mergedRanges) && candidate.mergedRanges.every(item => typeof item === 'string'))
 		&& Array.isArray(candidate.warnings);
 }
 

@@ -1,6 +1,6 @@
 # Spreadsheet Viewer — guía de implementación del MVP y propuesta v2
 
-El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 continúa hasta V2-25; el trabajo del workspace ya llega a V2-15B y V2-16A está en curso. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
+El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 continúa hasta V2-25; V2-16A tiene implementación y pruebas focalizadas, con Extension Host pendiente; V2-16B1 es el trabajo activo. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
 
 ## 1. Resumen del producto
 
@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-15B están implementadas; V2-16A está en curso. Las verificaciones pendientes de Extension Host siguen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-15B están implementadas; V2-16A tiene implementación y pruebas focalizadas, con Extension Host pendiente; V2-16B1 está en curso. Las verificaciones pendientes siguen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -562,7 +562,7 @@ No crear todos los archivos al inicio. Los nombres son destinos propuestos; reut
 
 ### 15.9. Tarjetas de trabajo para GPT Luna 6 (esfuerzo medio)
 
-Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A está en curso. Las etapas previas aún tienen verificaciones manuales o de Extension Host abiertas, indicadas en cada checklist. `npm test` no inicia con el Node 18.20.4 de este entorno porque una dependencia del runner usa la bandera de regex `/v`; `npm run test:save-lifecycle` requiere descargar VS Code y aquí falla por DNS. V2-16A en adelante sigue pendiente de cierre. Cada tarjeta indica una unidad de implementación; las subtarjetas A/B/C/D requieren solicitudes separadas. La existencia de una propuesta de arquitectura no es evidencia de que la dependencia ya esté implementada.
+Las tarjetas V2-00A a V2-15B tienen implementación en el workspace. V2-16A tiene implementación probada de forma focalizada y V2-16B1 está en implementación. Algunas verificaciones manuales o de Extension Host siguen abiertas. `npm test` compila y empaqueta, pero el runner se detiene con Node 18.20.4 porque una dependencia usa la bandera regex `/v`; `npm run test:save-lifecycle` requiere descargar VS Code y aquí falla por DNS. V2-16A en adelante sigue pendiente de cierre. Cada tarjeta indica una unidad de implementación; las subtarjetas A/B/C/D requieren solicitudes separadas. La existencia de una propuesta de arquitectura no es evidencia de que la dependencia ya esté implementada.
 
 **Orden recomendado de solicitudes (dependencias resueltas):** V2-00A → 00B → 01A → 01B → 02A → 02B → 03 → 04A → 04B → 05 → 06 → 07 → 08A → 08B → 09 → 10 → 11 → 12A → 12B → 13 → 14A → 14B → 15A → 15B → 16A → 16B → 17A → 17B → 18A → **20A → 20B → 18B** → 19A → 19B → 21 → 22A → 22B → 22C → 23A → 23B → 24A → 24B → 24C → 24D → 25. Cada número abreviado conserva prefijo `V2-`. 22B/22C y 24A–D son bloques ampliados; si no forman parte del release elegido, 25 debe documentarlos pendientes. 24E es registro de límites, no implementación del estándar completo. No seguir el número a ciegas: 18B requiere 20A.
 
@@ -898,9 +898,25 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A est�
 
 #### V2-16B — Libro visual, hojas y combinaciones
 
-**Depende de:** V2-16A/V2-09/V2-15B. **Archivos:** grid/layout/styles/selection/view-state/tests. **Pasos:** aplicar tamaños/alineación/wrap/bordes seguros y estilo tematizado; merges/freeze/hidden según 15.7; tabs con scroll y selector respaldo. Links/notas en detalle como texto; activar link solo tras click con validación de protocolo. Pasar a tabular antes de sort/filter que intersecte merges; comunicar cambio.
+**Depende de:** V2-16A/V2-09/V2-15B. Se divide en dos entregas para mantener la navegación/geometry verificable aparte de las combinaciones y los estilos.
 
-**Aceptación:** libro visual no cubre celdas al virtualizar; navegar a celda covered lleva al ancla; hojas ocultas explícitas; A1/selección/copy raw funcionan; abrir/switch no reescribe; alto contraste y editor de 400 px usables. **Fuera:** toolbar de formato o escritura de merge/visibility.
+##### V2-16B1 — Navegación de hojas y geometría
+
+**Pasos:** tabs horizontales accesibles con selector como respaldo; indicar estados visible/hidden/veryHidden sin perder acceso explícito; respetar tamaños de filas/columnas y panes congelados importados; estado workbook nunca se escribe al alternar hoja. Capar la expansión de geometría a matriz ya admitida.
+
+**Aceptación:** tabs operan con click y teclado; hoja activa correcta; estados ocultos identificables; fixture XLSX/ODS refleja dimensiones y congelamiento sin alterar valores ni bytes; reset vuelve a geometría y pane del libro.
+
+- [x] Enviar estado de visibilidad por hoja, dimensiones cero-based, merges y pane seguro a editor y preview.
+- [x] Añadir tabs con scroll, navegación por flechas/Home/End, selector respaldo y etiquetas para hojas ocultas/muy ocultas.
+- [x] Aplicar anchos/altos importados y ocultar geométricamente filas/columnas colapsadas; mantener sobreescrituras de usuario y pane congelado original al restaurar/resetear.
+- [x] Corregir la fila de inicio de geometría ODS tras una fila repetida y probar límites de expansión.
+- [ ] Verificación visual y de navegación en Extension Host pendiente por bloqueo de Node 18 (`/v`); ejecutar cuando se actualice runtime.
+
+##### V2-16B2 — Estilos y celdas combinadas
+
+**Pasos:** aplicar tipografía/color/alineación/bordes permitidos, estilo tematizado y merges sin romper virtualización; foco y scroll en celdas cubiertas llevan al ancla; tabs y selector mantienen sincronía. Hyperlinks/notas se muestran como texto hasta una acción con protocolo validado. Sort/filter sobre merges cambia a vista tabular y lo comunica.
+
+**Aceptación:** libro visual no cubre celdas al virtualizar; A1/selección/copy raw funcionan; alto contraste y editor de 400 px usables. **Fuera:** toolbar de formato o escritura de merge/visibility.
 
 #### V2-17A — Estructura XLSX segura en modelo
 
@@ -1070,7 +1086,7 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 >
 > Al cerrar, actualiza estado de **esa tarjeta** con archivos, evidencia/tests y pendientes; reporta qué acciones manuales la verifican. Todo botón añadido debe tener tooltip; toda nueva funcionalidad queda activada por defecto y se puede desactivar desde `settings.json`. Documenta las opciones en `CONFIGURATION.md` y la experiencia en `README.md` en el mismo cambio. Ejecuta los criterios de aceptación y, cuando la etapa quede verificada y la documentación esté actualizada, crea un commit. Si un check requerido está bloqueado por el entorno, describe el comando y error, deja el check pendiente y no marques la etapa como verificada. No declares v2 completa ni soporte de host/formato complejo antes de sus criterios. Si detectas una brecha nueva, agrégala a F/T y describe su efecto; no la implementes como refactor incidental.
 
-El trabajo implementado llega hasta **V2-15B**; sigue con **V2-16A — Formatos de presentación** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
+El trabajo implementado llega hasta **V2-16B1**; sigue con **V2-16B2 — Estilos y celdas combinadas** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
 

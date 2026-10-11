@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { SpreadsheetDocument } from './document';
 import { CsvDelimiterAmbiguityError, MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvTable } from './formats/csv';
 import type { CsvDataMessage, ExtensionToWebviewMessage, SelectSheetMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
+import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import { createHeaderSignature, ViewStateRepository, type ViewStateV1 } from './view-state';
 
 type PreviewMode = 'disk' | 'buffer' | 'csv-text';
@@ -240,6 +241,18 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 				sheetIds: workbook.sheets.map((_, sheetIndex) => previewSheetId(session, sheetIndex)),
 				fileName: path.posix.basename(session.uri.path), sheetName: sheet.name,
 				sheetNames: workbook.sheets.map(item => item.name), activeSheetIndex: index,
+				sheetStates: workbook.sheets.map((item, sheetIndex) => item.state ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.state ?? 'visible'),
+				...(document.xlsx?.sheets[index]?.metadata ? {
+					columnDimensions: xlsxColumnDimensions(document.xlsx.sheets[index]!.metadata!),
+					rowDimensions: xlsxRowDimensions(document.xlsx.sheets[index]!.metadata!),
+					frozenPane: document.xlsx.sheets[index]!.metadata!.frozenPane
+						? { xSplit: document.xlsx.sheets[index]!.metadata!.frozenPane!.xSplit, ySplit: document.xlsx.sheets[index]!.metadata!.frozenPane!.ySplit } : undefined,
+					mergedRanges: document.xlsx.sheets[index]!.metadata!.mergedRanges,
+				} : document.ods?.sheets[index]?.odsMetadata ? {
+					columnDimensions: odsColumnDimensions(document.ods.sheets[index]!.odsMetadata!, sheet.columnCount),
+					rowDimensions: odsRowDimensions(document.ods.sheets[index]!.odsMetadata!, sheet.rowCount),
+					mergedRanges: document.ods.sheets[index]!.odsMetadata!.mergedRanges,
+				} : {}),
 				...(requestId === undefined ? {} : { requestId }),
 				rows: sheet.rows.map(row => [...row]), cellKinds: sheet.cellKinds, cellTypes: sheet.cellTypes,
 				cellCapabilities: sheet.cellTypes.map(row => row.map(storedType => {

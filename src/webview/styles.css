@@ -363,6 +363,39 @@ main {
 	display: none;
 }
 
+#sheet-control {grid-column: 1 / -1;}
+#sheet-tabs {
+	display: flex;
+	gap: 3px;
+	max-width: 100%;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	padding: 2px;
+}
+.sheet-tab {
+	flex: 0 0 auto;
+	max-width: 18rem;
+	min-height: 26px;
+	padding: 3px 9px;
+	border: 1px solid transparent;
+	border-radius: 3px 3px 0 0;
+	color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+	background: var(--vscode-tab-inactiveBackground, transparent);
+	text-overflow: ellipsis;
+	overflow: hidden;
+	white-space: nowrap;
+}
+.sheet-tab[aria-selected="true"] {
+	border-color: var(--vscode-tab-border, var(--panel-border));
+	border-bottom-color: var(--vscode-tab-activeBackground, var(--quiet-background));
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	background: var(--vscode-tab-activeBackground, var(--quiet-background));
+}
+.sheet-tab[data-state="hidden"],
+.sheet-tab[data-state="veryHidden"] {font-style: italic; opacity: 0.8;}
+.sheet-selector-fallback {display: flex; align-items: center; gap: 6px; max-width: 20rem;}
+#sheet-state-status {color: var(--vscode-descriptionForeground); font-size: 0.9em;}
+
 #navigation-bar select,
 #cell-reference-input,
 #search-input,
