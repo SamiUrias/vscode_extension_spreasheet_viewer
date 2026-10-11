@@ -859,7 +859,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Probar inserción/eliminación con preámbulo, comentarios, CRLF, comillas, multilinea, rebase y orden de undo/redo; suites de formato, tipos y lint pasan.
 - [x] Añadir `npm run test:csv-row-operations` para correr directamente los fixtures byte-level y de journal de esta fase.
 - [x] Confirmar el save lifecycle en VS Code 1.141.0 local: inserción/undo/redo CSV a través del proveedor, junto al guardado y la reapertura de otros formatos.
-- [x] Probar UTF-16LE/BE estructural y crear el primer registro de un CSV vacío con ancho uniforme de 1–256 campos; `test:csv-row-operations` pasa.
+- [x] Probar UTF-16LE/BE estructural y crear el primer registro de un CSV vacío con ancho uniforme de 1–256 campos; `test:csv-row-operations` pasa. Reejecutado el 2026-10-11 con Node 24.21.0: los tres grupos pasan, incluidos preservación de registros/preambulo/comentarios/multilínea/EOL, endianess UTF-16 y rebase/undo/redo.
 
 **Estado V2-14A:** serializador, rebase/journal y preservación de UTF-16/primer registro vacío pasan `test:csv-row-operations`. `test:save-lifecycle` pasa con el Node del shell v18.20.4 y VS Code 1.141.0 local al ejecutarlo fuera del sandbox: confirma inserción/undo/redo CSV y la nueva ruta de primer registro vacío con guardado/undo/redo. Dentro del sandbox, Code aborta antes del workbench al registrar la app en macOS (`HIServices`/`NSApplication`); fuera del sandbox el mismo binario se inicia correctamente. Se corrigió el runner para reabrir el CSV original antes de continuar los casos de edición rápida tras cerrar el fixture vacío.
 
