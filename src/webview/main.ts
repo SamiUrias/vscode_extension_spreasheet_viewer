@@ -132,6 +132,11 @@ gridScroll.setAttribute('role', 'grid');
 gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'resetViewButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		resetViewButton.hidden = !event.data.visible;
+		return;
+	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'sortState'
 		&& 'criteria' in event.data && Array.isArray(event.data.criteria)) {
 		sortCriteria = event.data.criteria as SortCriterion[];

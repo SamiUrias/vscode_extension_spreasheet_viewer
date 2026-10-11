@@ -23,6 +23,7 @@ suite('Spreadsheet Viewer editor', () => {
 			customEditors: Array<{ viewType: string; priority: string; selector: Array<{ filenamePattern: string }> }>;
 			menus: { 'explorer/context': Array<{ command: string; when: string }>; 'commandPalette': Array<{ command: string; when: string }>; 'tabContext': Array<{ command: string; when: string }> };
 			keybindings: Array<{ command: string; key: string; mac?: string; when: string }>;
+			configuration: { properties: Record<string, { type: string; default: unknown }> };
 		};
 		assert.ok(contributions.commands.some(command =>
 			command.command === 'spreadsheet-viewer.open' && command.title === 'Abrir en Spreadsheet Viewer'
@@ -41,6 +42,8 @@ suite('Spreadsheet Viewer editor', () => {
 			['**/*.[cC][sS][vV]', '**/*.[tT][sS][vV]', '**/*.[tT][aA][bB]', '**/*.[xX][lL][sS][xX]', '**/*.[oO][dD][sS]'],
 		);
 		assert.strictEqual(contributions.customEditors.find(editor => editor.viewType === 'spreadsheet-viewer.editor')?.priority, 'option');
+		assert.deepStrictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showResetButton'], { type: 'boolean', default: true, description: 'Muestra el botón para restablecer la vista de la hoja.' });
+		assert.ok(contributions.menus.commandPalette.some(item => item.command === 'spreadsheet-viewer.resetView' && item.when === 'true'));
 	});
 
 	test('opens, reuses, closes, and reopens one custom editor tab for a CSV URI', async () => {

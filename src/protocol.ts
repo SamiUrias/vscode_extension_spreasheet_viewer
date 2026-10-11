@@ -134,5 +134,7 @@ export interface CellCapability {
 	readonly reason?: string;
 }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage;
+export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
+
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage;
 

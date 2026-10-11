@@ -138,6 +138,10 @@
         {
           "command": "spreadsheet-viewer.previewCsv",
           "when": "true"
+      },
+      {
+        "command": "spreadsheet-viewer.resetView",
+        "when": "true"
         }
       ]
     },
@@ -172,6 +176,11 @@
           "type": "boolean",
           "default": true,
           "description": "Restaura y guarda selección, scroll, búsqueda y tamaños por archivo y hoja."
+        },
+        "spreadsheet-viewer.view.showResetButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra el botón para restablecer la vista de la hoja."
         }
       }
     }

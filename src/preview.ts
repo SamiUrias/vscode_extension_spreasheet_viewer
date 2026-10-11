@@ -43,6 +43,10 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 		});
 		this.configurationListener = vscode.workspace.onDidChangeConfiguration(event => {
 			for (const session of this.sessions.values()) {
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showResetButton', session.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showResetButton', true);
+					void session.panel.webview.postMessage({ type: 'resetViewButtonVisibility', visible });
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', session.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', session.uri);
 				if (visualChanged) {this.postSnapshot(session);}

@@ -40,6 +40,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		this.viewStates = new ViewStateRepository(workspaceState);
 		this.configurationListener = vscode.workspace.onDidChangeConfiguration(event => {
 			for (const document of this.documents.values()) {
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showResetButton', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showResetButton', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {
+						void panel.webview.postMessage({ type: 'resetViewButtonVisibility', visible });
+					}
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', document.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', document.uri);
 				if (visualChanged) {this.postDocument(document);}
@@ -711,6 +717,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	getHtml(uri: vscode.Uri, webview: vscode.Webview, modeLabel?: string): string {
 		const fileName = uri.path.split('/').pop() || uri.toString();
+		const showResetButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showResetButton', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const nonce = randomBytes(16).toString('base64');
@@ -735,7 +742,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				<div id="header-actions">
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
 					<button id="clear-sort" type="button" title="Quitar todos los criterios de orden" hidden>Limpiar orden</button>
-					<button id="reset-view" type="button" title="Restablecer selección, búsqueda, tamaños y orden">Restablecer vista</button>
+					<span id="reset-view-control">
+						<button id="reset-view" type="button"${showResetButton ? '' : ' hidden'} aria-describedby="reset-view-tooltip">Restablecer vista</button>
+						<span id="reset-view-tooltip" role="tooltip">Borra búsqueda, orden y filtros, y restaura selección y tamaños. No modifica el archivo ni descarta el borrador.</span>
+					</span>
 					<p id="save-status" role="status" aria-live="polite">Sin cambios</p>
 					<button id="reload-file" type="button" title="Volver a leer el archivo desde disco">↻ Recargar</button>
 				</div>

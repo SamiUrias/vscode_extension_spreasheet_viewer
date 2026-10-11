@@ -13,7 +13,8 @@ Ejemplo de `.vscode/settings.json`:
   "spreadsheet-viewer.csv.commentPrefix": "#",
   "spreadsheet-viewer.csv.firstRowHeader": true,
   "spreadsheet-viewer.csv.headerCase": "none",
-  "spreadsheet-viewer.view.restoreState": true
+  "spreadsheet-viewer.view.restoreState": true,
+  "spreadsheet-viewer.view.showResetButton": true
 }
 ```
 
@@ -27,15 +28,19 @@ Los valores siguientes son los predeterminados. No hace falta escribirlos en `se
 | `spreadsheet-viewer.csv.firstRowHeader` | Booleano: `true` o `false` | `true` | Si es `true`, usa el primer registro de datos (no un comentario) como etiqueta visual de las columnas. No elimina ni mueve esa fila: sigue apareciendo en la tabla como dato editable. |
 | `spreadsheet-viewer.csv.headerCase` | Cadena: `"none"`, `"upper"` o `"lower"` | `"none"` | Deja igual, convierte a mayúsculas o convierte a minúsculas las etiquetas visuales del encabezado. No cambia el texto guardado en el CSV. |
 | `spreadsheet-viewer.view.restoreState` | Booleano: `true` o `false` | `true` | Guarda y restaura por archivo, hoja y modo de vista la selección, scroll, búsqueda, orden, visibilidad de comentarios y tamaños manuales de columnas/filas. Con `false` no lee ni guarda este estado. No afecta el contenido, los cambios pendientes ni los backups del documento. |
+| `spreadsheet-viewer.view.showResetButton` | Booleano: `true` o `false` | `true` | Muestra u oculta el botón **Restablecer vista** en el editor y las vistas previas. Con `false` el botón no aparece; la acción de restablecimiento sigue disponible como **Spreadsheet Viewer: Restablecer vista de hoja** en la paleta de comandos. El cambio se refleja en las vistas que ya están abiertas. |
 
 Ejemplo para desactivar los comentarios convencionales y la persistencia:
 
 ```json
 {
   "spreadsheet-viewer.csv.commentPrefix": "",
-  "spreadsheet-viewer.view.restoreState": false
+  "spreadsheet-viewer.view.restoreState": false,
+  "spreadsheet-viewer.view.showResetButton": false
 }
 ```
+
+El botón **Restablecer vista** muestra una ayuda emergente al pasar el puntero o enfocarlo con el teclado. Restablece búsqueda, orden, filtros, selección y tamaños de vista; no modifica el archivo ni descarta el borrador de edición.
 
 ## Detalles de comportamiento
 
