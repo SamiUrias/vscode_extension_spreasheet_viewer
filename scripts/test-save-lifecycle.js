@@ -66,6 +66,16 @@ exports.activate = context => {
 			provider.applyEdit(document, { type: 'editCell', documentId: document.documentId,
 				revision: document.revision, sheetId: document.sheetId(0), sheetIndex: 0, row, column, value });
 		},
+		commitCells(edits) {
+			return provider.applyEditBatch(document, { documentId: document.documentId, revision: document.revision,
+				sheetId: document.sheetId(0), sheetIndex: 0 }, edits.map(edit => ({ ...edit, sheetIndex: 0 })));
+		},
+		insertCsvRow(index) {
+			const panel = provider.panels.get(document.uri.toString())?.values().next().value;
+			if (!panel) {throw new Error('The CSV custom editor panel is not registered.');}
+			return provider.applyCsvRowOperation(document, panel, { type: 'csvRowOperation', kind: 'insert',
+				documentId: document.documentId, revision: document.revision, sheetId: document.sheetId(0), index });
+		},
 		commitFormula(sheetIndex, row, column, formula) {
 			return provider.applyFormulaEdit(document, { type: 'editFormula', documentId: document.documentId,
 				revision: document.revision, sheetId: document.sheetId(sheetIndex), sheetIndex, row, column, formula });
@@ -104,12 +114,38 @@ exports.run = async () => {
 	const saved = expected => async () => (await readFile(uri.fsPath, 'utf8')) === expected && tab()?.isDirty === false;
 	const first = 'name,value\\nfirst,10\\nsecond,2\\n';
 	const second = 'name,value\\nfirst,10\\nsecond,20\\n';
+	const batch = 'name,value\\nfirst,11\\nsecond,22\\n';
+	const inserted = 'name,value\\nfirst,11\\n,\\nsecond,22\\n';
 	const third = 'name,value\\nfirst,30\\nsecond,40\\n';
 	const fifth = 'name,value\\nfirst,50\\nsecond,60\\n';
 	api.commit(1, 1, '10');
 	await waitFor('first autosave', saved(first));
 	api.commit(2, 1, '20');
 	await waitFor('second autosave', saved(second));
+	assert.equal(api.commitCells([
+		{ row: 1, column: 1, value: '11', targetType: 'string' },
+		{ row: 2, column: 1, value: '22', targetType: 'string' },
+	]), true, 'the Extension Host accepts one multi-cell transaction');
+	await waitFor('multi-cell batch autosave', saved(batch));
+	await vscode.commands.executeCommand('undo');
+	await waitFor('single-step batch undo', saved(second));
+	await vscode.commands.executeCommand('redo');
+	await waitFor('single-step batch redo', saved(batch));
+	assert.equal(api.commitCells([
+		{ row: 1, column: 1, value: '', targetType: 'string' },
+		{ row: 2, column: 1, value: '', targetType: 'string' },
+	]), true, 'the Extension Host accepts a multi-cell clear');
+	await waitFor('multi-cell clear autosave', saved('name,value\\nfirst,\\nsecond,\\n'));
+	await vscode.commands.executeCommand('undo');
+	await waitFor('clear undo', saved(batch));
+	await api.insertCsvRow(2);
+	await waitFor('CSV row insertion autosave', saved(inserted));
+	await vscode.commands.executeCommand('undo');
+	await waitFor('CSV row insertion undo', saved(batch));
+	await vscode.commands.executeCommand('redo');
+	await waitFor('CSV row insertion redo', saved(inserted));
+	await vscode.commands.executeCommand('undo');
+	await waitFor('CSV row insertion restored', saved(batch));
 	api.commit(1, 1, '30');
 	api.commit(2, 1, '40');
 	await waitFor('rapid consecutive edits', saved(third));
@@ -148,7 +184,7 @@ exports.run = async () => {
 	const formulaTab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
 		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === formulaUri.toString());
 	await vscode.window.tabGroups.close(formulaTab());
-	console.log('PASS: CSV autosave and in-flight revision lifecycle; XLSX formula edit/save/reopen/undo/redo');
+	console.log('PASS: CSV consecutive edits, batch edit/clear, insert/undo/redo, in-flight save; XLSX formula edit/save/reopen/undo/redo');
 };
 `);
 		// An integrated terminal can inherit this from VS Code's Node processes.
