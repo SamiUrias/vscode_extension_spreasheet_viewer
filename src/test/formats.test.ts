@@ -3,6 +3,7 @@ import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { unzipSync, zipSync } from 'fflate';
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation } from '../formats/csv';
 import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
+import { applyXlsxStructureOperation } from '../formats/xlsx-structure';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
 
@@ -194,6 +195,70 @@ suite('XLSX reader', () => {
 			}
 		}
 		assert.strictEqual(parseXlsxBytes(editedCopy).sheets[0].rows[0][0], '0.5');
+	});
+
+	test('XLSX structural model shifts row and column coordinates, returns a reversible byte snapshot, and preserves untouched parts', () => {
+		const originalParts = unzipSync(createXlsxFixture());
+		const safeSheet = new DOMParser().parseFromString(new TextDecoder().decode(originalParts['xl/worksheets/sheet1.xml']), 'application/xml');
+		const dimension = safeSheet.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'dimension'); dimension.setAttribute('ref', 'A1:D3');
+		safeSheet.documentElement?.insertBefore(dimension, safeSheet.documentElement.firstChild);
+		const formula = Array.from(safeSheet.getElementsByTagName('f'))[0];
+		assert.ok(formula);
+		formula.parentNode?.removeChild(formula);
+		const cache = Array.from(safeSheet.getElementsByTagName('v')).at(-1);
+		cache?.parentNode?.removeChild(cache);
+		const firstRow = Array.from(safeSheet.getElementsByTagName('row'))[0]; firstRow?.setAttribute('spans', '1:4');
+		const safeBytes = zipSync({ ...originalParts, 'xl/worksheets/sheet1.xml': xml(new XMLSerializer().serializeToString(safeSheet)) });
+		const inserted = applyXlsxStructureOperation(safeBytes, { kind: 'insertRows', sheetIndex: 0, index: 1, count: 2 });
+		const insertedWorkbook = parseXlsxBytes(inserted.after);
+		assert.strictEqual(insertedWorkbook.sheets[0]!.rows[3]![1], '');
+		assert.strictEqual(insertedWorkbook.sheets[0]!.rows[3]![2], 'texto compartido');
+		assert.strictEqual(insertedWorkbook.sheets[0]!.rowCount, 5);
+		const insertedWorksheet = new DOMParser().parseFromString(new TextDecoder().decode(unzipSync(inserted.after)['xl/worksheets/sheet1.xml']), 'application/xml');
+		assert.strictEqual(insertedWorksheet.getElementsByTagName('dimension').item(0)?.getAttribute('ref'), 'A1:D5');
+		assert.strictEqual(insertedWorksheet.getElementsByTagName('row').item(0)?.getAttribute('spans'), '1:4');
+		const deletedRows = applyXlsxStructureOperation(safeBytes, { kind: 'deleteRows', sheetIndex: 0, index: 1, count: 1 });
+		assert.strictEqual(parseXlsxBytes(deletedRows.after).sheets[0]!.rowCount, 2);
+		assert.strictEqual(parseXlsxBytes(deletedRows.after).sheets[0]!.rows[1]![2], '');
+		const shifted = applyXlsxStructureOperation(inserted.after, { kind: 'insertColumns', sheetIndex: 0, index: 1, count: 1 });
+		assert.strictEqual(parseXlsxBytes(shifted.after).sheets[0]!.rows[0]![2], '45292.123456789012345');
+		const shiftedWorksheet = new DOMParser().parseFromString(new TextDecoder().decode(unzipSync(shifted.after)['xl/worksheets/sheet1.xml']), 'application/xml');
+		assert.strictEqual(shiftedWorksheet.getElementsByTagName('dimension').item(0)?.getAttribute('ref'), 'A1:E5');
+		assert.strictEqual(shiftedWorksheet.getElementsByTagName('row').item(0)?.getAttribute('spans'), '1:5');
+		const deletedColumns = applyXlsxStructureOperation(safeBytes, { kind: 'deleteColumns', sheetIndex: 0, index: 1, count: 1 });
+		assert.strictEqual(parseXlsxBytes(deletedColumns.after).sheets[0]!.rows[0]![1], '2026-02-04');
+		assert.deepStrictEqual(shifted.before, inserted.after);
+		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(safeBytes), safeBytes);
+		const transaction = session.applyXlsxStructure({ kind: 'insertRows', sheetIndex: 0, index: 1, count: 2 });
+		assert.strictEqual(session.hasEdits, true);
+		assert.strictEqual(session.getSheetSnapshot(0).rows.length, 5);
+		const saved = session.serializeCopy();
+		assert.strictEqual(parseXlsxBytes(saved).sheets[0]!.rowCount, 5);
+		assert.strictEqual(session.undo(transaction), true);
+		assert.deepStrictEqual(session.serializeCopy(), safeBytes);
+		assert.strictEqual(session.redo(transaction), true);
+		assert.deepStrictEqual(session.serializeCopy(), saved);
+		const beforeParts = unzipSync(safeBytes); const afterParts = unzipSync(inserted.after);
+		for (const name of Object.keys(beforeParts)) {
+			if (name !== 'xl/worksheets/sheet1.xml') {assert.deepStrictEqual(afterParts[name], beforeParts[name], `${name} changed`);}
+		}
+		assert.deepStrictEqual(inserted.before, safeBytes);
+	});
+
+	test('XLSX structural model rejects formulas found on any sheet and rejects out-of-range operations', () => {
+		const original = createXlsxFixture();
+		assert.throws(() => applyXlsxStructureOperation(original, { kind: 'insertRows', sheetIndex: 1, index: 0, count: 1 }), /fórmulas/);
+		const parts = unzipSync(original);
+		const sheet = new DOMParser().parseFromString(new TextDecoder().decode(parts['xl/worksheets/sheet1.xml']), 'application/xml');
+		const formula = Array.from(sheet.getElementsByTagName('f'))[0]; formula?.parentNode?.removeChild(formula);
+		const cache = Array.from(sheet.getElementsByTagName('v')).at(-1); cache?.parentNode?.removeChild(cache);
+		const safe = zipSync({ ...parts, 'xl/worksheets/sheet1.xml': xml(new XMLSerializer().serializeToString(sheet)) });
+		assert.throws(() => applyXlsxStructureOperation(safe, { kind: 'deleteRows', sheetIndex: 0, index: 1, count: 99 }), /límites/);
+		const safeParts = unzipSync(safe);
+		const unsafeWorksheet = new DOMParser().parseFromString(new TextDecoder().decode(safeParts['xl/worksheets/sheet1.xml']), 'application/xml');
+		unsafeWorksheet.documentElement?.appendChild(unsafeWorksheet.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'autoFilter'));
+		const unsafe = zipSync({ ...safeParts, 'xl/worksheets/sheet1.xml': xml(new XMLSerializer().serializeToString(unsafeWorksheet)) });
+		assert.throws(() => applyXlsxStructureOperation(unsafe, { kind: 'insertRows', sheetIndex: 0, index: 0, count: 1 }), /referencias o extensiones/);
 	});
 
 	test('rejects an expanded archive above the configured extraction limit', () => {

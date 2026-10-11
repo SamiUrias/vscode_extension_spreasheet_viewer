@@ -1,5 +1,6 @@
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation, type CsvRowOperation, type CsvTable } from './formats/csv';
-import { serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
+import { parseXlsxBytes, serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
+import { applyXlsxStructureOperation, type XlsxStructureOperation } from './formats/xlsx-structure';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 import { isCellCoveredByRange } from './cell-reference';
 
@@ -23,7 +24,11 @@ export interface CellEditInput {
 }
 interface CellChange { readonly key: string; readonly before: CellEdit | undefined; readonly after: CellEdit | undefined; }
 interface EditState { readonly csv: CsvTable; readonly edits: Map<string, CellEdit>; }
-interface EditTransaction { readonly id: number; readonly changes?: readonly CellChange[]; readonly before?: EditState; readonly after?: EditState; }
+interface XlsxStructureState { readonly workbook: XlsxWorkbook; readonly bytes: Uint8Array; }
+interface EditTransaction {
+	readonly id: number; readonly changes?: readonly CellChange[]; readonly before?: EditState; readonly after?: EditState;
+	readonly structureBefore?: XlsxStructureState; readonly structureAfter?: XlsxStructureState;
+}
 
 /** In-memory edit journal. Serialization always returns a new byte array. */
 export class SpreadsheetEditSession {
@@ -34,17 +39,31 @@ export class SpreadsheetEditSession {
 
 	constructor(
 		private csv?: CsvTable,
-		private readonly xlsx?: XlsxWorkbook,
-		private readonly xlsxBytes?: Uint8Array,
+		private xlsx?: XlsxWorkbook,
+		private xlsxBytes?: Uint8Array,
 		private readonly ods?: OdsWorkbook,
 		private readonly odsBytes?: Uint8Array,
 	) {}
 
 	get hasEdits(): boolean {
-		return this.edits.size > 0;
+		return this.edits.size > 0 || this.undoStack.some(transaction => transaction.structureAfter !== undefined);
 	}
 
 	get csvTable(): CsvTable | undefined {return this.csv;}
+	get xlsxWorkbook(): XlsxWorkbook | undefined {return this.xlsx;}
+
+	applyXlsxStructure(operation: XlsxStructureOperation): number {
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La operación estructural solo está disponible para XLSX.');}
+		if (this.edits.size) {throw new Error('Guarda o deshaz las ediciones de celdas antes de cambiar la estructura XLSX.');}
+		const result = applyXlsxStructureOperation(this.xlsxBytes, operation);
+		const before: XlsxStructureState = { workbook: this.xlsx, bytes: result.before };
+		const after: XlsxStructureState = { workbook: parseXlsxBytes(result.after), bytes: result.after };
+		this.restoreXlsxStructure(after);
+		const id = this.nextTransactionId++;
+		this.undoStack.push({ id, structureBefore: before, structureAfter: after });
+		this.redoStack.length = 0;
+		return id;
+	}
 
 	applyCsvRowOperation(operation: CsvRowOperation): number {
 		if (!this.csv) {throw new Error('La operación de registros solo está disponible para documentos CSV.');}
@@ -137,7 +156,8 @@ export class SpreadsheetEditSession {
 		if (transactionId !== undefined && this.undoStack[this.undoStack.length - 1]?.id !== transactionId) {return false;}
 		const transaction = this.undoStack.pop();
 		if (!transaction) {return false;}
-		if (transaction.before) {this.restoreState(transaction.before);}
+		if (transaction.structureBefore) {this.restoreXlsxStructure(transaction.structureBefore);}
+		else if (transaction.before) {this.restoreState(transaction.before);}
 		else {for (const change of [...transaction.changes ?? []].reverse()) {this.assign(change.key, change.before);}}
 		this.redoStack.push(transaction);
 		return true;
@@ -147,10 +167,17 @@ export class SpreadsheetEditSession {
 		if (transactionId !== undefined && this.redoStack[this.redoStack.length - 1]?.id !== transactionId) {return false;}
 		const transaction = this.redoStack.pop();
 		if (!transaction) {return false;}
-		if (transaction.after) {this.restoreState(transaction.after);}
+		if (transaction.structureAfter) {this.restoreXlsxStructure(transaction.structureAfter);}
+		else if (transaction.after) {this.restoreState(transaction.after);}
 		else {for (const change of transaction.changes ?? []) {this.assign(change.key, change.after);}}
 		this.undoStack.push(transaction);
 		return true;
+	}
+
+	private restoreXlsxStructure(state: XlsxStructureState): void {
+		this.xlsx = state.workbook;
+		this.xlsxBytes = state.bytes.slice();
+		this.edits.clear();
 	}
 
 	serializeCopy(): Uint8Array {

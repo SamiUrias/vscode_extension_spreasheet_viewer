@@ -927,9 +927,15 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A y V2
 
 #### V2-17A — Estructura XLSX segura en modelo
 
-**Depende de:** V2-15A/V2-12A. **Archivos:** xlsx-structure/operations/edit-model/tests. **Pasos:** implementar preflight de perfil 15.7 sobre todo libro; insertar/borrar filas/columnas solo si inventario conocido es seguro; mover coords/rows/cols/dimension/spans y geometría admitida; snapshot reversible de partes cambiadas. Mantener presupuesto ZIP/celdas. Serializar todo lote una vez y volver a parsear/verificar.
+**Depende de:** V2-15A/V2-12A. **Archivos:** xlsx-structure/operations/edit-model/tests. **Pasos:** implementar preflight conservador sobre todo libro; insertar/borrar filas/columnas solo si el inventario conocido es seguro; mover coords/rows/cols/dimension/spans y geometría admitida; snapshot reversible de partes cambiadas. Mantener presupuesto ZIP/celdas. Serializar la operación una vez y volver a parsear/verificar.
 
 **Aceptación:** fixture sin referencias externas conserva estilos/sheets/partes; coordenadas ordenadas, gaps válidos y dimension correcto; undo devuelve semántica/bytes del snapshot; archivo con fórmula en otra hoja bloquea estructura; parte/nodo desconocido relevante bloquea con razón. **Fuera:** intentar ajustar referencias por regex ni degradar libro a matriz para exportarlo.
+
+- [x] Rechazar libros con fórmulas en cualquier hoja, nombres definidos, referencias externas, partes desconocidas, protección, merges, tablas, notas, dibujos, vínculos, filtros, validación, formato condicional, extensiones o conexiones que no se actualizan.
+- [x] Insertar/borrar filas o columnas con coordenadas XML, `dimension`, `spans` y geometría de columnas actualizadas; imponer límites de filas, columnas y celdas antes de materializar celdas nuevas.
+- [x] Guardar snapshots byte a byte en el journal de undo/redo; reconstruir los cambios estructurales desde la copia de recuperación.
+- [x] Probar inserción de filas/columnas, parts ajenas, dimensiones, spans, perfil con fórmulas y undo/redo del modelo; tipos, lint, pruebas focalizadas y paquete pasan.
+- [ ] Verificar ciclo de recuperación y undo desde Extension Host; el runner automatizado sigue bloqueado por Node 18.20.4 y dependencia `/v`.
 
 #### V2-17B — Menú estructural XLSX
 

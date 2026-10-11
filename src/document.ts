@@ -5,6 +5,7 @@ import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
 import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
+import type { XlsxStructureOperation } from './formats/xlsx-structure';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
@@ -81,6 +82,14 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		} else {
 			const baseline = this.xlsx ?? this.ods, current = working.xlsx ?? working.ods;
 			if (!baseline || !current || baseline.sheets.length !== current.sheets.length) {throw new Error('La copia de recuperación no corresponde al formato del archivo.');}
+			if (this.xlsx && working.xlsx && baseline.sheets.some((sheet, index) => sheet.name !== current.sheets[index]?.name)) {
+				throw new Error('La copia de recuperación pertenece a otro conjunto de hojas.');
+			}
+			if (this.xlsx && working.xlsx && baseline.sheets.some((sheet, index) => sheet.rowCount !== current.sheets[index]?.rowCount || sheet.columnCount !== current.sheets[index]?.columnCount)) {
+				this.xlsx = working.xlsx;
+				this.editSession = new SpreadsheetEditSession(undefined, working.xlsx, workingBytes);
+				return;
+			}
 			const workingSession = new SpreadsheetEditSession(working.csv, working.xlsx, working.xlsx ? workingBytes : undefined, working.ods, working.ods ? workingBytes : undefined);
 			for (let sheetIndex = 0; sheetIndex < baseline.sheets.length; sheetIndex++) {
 				const beforeSheet = baseline.sheets[sheetIndex]!, afterSheet = current.sheets[sheetIndex]!;
@@ -136,13 +145,20 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return transactionId;
 	}
 
+	applyXlsxStructure(operation: XlsxStructureOperation): number {
+		const transactionId = this.editSession.applyXlsxStructure(operation);
+		this.xlsx = this.editSession.xlsxWorkbook;
+		this.revision++;
+		return transactionId;
+	}
+
 	undo(transactionId?: number): boolean {
-		if (this.editSession.undo(transactionId)) {this.csv = this.editSession.csvTable; this.revision++; return true;}
+		if (this.editSession.undo(transactionId)) {this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook; this.revision++; return true;}
 		return false;
 	}
 
 	redo(transactionId?: number): boolean {
-		if (this.editSession.redo(transactionId)) {this.csv = this.editSession.csvTable; this.revision++; return true;}
+		if (this.editSession.redo(transactionId)) {this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook; this.revision++; return true;}
 		return false;
 	}
 
