@@ -98,16 +98,9 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 		const relationshipId = sheetNode.getAttribute('r:id') ?? '';
 		const target = targets.get(relationshipId);
 		if (!target || !files[target]) {
-			warnings.push(`No se pudo leer la hoja «${name}»: falta su parte XML o su relación.`);
-			return emptySheet(name);
+			throw new Error(`No se pudo leer la hoja «${name}»: falta su parte XML o su relación.`);
 		}
-		let parsedSheet: XlsxSheet;
-		try {
-			parsedSheet = parseSheet(name, parseXml(files[target], target), sharedStrings);
-		} catch (error) {
-			warnings.push(`No se pudo leer la hoja «${name}»: ${errorMessage(error)}`);
-			return emptySheet(name);
-		}
+		const parsedSheet = parseSheet(name, parseXml(files[target], target), sharedStrings);
 		workbookPresentCells += parsedSheet.cellKinds.reduce(
 			(total, row) => total + row.filter(kind => kind !== 'missing').length, 0);
 		if (workbookPresentCells > MAX_PRESENT_CELLS) {
@@ -370,12 +363,4 @@ function parseCellReference(ref: string): { row: number; column: number } | unde
 		column = column * 26 + character.charCodeAt(0) - 64;
 	}
 	return { row: Number(match[2]), column };
-}
-
-function emptySheet(name: string): XlsxSheet {
-	return { name, rows: [], cellKinds: [], cellTypes: [], formulaCaches: {}, rowCount: 0, columnCount: 0 };
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }

@@ -56,9 +56,25 @@ suite('CSV reader', () => {
 
 	test('treats an empty file as a sheet with zero rows and columns', () => {
 		assert.deepStrictEqual(parseCsvBytes(new Uint8Array()), {
-			rows: [], rowCount: 0, columnCount: 0, delimiter: ',', encoding: 'utf-8',
+			rows: [], rowCount: 0, columnCount: 0, delimiter: ',', quoteChar: '"', quotes: true, preamble: '', persistDelimiter: false, encoding: 'utf-8',
 			sourceText: '', sourceBytes: new Uint8Array(), bom: new Uint8Array(), fieldSpans: [],
 		});
+	});
+
+	test('CSV dialects preserve sep directives, tabs, pipes, custom quotes and disabled quoting', () => {
+		const sep = parseCsvBytes(Buffer.from('\uFEFFsep=;\r\na;b\r\n1;2\r\n'));
+		assert.deepStrictEqual(sep.rows, [['a', 'b'], ['1', '2']]);
+		const sepOutput = serializeCsvEdits(sep, [{ row: 1, column: 0, value: '3' }]);
+		assert.deepStrictEqual([...sepOutput.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+		assert.strictEqual(new TextDecoder().decode(sepOutput.slice(3)), 'sep=;\r\na;b\r\n3;2\r\n');
+		assert.deepStrictEqual(parseCsvBytes(Buffer.from('a\tb\r\n1\t2\r\n'), { delimiter: '\t' }).rows, [['a', 'b'], ['1', '2']]);
+		assert.deepStrictEqual(parseCsvBytes(Buffer.from('a|b\n1|2'), { delimiter: '|' }).rows, [['a', 'b'], ['1', '2']]);
+		assert.deepStrictEqual(parseCsvBytes(Buffer.from("a,b\n'one, two',2"), { quoteChar: "'" }).rows, [['a', 'b'], ['one, two', '2']]);
+		assert.deepStrictEqual(parseCsvBytes(Buffer.from('a,b\n"one, two",2'), { quotes: false }).rows, [['a', 'b'], ['"one', ' two"', '2']]);
+		assert.throws(() => parseCsvBytes(Buffer.from('a,b;c\n1,2;3')), /ambiguo/);
+		const selected = parseCsvBytes(Buffer.from('a|b\n1|2'), { delimiter: '|', persistDelimiter: true });
+		const selectedOutput = serializeCsvEdits(selected, [{ row: 1, column: 0, value: 'x' }]);
+		assert.deepStrictEqual(parseCsvBytes(selectedOutput).rows, [['a', 'b'], ['x', '2']]);
 	});
 
 	test('CSV edits preserve untouched bytes, quoting, CRLF and the original encoding', () => {

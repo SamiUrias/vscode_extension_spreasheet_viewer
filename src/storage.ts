@@ -1,9 +1,11 @@
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { chmod, rename, stat } from 'node:fs/promises';
 import * as vscode from 'vscode';
 
 /** Replace a resource through a verified sibling temporary file. */
-export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?: Uint8Array): Promise<void> {
+export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?: Uint8Array, isCancelled: () => boolean = () => false): Promise<void> {
+	if (isCancelled()) {throw new vscode.CancellationError();}
 	if (expected) {
 		const current = await vscode.workspace.fs.readFile(uri);
 		if (!equalBytes(current, expected)) {
@@ -13,8 +15,19 @@ export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?:
 	const directory = path.posix.dirname(uri.path);
 	const name = path.posix.basename(uri.path);
 	const temporary = uri.with({ path: path.posix.join(directory, `.${name}.spreadsheet-viewer-${randomUUID()}.tmp`) });
+	// workspace.fs.rename(overwrite) deletes the destination through VS Code's
+	// file service first. That delete disposes an open CustomDocument even when
+	// its tab stays visible. A local filesystem rename replaces the file without
+	// sending that editor-level delete operation.
+	let mode: number | undefined;
+	if (uri.scheme === 'file') {
+		try {mode = (await stat(uri.fsPath)).mode & 0o777;} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {throw error;}
+		}
+	}
 	try {
 		await vscode.workspace.fs.writeFile(temporary, bytes);
+		if (mode !== undefined) {await chmod(temporary.fsPath, mode);}
 		const verification = await vscode.workspace.fs.readFile(temporary);
 		if (!equalBytes(verification, bytes)) {throw new Error('No se pudo verificar el archivo temporal antes de reemplazar el destino.');}
 		if (expected) {
@@ -23,7 +36,9 @@ export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?:
 				throw new Error('El archivo cambió en disco durante el guardado; se conservó la versión externa.');
 			}
 		}
-		await vscode.workspace.fs.rename(temporary, uri, { overwrite: true });
+		if (isCancelled()) {throw new vscode.CancellationError();}
+		if (uri.scheme === 'file') {await rename(temporary.fsPath, uri.fsPath);}
+		else {await vscode.workspace.fs.rename(temporary, uri, { overwrite: true });}
 	} finally {
 		try {
 			await vscode.workspace.fs.delete(temporary);

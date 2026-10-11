@@ -40,7 +40,14 @@ export function parseOdsBytes(bytes: Uint8Array): OdsWorkbook {
 	const tables = childElements(spreadsheet).filter(node => local(node) === 'table');
 	if (tables.length > MAX_SHEETS) {throw new Error(`El ODS excede el límite de ${MAX_SHEETS} hojas.`);}
 	const warnings: string[] = [];
-	const sheets: OdsSheet[] = tables.map((table, index) => parseSheet(table, index, warnings));
+	const sheets: OdsSheet[] = [];
+	let totalPresent = 0;
+	for (let index = 0; index < tables.length; index++) {
+		const sheet = parseSheet(tables[index]!, index, warnings);
+		totalPresent += sheet.cellTypes.reduce((total, row) => total + row.filter(type => type !== 'missing').length, 0);
+		if (totalPresent > MAX_PRESENT_CELLS) {throw new Error(`El ODS excede el límite de ${MAX_PRESENT_CELLS.toLocaleString()} celdas con datos.`);}
+		sheets.push(sheet);
+	}
 	return { sheets, warnings };
 }
 
@@ -81,13 +88,27 @@ export function serializeOdsEdits(bytes: Uint8Array, edits: readonly XlsxCellEdi
 function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet {
 	const name = table.getAttributeNS(TABLE_NS, 'name') || table.getAttribute('table:name') || `Hoja ${index + 1}`;
 	const rowNodes = descendants(table, 'table-row').filter(row => nearestTable(row) === table);
+	let sourceRowOffset = 0;
+	let lastMeaningfulRow = 0;
+	for (const rowNode of rowNodes) {
+		const repeats = positiveInteger(attr(rowNode, TABLE_NS, 'number-rows-repeated', 'table:number-rows-repeated') || '1', 'filas repetidas');
+		const meaningful = childElements(rowNode).some(cell => {
+			if (local(cell) !== 'table-cell') {return false;}
+			const { value } = cellValue(cell);
+			return Boolean(attr(cell, TABLE_NS, 'formula', 'table:formula')) || value !== '';
+		});
+		if (meaningful) {lastMeaningfulRow = sourceRowOffset + repeats;}
+		sourceRowOffset += repeats;
+	}
 	const cells = new Map<number, Map<number, { value: string; kind: XlsxCellKind; type: XlsxStoredType; cache?: string; ref: string }>>();
 	let rowIndex = 0;
 	let maxRow = 0;
 	let maxColumn = 0;
 	let presentCount = 0;
 	for (const rowNode of rowNodes) {
-		const repeatRows = positiveInteger(rowNode.getAttributeNS(TABLE_NS, 'number-rows-repeated') || rowNode.getAttribute('table:number-rows-repeated') || '1', 'filas repetidas');
+		const sourceRepeatRows = positiveInteger(rowNode.getAttributeNS(TABLE_NS, 'number-rows-repeated') || rowNode.getAttribute('table:number-rows-repeated') || '1', 'filas repetidas');
+		const repeatRows = Math.max(0, Math.min(sourceRepeatRows, lastMeaningfulRow - rowIndex));
+		if (repeatRows === 0) {break;}
 		if (rowIndex + repeatRows > MAX_ROWS) {throw new Error(`La hoja «${name}» excede el límite de ${MAX_ROWS} filas.`);}
 		const rowCells = childElements(rowNode).filter(node => local(node) === 'table-cell' || local(node) === 'covered-table-cell');
 		let columnIndex = 0;
@@ -111,7 +132,13 @@ function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet
 		}
 		for (let repeat = 0; repeat < repeatRows; repeat++) {
 			const currentRow = rowIndex + repeat;
-			if (values.size) {cells.set(currentRow, new Map(values));}
+			if (values.size) {
+				const expanded = new Map<number, { value: string; kind: XlsxCellKind; type: XlsxStoredType; cache?: string; ref: string }>();
+				for (const [column, cell] of values) {
+					expanded.set(column, { ...cell, ...(cell.type === 'formula' ? { value: translateOdsFormula(cell.value, repeat) } : {}), ref: `${columnName(column)}${currentRow + 1}` });
+				}
+				cells.set(currentRow, expanded);
+			}
 			if (values.size) {maxColumn = Math.max(maxColumn, columnIndex); presentCount += values.size;}
 		}
 		rowIndex += repeatRows;
@@ -138,6 +165,14 @@ function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet
 		rows.push(text); cellKinds.push(kinds); cellTypes.push(types);
 	}
 	return { name, rows, cellKinds, cellTypes, formulaCaches, rowCount: maxRow, columnCount: maxColumn };
+}
+
+function translateOdsFormula(formula: string, rowOffset: number): string {
+	if (!rowOffset) {return formula;}
+	return formula.replace(/(\$?)(\.\$?[A-Z]{1,3}\$?)(\d+)/g, (match, abs: string, column: string, row: string) => {
+		if (abs || column.includes('$')) {return match;}
+		return `${abs}${column}${Number(row) + rowOffset}`;
+	});
 }
 
 function cellValue(cell: Element): { value: string; type: XlsxStoredType } {

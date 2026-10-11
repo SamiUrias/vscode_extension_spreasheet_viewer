@@ -1,6 +1,10 @@
 import type { CsvDataMessage, FormulaEvaluation, ReloadStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
 import { resolveCellReference } from '../cell-reference';
 import { findSearchMatches } from '../search';
+import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, type RowLayout } from './grid-layout';
+import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
+import { selectGridCell } from './selection';
+import { cycleSort, projectRows, type SortCriterion } from '../table-view';
 
 window.addEventListener('error', event => {
 	const detail = event.target instanceof HTMLScriptElement
@@ -53,6 +57,7 @@ const nextMatchButton = requiredElement<HTMLButtonElement>('#next-match');
 const searchStatus = requiredElement<HTMLOutputElement>('#search-status');
 const cellEditor = requiredElement<HTMLTextAreaElement>('#cell-editor');
 const applyCellEditButton = requiredElement<HTMLButtonElement>('#apply-cell-edit');
+const cellEditorGroup = requiredElement<HTMLDivElement>('#cell-editor-group');
 
 const defaultRowHeight = 28;
 const minimumRowHeight = 20;
@@ -70,11 +75,12 @@ let reloadWatchdog: number | undefined;
 let startupDataTimer: number | undefined;
 let startupDataAttempts = 0;
 const columnWidthsBySheet = new Map<number, number[]>();
-const rowLayoutsBySheet = new Map<number, { heights: number[]; offsets: number[] }>();
+const rowLayoutsBySheet = new Map<number, RowLayout>();
 let selectedCell: { row: number; column: number } | undefined;
 let renderScheduled = false;
 let rowsViewport: HTMLDivElement | undefined;
 let renderedColumnCount = 0;
+const gridRendererState: GridRendererState = { rowsViewport: undefined, renderedColumnCount: 0 };
 let sheetRequestId = 0;
 let pendingSheetRequestId: number | undefined;
 let pendingSheetIndex: number | undefined;
@@ -86,12 +92,20 @@ let editorDirty = false;
 let inlineEditorDirty = false;
 let inlineEditValue = '';
 let editingCell: { row: number; column: number } | undefined;
+let sortCriteria: SortCriterion[] = [];
 
 gridScroll.tabIndex = 0;
 gridScroll.setAttribute('role', 'grid');
-gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas.');
+gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'sortState'
+		&& 'criteria' in event.data && Array.isArray(event.data.criteria)) {
+		sortCriteria = event.data.criteria as SortCriterion[];
+		gridRendererState.rowsViewport = undefined;
+		renderGrid();
+		return;
+	}
 	if (isReloadStateMessage(event.data)) {
 		updateReloadState(event.data);
 		return;
@@ -130,6 +144,16 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 			? `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos visuales de ODS; las fórmulas muestran su expresión y valor almacenado, sin recalcularse.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
 			: `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos de Excel; Formualizer calcula fórmulas solo para mostrarlas y no se pueden editar ni guardar sus resultados.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
 		: '';
+	if (snapshot.readonly) {
+		cellEditorGroup.hidden = true;
+		cellEditor.disabled = true;
+		applyCellEditButton.disabled = true;
+		saveStatus.textContent = snapshot.sourceStatus ?? (snapshot.sourceMode === 'buffer' ? 'Vista previa de cambios sin guardar' : 'Vista previa de solo lectura');
+		saveStatus.classList.remove('save-error');
+		formatNote.textContent = `${formatNote.textContent} Vista previa de solo lectura.${snapshot.sourceStatus ? ` ${snapshot.sourceStatus}` : ''}`.trim();
+	} else {
+		cellEditorGroup.hidden = false;
+	}
 	if (snapshot.type === 'xlsxData') {
 		sheetControl.hidden = snapshot.sheetNames.length < 2;
 		updateSheetOptions(snapshot.sheetNames, snapshot.activeSheetIndex);
@@ -181,6 +205,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 			calculationSnapshot.revision,
 			calculationSnapshot.sheetName,
 			calculationSnapshot.cellKinds,
+			calculationSnapshot.rows,
 		)).then(results => {
 			if (generation !== formulaCalculationGeneration || snapshot !== calculationSnapshot) {return;}
 			formulaResults = results;
@@ -244,7 +269,7 @@ sheetSelector.addEventListener('change', () => {
 	invalidateSearch();
 	updateSearchStatus();
 	renderGrid();
-	vscodeApi.postMessage({ type: 'selectSheet', sheetIndex, requestId });
+	vscodeApi.postMessage({ type: 'selectSheet', documentId: snapshot.documentId, revision: snapshot.revision, sheetIndex, sheetId: snapshot.sheetIds[sheetIndex]!, requestId });
 });
 
 goToCellButton.addEventListener('click', goToCell);
@@ -293,7 +318,7 @@ gridScroll.addEventListener('scroll', () => {
 });
 
 gridScroll.addEventListener('keydown', event => {
-	if (!snapshot || !selectedCell) {
+	if (event.target !== gridScroll || !snapshot || !selectedCell) {
 		return;
 	}
 	let row = selectedCell.row;
@@ -303,7 +328,14 @@ gridScroll.addEventListener('keydown', event => {
 		case 'ArrowDown': row++; break;
 		case 'ArrowLeft': column--; break;
 		case 'ArrowRight': column++; break;
-		default: return;
+		default: {
+			const startsText = !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing
+				&& Array.from(event.key).length === 1;
+			if (!startsText || !canEditCell(row, column)) {return;}
+			event.preventDefault();
+			beginInlineEdit(row, column, event.key);
+			return;
+		}
 	}
 	event.preventDefault();
 	selectCell(
@@ -320,215 +352,64 @@ gridScroll.addEventListener('wheel', event => {
 }, { passive: false });
 
 function renderGrid(): void {
-	if (!snapshot || snapshot.rowCount === 0 || snapshot.columnCount === 0) {
-		rowsViewport = undefined;
-		renderedColumnCount = 0;
-		gridRoot.replaceChildren();
-		const empty = document.createElement('p');
-		empty.className = 'empty-state';
-		empty.textContent = snapshot?.type === 'xlsxData' ? 'La hoja XLSX no contiene celdas.' : 'El CSV no contiene celdas.';
-		gridRoot.append(empty);
-		return;
-	}
-
-	gridScroll.setAttribute('aria-rowcount', String(snapshot.rowCount + 1));
-	gridScroll.setAttribute('aria-colcount', String(snapshot.columnCount + 1));
-	const widths = getActiveColumnWidths();
-	const templateColumns = gridTemplateColumns(widths);
-	if (!rowsViewport || renderedColumnCount !== snapshot.columnCount) {
-		const headerRow = document.createElement('div');
-		headerRow.className = 'grid-row grid-header';
-		headerRow.setAttribute('role', 'row');
-		headerRow.style.gridTemplateColumns = templateColumns;
-		const corner = document.createElement('div');
-		corner.className = 'corner-header';
-		corner.setAttribute('role', 'columnheader');
-		corner.setAttribute('aria-hidden', 'true');
-		headerRow.append(corner);
-		for (let column = 0; column < snapshot.columnCount; column++) {
-			const heading = document.createElement('div');
-			heading.className = 'column-header';
-			heading.setAttribute('role', 'columnheader');
-			heading.append(columnName(column));
-			const resizeHandle = document.createElement('span');
-			resizeHandle.className = 'column-resize-handle';
-			resizeHandle.setAttribute('role', 'separator');
-			resizeHandle.setAttribute('aria-orientation', 'vertical');
-			resizeHandle.setAttribute('aria-label', `Redimensionar columna ${columnName(column)}`);
-			resizeHandle.tabIndex = 0;
-			resizeHandle.addEventListener('pointerdown', event => startColumnResize(event, column, resizeHandle));
-			resizeHandle.addEventListener('keydown', event => resizeColumnWithKeyboard(event, column));
-			heading.append(resizeHandle);
-			headerRow.append(heading);
-		}
-		rowsViewport = document.createElement('div');
-		rowsViewport.className = 'rows-viewport';
-		rowsViewport.style.width = `${rowHeaderWidth + widths.reduce((total, width) => total + width, 0)}px`;
-		gridRoot.style.width = 'max-content';
-		gridRoot.style.minWidth = '100%';
-		gridRoot.replaceChildren(headerRow, rowsViewport);
-		renderedColumnCount = snapshot.columnCount;
-	}
-	updateGridColumnSizing();
-
-	const rowLayout = getActiveRowLayout();
-	const firstViewportRow = findRowAtOffset(rowLayout.offsets, Math.max(0, gridScroll.scrollTop - headingHeight));
-	const lastViewportRow = findRowAtOffset(rowLayout.offsets, Math.max(0, gridScroll.scrollTop + gridScroll.clientHeight - headingHeight));
-	const firstVisibleRow = Math.max(0, firstViewportRow - overscan);
-	const endVisibleRow = Math.min(snapshot.rowCount, lastViewportRow + overscan + 1);
-	rowsViewport.style.height = `${rowLayout.offsets[snapshot.rowCount] ?? 0}px`;
-	rowsViewport.replaceChildren();
-	for (let rowIndex = firstVisibleRow; rowIndex < endVisibleRow; rowIndex++) {
-		const row = document.createElement('div');
-		row.className = 'grid-row';
-		row.style.gridTemplateColumns = templateColumns;
-		row.style.top = `${rowLayout.offsets[rowIndex] ?? 0}px`;
-		row.style.height = `${rowLayout.heights[rowIndex] ?? defaultRowHeight}px`;
-		row.dataset.rowIndex = String(rowIndex);
-		row.setAttribute('role', 'row');
-		row.setAttribute('aria-rowindex', String(rowIndex + 2));
-		const rowHeader = document.createElement('div');
-		rowHeader.className = 'row-header';
-		rowHeader.setAttribute('role', 'rowheader');
-		rowHeader.textContent = String(rowIndex + 1);
-		const rowResizeHandle = document.createElement('span');
-		rowResizeHandle.className = 'row-resize-handle';
-		rowResizeHandle.setAttribute('role', 'separator');
-		rowResizeHandle.setAttribute('aria-orientation', 'horizontal');
-		rowResizeHandle.setAttribute('aria-label', `Redimensionar fila ${rowIndex + 1}`);
-		rowResizeHandle.tabIndex = 0;
-		rowResizeHandle.addEventListener('pointerdown', event => startRowResize(event, rowIndex, rowResizeHandle));
-		rowResizeHandle.addEventListener('keydown', event => resizeRowWithKeyboard(event, rowIndex));
-		rowHeader.append(rowResizeHandle);
-		row.append(rowHeader);
-
-		const values = snapshot.rows[rowIndex];
-		for (let column = 0; column < snapshot.columnCount; column++) {
-			const valueCell = document.createElement('div');
-			const present = column < values.length;
-			const value = present ? values[column] : '';
-			valueCell.className = 'grid-cell';
-			valueCell.textContent = value;
-			valueCell.title = value;
-			valueCell.setAttribute('role', 'gridcell');
-			valueCell.setAttribute('aria-selected', String(isSelected(rowIndex, column)));
-			if (!present) {
-				valueCell.classList.add('missing-cell');
-			}
-			if (isFormula(rowIndex, column)) {
-				valueCell.classList.add('formula-cell');
-				const cache = getFormulaCache(rowIndex, column) || 'Sin valor almacenado';
-				const result = getFormulaResult(rowIndex, column);
-				const calculated = result?.status === 'calculated' ? `Fórmula (calculada): ${result.value}`
-					: result?.status === 'unsupported' ? 'Fórmula NO compatible'
-						: result ? `Error de cálculo: ${result.value}` : 'Fórmula calculándose…';
-				valueCell.title = `${value}\nValor almacenado en caché: ${cache}\n${calculated}`;
-			}
-			if (isEditing(rowIndex, column)) {
-				const inlineEditor = document.createElement('textarea');
-				inlineEditor.className = 'cell-inline-editor';
-				inlineEditor.rows = 1;
-				inlineEditor.spellcheck = false;
-				inlineEditor.setAttribute('aria-label', `Editar ${columnName(column)}${rowIndex + 1}`);
-				inlineEditor.value = inlineEditValue;
-				inlineEditor.addEventListener('input', () => {
-					inlineEditValue = inlineEditor.value;
-					inlineEditorDirty = true;
-					sendDraftState(true, inlineEditValue);
-				});
-				inlineEditor.addEventListener('blur', commitInlineEdit);
-				inlineEditor.addEventListener('keydown', event => {
-					if (event.key === 'Escape') {
-						event.preventDefault();
-						cancelInlineEdit();
-					} else if (event.key === 'Enter' && !event.shiftKey) {
-						event.preventDefault();
-						commitInlineEdit();
-						gridScroll.focus({ preventScroll: true });
-					}
-				});
-				inlineEditor.addEventListener('click', event => event.stopPropagation());
-				valueCell.append(inlineEditor);
-			}
-			if (isSelected(rowIndex, column)) {
-				valueCell.classList.add('selected-cell');
-			}
-			if (isActiveSearchMatch(rowIndex, column)) {
-				valueCell.classList.add('active-search-match');
-			}
-			valueCell.addEventListener('click', () => {
-				gridScroll.focus({ preventScroll: true });
-				selectCell(rowIndex, column);
-			});
-			valueCell.addEventListener('dblclick', () => beginInlineEdit(rowIndex, column));
-			row.append(valueCell);
-		}
-		rowsViewport.append(row);
-	}
-}
-
-function selectCell(row: number, column: number): void {
-	if (!snapshot) {
-		return;
-	}
-	if (selectedCell && (selectedCell.row !== row || selectedCell.column !== column)) {commitSelectedEdit();}
-	selectedCell = { row, column };
-	const reference = `${columnName(column)}${row + 1}`;
-	cellReference.textContent = reference;
-	cellReferenceInput.value = reference;
-	const values = snapshot.rows[row];
-	const exists = column < values.length;
-	const kind = snapshot.type === 'xlsxData' ? snapshot.cellKinds[row]?.[column] : undefined;
-	const formulaResult = kind === 'formula' ? getFormulaResult(row, column) : undefined;
-	cellState.textContent = kind === 'formula'
-		? snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods' ? 'Fórmula (no recalculada)'
-			: formulaResult?.status === 'calculated' ? 'Fórmula (calculada)'
-			: formulaResult?.status === 'unsupported' ? 'Fórmula NO compatible'
-				: formulaResult ? 'Fórmula (error de cálculo)' : 'Calculando fórmula…'
-		: kind === 'empty' || (exists && values[column] === '')
-			? 'Celda vacía almacenada'
-			: kind === 'missing' || !exists ? 'Celda ausente' : 'Valor crudo';
-	cellState.dataset.state = kind === 'formula'
-		? snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods' ? 'formula'
-			: formulaResult?.status ?? 'calculating'
-		: kind === 'empty' || kind === 'missing' || !exists ? 'empty' : 'raw';
-	cellValue.textContent = exists ? values[column] : '';
-	if (kind === 'formula') {
-		const cache = getFormulaCache(row, column) || 'Sin valor almacenado';
-		cellValue.textContent += `\nValor almacenado en caché: ${cache}`;
-		if (formulaResult?.status === 'calculated') {
-			cellValue.textContent += `\n\nFórmula (calculada)\n${formulaResult.value}`;
-		} else if (snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods') {
-			cellValue.textContent += '\n\nFórmula (no recalculada)';
-		} else if (formulaResult?.status === 'unsupported') {
-			cellValue.textContent += '\n\nFórmula NO compatible';
-		} else if (formulaResult) {
-			cellValue.textContent += `\n\nError al calcular: ${formulaResult.value}`;
+	if (editingCell && gridRoot.querySelector('.cell-inline-editor') === document.activeElement) {return;}
+	gridRendererState.rowsViewport = rowsViewport;
+	gridRendererState.renderedColumnCount = renderedColumnCount;
+	renderSpreadsheetGrid({
+		snapshot, state: gridRendererState, gridScroll, gridRoot,
+		defaultRowHeight, headingHeight, rowHeaderWidth, overscan,
+		getActiveColumnWidths, gridTemplateColumns: widths => gridTemplateColumns(widths, rowHeaderWidth),
+		startColumnResize, resizeColumnWithKeyboard, updateGridColumnSizing, getActiveRowLayout,
+		findRowAtOffset, startRowResize, resizeRowWithKeyboard, columnName, isSelected, isFormula,
+		getFormulaCache, getFormulaResult, isEditing, isActiveSearchMatch, inlineEditValue,
+		setInlineEditValue: value => {inlineEditValue = value;},
+		sendDraftState, setInlineEditorDirty: value => {inlineEditorDirty = value;},
+		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit,
+		projection: projectRows(snapshot?.rows ?? [], sortCriteria),
+		sortHeader: (column, event) => {
+		if (event.altKey) {
+			const existing = sortCriteria.find(item => item.column === column);
+			sortCriteria = existing
+				? sortCriteria.map(item => item.column === column ? { ...item, mode: item.mode === 'text' ? 'number' : 'text' } : item)
+				: cycleSort(sortCriteria, column, { shift: event.shiftKey }, 'number');
 		} else {
-			cellValue.textContent += '\n\nCalculando fórmula…';
+			sortCriteria = cycleSort(sortCriteria, column, { shift: event.shiftKey, remove: event.ctrlKey || event.metaKey });
 		}
-	}
-	cellEditor.value = exists ? values[column] : '';
-	editorDirty = false;
-	cellEditor.disabled = kind === 'formula';
-	applyCellEditButton.disabled = kind === 'formula';
-	ensureSelectionVisible(row, column);
-	renderGrid();
+		if (snapshot) {vscodeApi.postMessage({ type: 'setSort', documentId: snapshot.documentId, sheetId: snapshot.sheetId, criteria: sortCriteria });}
+			gridRendererState.rowsViewport = undefined;
+			renderGrid();
+		},
+		sortLabel: column => {
+			const index = sortCriteria.findIndex(item => item.column === column);
+			return index < 0 ? '' : ` ${sortCriteria[index]!.direction === 'asc' ? '↑' : '↓'}${sortCriteria.length > 1 ? index + 1 : ''}`;
+		},
+	});
+	rowsViewport = gridRendererState.rowsViewport;
+	renderedColumnCount = gridRendererState.renderedColumnCount;
+}
+function selectCell(row: number, column: number): void {
+	selectGridCell({
+		snapshot, selectedCell, setSelectedCell: position => {selectedCell = position;}, commitSelectedEdit,
+		columnName, getFormulaResult, getFormulaCache, cellReference, cellReferenceInput, cellState, cellValue,
+		cellEditor, applyCellEditButton, setEditorDirty: value => {editorDirty = value;},
+		ensureSelectionVisible, renderGrid,
+	}, row, column);
 }
 
 function commitSelectedEdit(): void {
-	if (!editorDirty || !snapshot || !selectedCell || isFormula(selectedCell.row, selectedCell.column)) {return;}
+	if (!editorDirty || !snapshot || !selectedCell || !canEditCell(selectedCell.row, selectedCell.column)) {return;}
 	sendCellEdit(selectedCell, cellEditor.value);
 	editorDirty = false;
 	saveStatus.textContent = 'Cambios pendientes…';
 }
 
-function beginInlineEdit(row: number, column: number): void {
-	if (!snapshot || isFormula(row, column)) {return;}
+function beginInlineEdit(row: number, column: number, initialText?: string): void {
+	if (!snapshot || !canEditCell(row, column)) {return;}
 	selectCell(row, column);
 	editingCell = { row, column };
-	inlineEditValue = snapshot.rows[row]?.[column] ?? '';
-	inlineEditorDirty = false;
+	inlineEditValue = initialText ?? snapshot.rows[row]?.[column] ?? '';
+	inlineEditorDirty = initialText !== undefined;
+	if (initialText !== undefined) {sendDraftState(true, initialText, { row, column });}
 	renderGrid();
 	const inlineEditor = gridRoot.querySelector<HTMLTextAreaElement>('.cell-inline-editor');
 	inlineEditor?.focus({ preventScroll: true });
@@ -539,7 +420,7 @@ function commitInlineEdit(): void {
 	if (!editingCell) {return;}
 	const position = editingCell;
 	editingCell = undefined;
-	if (inlineEditorDirty && !isFormula(position.row, position.column)) {
+	if (inlineEditorDirty && canEditCell(position.row, position.column)) {
 		sendCellEdit(position, inlineEditValue);
 		saveStatus.textContent = 'Cambios pendientes…';
 	}
@@ -557,10 +438,11 @@ function cancelInlineEdit(): void {
 }
 
 function sendCellEdit(position: { row: number; column: number }, value: string): void {
-	if (!snapshot) {return;}
+	if (!snapshot || snapshot.readonly) {return;}
 	const sheetIndex = snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
 	sendDraftState(false, value, position);
-	vscodeApi.postMessage({ type: 'editCell', sheetIndex, ...position, value });
+	vscodeApi.postMessage({ type: 'editCell', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetIndex, sheetId: snapshot.sheetId, ...position, value });
 }
 
 function cancelCellEdit(): void {
@@ -575,10 +457,12 @@ function sendDraftState(
 	value = cellEditor.value,
 	position = selectedCell,
 ): void {
-	if (!snapshot || !position) {return;}
+	if (!snapshot || snapshot.readonly || !position) {return;}
 	vscodeApi.postMessage({
 		type: 'draftState', dirty,
+		documentId: snapshot.documentId, revision: snapshot.revision,
 		sheetIndex: snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0,
+		sheetId: snapshot.sheetId,
 		...position,
 		value,
 	});
@@ -707,8 +591,9 @@ function isActiveSearchMatch(row: number, column: number): boolean {
 
 function ensureSelectionVisible(row: number, column: number): void {
 	const rowLayout = getActiveRowLayout();
-	const cellTop = headingHeight + (rowLayout.offsets[row] ?? 0);
-	const cellBottom = headingHeight + (rowLayout.offsets[row + 1] ?? ((rowLayout.offsets[row] ?? 0) + defaultRowHeight));
+	const visibleRow = projectRows(snapshot?.rows ?? [], sortCriteria).sourceToVisible.get(row) ?? row;
+	const cellTop = headingHeight + (rowLayout.offsets[visibleRow] ?? 0);
+	const cellBottom = headingHeight + (rowLayout.offsets[visibleRow + 1] ?? ((rowLayout.offsets[visibleRow] ?? 0) + defaultRowHeight));
 	const visibleTop = gridScroll.scrollTop + headingHeight;
 	const visibleBottom = gridScroll.scrollTop + gridScroll.clientHeight;
 	if (cellTop < visibleTop) {
@@ -743,14 +628,10 @@ function getActiveColumnWidths(): number[] {
 	return widths;
 }
 
-function gridTemplateColumns(widths: number[]): string {
-	return `${rowHeaderWidth}px ${widths.map(width => `${width}px`).join(' ')}`;
-}
-
 function updateGridColumnSizing(): void {
 	if (!snapshot || !rowsViewport) {return;}
 	const widths = getActiveColumnWidths();
-	const template = gridTemplateColumns(widths);
+	const template = gridTemplateColumns(widths, rowHeaderWidth);
 	const totalWidth = rowHeaderWidth + widths.reduce((total, width) => total + width, 0);
 	const headerRow = gridRoot.querySelector<HTMLDivElement>('.grid-header');
 	if (headerRow) {headerRow.style.gridTemplateColumns = template;}
@@ -811,26 +692,6 @@ function getActiveRowLayout(): { heights: number[]; offsets: number[] } {
 		rebuildRowOffsets(layout);
 	}
 	return layout;
-}
-
-function rebuildRowOffsets(layout: { heights: number[]; offsets: number[] }): void {
-	layout.offsets.length = layout.heights.length + 1;
-	layout.offsets[0] = 0;
-	for (let row = 0; row < layout.heights.length; row++) {
-		layout.offsets[row + 1] = layout.offsets[row]! + layout.heights[row]!;
-	}
-}
-
-function findRowAtOffset(offsets: readonly number[], offset: number): number {
-	const rowCount = offsets.length - 1;
-	if (rowCount <= 0) {return 0;}
-	let low = 0;
-	let high = rowCount - 1;
-	while (low < high) {
-		const middle = Math.floor((low + high) / 2);
-		if ((offsets[middle + 1] ?? 0) <= offset) {low = middle + 1;} else {high = middle;}
-	}
-	return low;
 }
 
 function startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElement): void {
@@ -899,6 +760,10 @@ function isCsvDataMessage(value: unknown): value is CsvDataMessage {
 	}
 	const candidate = value as Record<string, unknown>;
 	if (candidate.type !== 'csvData'
+		|| typeof candidate.documentId !== 'string' || typeof candidate.sheetId !== 'string'
+		|| (candidate.readonly !== undefined && typeof candidate.readonly !== 'boolean')
+		|| (candidate.sourceMode !== undefined && !['disk', 'buffer', 'csv-text'].includes(String(candidate.sourceMode)))
+		|| (candidate.sourceStatus !== undefined && typeof candidate.sourceStatus !== 'string')
 		|| !Number.isInteger(candidate.revision)
 		|| typeof candidate.fileName !== 'string'
 		|| !Array.isArray(candidate.rows)
@@ -919,6 +784,11 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 	}
 	const candidate = value as Record<string, unknown>;
 	return candidate.type === 'xlsxData'
+		&& typeof candidate.documentId === 'string' && typeof candidate.sheetId === 'string'
+		&& (candidate.readonly === undefined || typeof candidate.readonly === 'boolean')
+		&& (candidate.sourceMode === undefined || ['disk', 'buffer', 'csv-text'].includes(String(candidate.sourceMode)))
+		&& (candidate.sourceStatus === undefined || typeof candidate.sourceStatus === 'string')
+		&& Array.isArray(candidate.sheetIds) && Array.isArray(candidate.sheetNames) && candidate.sheetIds.length === candidate.sheetNames.length
 		&& Number.isInteger(candidate.revision)
 		&& typeof candidate.fileName === 'string'
 		&& typeof candidate.sheetName === 'string'
@@ -930,6 +800,7 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 		&& (candidate.requestId === undefined || Number.isInteger(candidate.requestId))
 		&& Array.isArray(candidate.rows)
 		&& Array.isArray(candidate.cellKinds)
+		&& Array.isArray(candidate.cellTypes) && Array.isArray(candidate.cellCapabilities)
 		&& candidate.rows.length === candidate.cellKinds.length
 		&& Number.isInteger(candidate.rowCount)
 		&& candidate.rowCount === candidate.rows.length
@@ -950,6 +821,12 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 
 function isFormula(row: number, column: number): boolean {
 	return snapshot?.type === 'xlsxData' && snapshot.cellKinds[row]?.[column] === 'formula';
+}
+
+function canEditCell(row: number, column: number): boolean {
+	if (!snapshot) {return false;}
+	if (snapshot.readonly) {return false;}
+	return snapshot.type !== 'xlsxData' || snapshot.cellCapabilities[row]?.[column]?.editable === true;
 }
 
 function getFormulaCache(row: number, column: number): string {

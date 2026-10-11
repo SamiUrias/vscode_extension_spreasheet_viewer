@@ -1,25 +1,32 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { SpreadsheetEditSession } from './edit-model';
-import { MAX_CSV_BYTES, parseCsvBytes, type CsvTable } from './formats/csv';
+import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
+	readonly documentId = randomUUID();
 	csv: CsvTable | undefined;
 	xlsx: XlsxWorkbook | undefined;
 	ods: OdsWorkbook | undefined;
 	sourceBytes: Uint8Array;
 	editSession: SpreadsheetEditSession;
 	revision = 0;
+	private disposed = false;
+	private readonly csvOptions: CsvParseOptions;
 
-	private constructor(readonly uri: vscode.Uri, bytes: Uint8Array, baselineBytes = bytes) {
+	sheetId(sheetIndex: number): string { return `${this.documentId}:sheet:${sheetIndex}`; }
+
+	private constructor(readonly uri: vscode.Uri, bytes: Uint8Array, baselineBytes = bytes, csvOptions: CsvParseOptions = optionsForUri(uri)) {
+		this.csvOptions = csvOptions;
 		this.sourceBytes = baselineBytes.slice();
-		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(uri, bytes));
+		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(uri, bytes, this.csvOptions));
 		this.editSession = new SpreadsheetEditSession(this.csv, this.xlsx, this.xlsx ? bytes : undefined, this.ods, this.ods ? bytes : undefined);
 	}
 
-	static async open(uri: vscode.Uri, backupBytes?: Uint8Array): Promise<SpreadsheetDocument> {
+	static async open(uri: vscode.Uri, backupBytes?: Uint8Array, csvOptions?: CsvParseOptions): Promise<SpreadsheetDocument> {
 		if (backupBytes) {
 			let baseline: Uint8Array;
 			try {
@@ -27,9 +34,13 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 			} catch {
 				baseline = new Uint8Array();
 			}
-			return new SpreadsheetDocument(uri, backupBytes, baseline);
+			return new SpreadsheetDocument(uri, backupBytes, baseline, csvOptions ?? optionsForUri(uri));
 		}
-		return new SpreadsheetDocument(uri, await SpreadsheetDocument.readBytes(uri));
+		return new SpreadsheetDocument(uri, await SpreadsheetDocument.readBytes(uri), undefined, csvOptions ?? optionsForUri(uri));
+	}
+
+	static fromBytes(uri: vscode.Uri, bytes: Uint8Array, csvOptions?: CsvParseOptions): SpreadsheetDocument {
+		return new SpreadsheetDocument(uri, bytes, bytes, csvOptions ?? optionsForUri(uri));
 	}
 
 	static async readBytes(uri: vscode.Uri): Promise<Uint8Array> {
@@ -38,9 +49,9 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 			throw new Error('El recurso seleccionado no es un archivo.');
 		}
 		const extension = path.posix.extname(uri.path).toLowerCase();
-		const limit = extension === '.csv' ? MAX_CSV_BYTES : extension === '.xlsx' ? MAX_XLSX_BYTES : MAX_ODS_BYTES;
-		if (extension !== '.csv' && extension !== '.xlsx' && extension !== '.ods') {
-			throw new Error('Solo se admiten archivos .csv, .xlsx y .ods.');
+		const limit = ['.csv', '.tsv', '.tab'].includes(extension) ? MAX_CSV_BYTES : extension === '.xlsx' ? MAX_XLSX_BYTES : MAX_ODS_BYTES;
+		if (!['.csv', '.tsv', '.tab', '.xlsx', '.ods'].includes(extension)) {
+			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx y .ods.');
 		}
 		if (stat.size > limit) {
 			throw new Error(`El archivo excede el límite de ${limit / (1024 * 1024)} MiB.`);
@@ -66,7 +77,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	}
 
 	replaceSavedBytes(bytes: Uint8Array): void {
-		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(this.uri, bytes));
+		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(this.uri, bytes, this.csvOptions));
 		this.sourceBytes = bytes.slice();
 		this.editSession = new SpreadsheetEditSession(this.csv, this.xlsx, this.xlsx ? bytes : undefined, this.ods, this.ods ? bytes : undefined);
 		this.revision++;
@@ -77,7 +88,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	}
 
 	validateCopy(bytes: Uint8Array): void {
-		parseDocument(this.uri, bytes);
+		parseDocument(this.uri, bytes, this.csvOptions);
 	}
 
 	get hasUnsavedChanges(): boolean {
@@ -86,12 +97,19 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return current.some((byte, index) => byte !== this.sourceBytes[index]);
 	}
 
-	dispose(): void {}
+	get isDisposed(): boolean { return this.disposed; }
+
+	dispose(): void { this.disposed = true; }
 }
 
-function parseDocument(uri: vscode.Uri, bytes: Uint8Array): { csv: CsvTable | undefined; xlsx: XlsxWorkbook | undefined; ods: OdsWorkbook | undefined } {
+function optionsForUri(uri: vscode.Uri): CsvParseOptions {
 	const extension = path.posix.extname(uri.path).toLowerCase();
-	if (extension === '.csv') {return { csv: parseCsvBytes(bytes), xlsx: undefined, ods: undefined };}
+	return ['.tsv', '.tab'].includes(extension) ? { delimiter: '\t' } : {};
+}
+
+function parseDocument(uri: vscode.Uri, bytes: Uint8Array, csvOptions: CsvParseOptions = optionsForUri(uri)): { csv: CsvTable | undefined; xlsx: XlsxWorkbook | undefined; ods: OdsWorkbook | undefined } {
+	const extension = path.posix.extname(uri.path).toLowerCase();
+	if (['.csv', '.tsv', '.tab'].includes(extension)) {return { csv: parseCsvBytes(bytes, csvOptions), xlsx: undefined, ods: undefined };}
 	if (extension === '.xlsx') {return { csv: undefined, xlsx: parseXlsxBytes(bytes), ods: undefined };}
 	if (extension === '.ods') {return { csv: undefined, xlsx: undefined, ods: parseOdsBytes(bytes) };}
 	throw new Error('Solo se admiten archivos .csv, .xlsx y .ods.');

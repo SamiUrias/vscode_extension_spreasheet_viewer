@@ -254,6 +254,10 @@ main {
 	min-width: 0;
 }
 
+#cell-editor-group[hidden] {
+	display: none;
+}
+
 #cell-edit-label {
 	grid-column: 1 / -1;
 }

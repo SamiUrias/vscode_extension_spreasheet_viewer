@@ -15,7 +15,25 @@
     "commands": [
       {
         "command": "spreadsheet-viewer.open",
-        "title": "Visualizar en Spreadsheet"
+        "title": "Abrir en Spreadsheet Viewer",
+        "category": "Spreadsheet Viewer",
+        "icon": "resources/spreadsheet.svg"
+      },
+      {
+        "command": "spreadsheet-viewer.preview",
+        "title": "Vista previa de hoja",
+        "category": "Spreadsheet Viewer",
+        "icon": "resources/preview.svg"
+      },
+      {
+        "command": "spreadsheet-viewer.previewBuffer",
+        "title": "Vista previa del buffer CSV/TSV/TAB",
+        "category": "Spreadsheet Viewer"
+      },
+      {
+        "command": "spreadsheet-viewer.previewCsv",
+        "title": "Vista previa como CSV…",
+        "category": "Spreadsheet Viewer"
       }
     ],
     "customEditors": [
@@ -25,6 +43,12 @@
         "selector": [
           {
             "filenamePattern": "**/*.[cC][sS][vV]"
+          },
+          {
+            "filenamePattern": "**/*.[tT][sS][vV]"
+          },
+          {
+            "filenamePattern": "**/*.[tT][aA][bB]"
           },
           {
             "filenamePattern": "**/*.[xX][lL][sS][xX]"
@@ -40,17 +64,86 @@
       "explorer/context": [
         {
           "command": "spreadsheet-viewer.open",
-          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|xlsx|ods)$/i",
+          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
           "group": "1_modification"
+        },
+        {
+          "command": "spreadsheet-viewer.preview",
+          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "spreadsheet-viewer.previewCsv",
+          "when": "!explorerResourceIsFolder",
+          "group": "1_modification@3"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "spreadsheet-viewer.open",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "group": "navigation"
+        },
+        {
+          "command": "spreadsheet-viewer.preview",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "group": "navigation@2"
+        },
+        {
+          "command": "spreadsheet-viewer.previewBuffer",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab)$/i",
+          "group": "navigation@3"
+        }
+      ],
+      "tabContext": [
+        {
+          "command": "spreadsheet-viewer.open",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "group": "1_modification"
+        },
+        {
+          "command": "spreadsheet-viewer.preview",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "spreadsheet-viewer.previewBuffer",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab)$/i",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "spreadsheet-viewer.previewCsv",
+          "when": "true",
+          "group": "1_modification@4"
         }
       ],
       "commandPalette": [
         {
           "command": "spreadsheet-viewer.open",
-          "when": "false"
+          "when": "true"
+        },
+        {
+          "command": "spreadsheet-viewer.preview",
+          "when": "true"
+        },
+        {
+          "command": "spreadsheet-viewer.previewBuffer",
+          "when": "true"
+        },
+        {
+          "command": "spreadsheet-viewer.previewCsv",
+          "when": "true"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "spreadsheet-viewer.open",
+        "key": "ctrl+alt+shift+o",
+        "mac": "cmd+alt+shift+o",
+        "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -61,6 +154,7 @@
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "test:formulas": "node scripts/test-formulas.js",
+    "test:save-lifecycle": "node scripts/test-save-lifecycle.js",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit && npm run check-types:webview",

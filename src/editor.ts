@@ -2,8 +2,9 @@ import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SpreadsheetDocument } from './document';
+import { CsvDelimiterAmbiguityError } from './formats/csv';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
-import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
+import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -14,6 +15,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	readonly onDidChangeCustomDocument = this.emitter.event;
 	private readonly saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly saveQueues = new WeakMap<SpreadsheetDocument, Promise<void>>();
+	private readonly automaticSaveInFlight = new Set<string>();
+	private readonly automaticSaveQueued = new Set<string>();
+	private readonly automaticSaveCallbacks = new Map<string, () => void>();
 	private readonly activeSheets = new WeakMap<vscode.WebviewPanel, number>();
 	private readonly watchers = new Map<string, vscode.FileSystemWatcher>();
 	private readonly externalTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -22,12 +26,36 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private readonly ownWrites = new WeakMap<SpreadsheetDocument, Uint8Array[]>();
 	private readonly formulaSnapshots = new WeakMap<SpreadsheetDocument, { revision: number; base64: string }>();
 	private readonly panelDrafts = new Map<vscode.WebviewPanel, Extract<WebviewToExtensionMessage, { type: 'draftState' }>>();
+	private readonly panelListeners = new Map<vscode.WebviewPanel, vscode.Disposable[]>();
+	private readonly watcherListeners = new Map<string, vscode.Disposable[]>();
+	private readonly output = vscode.window.createOutputChannel('Spreadsheet Viewer');
 
-	constructor(private readonly extensionUri: vscode.Uri) {}
+	constructor(private readonly extensionUri: vscode.Uri, private readonly workspaceState: vscode.Memento) {}
+
+	dispose(): void {
+		for (const timer of this.saveTimers.values()) {clearTimeout(timer);}
+		for (const timer of this.externalTimers.values()) {clearTimeout(timer);}
+		for (const watcher of this.watchers.values()) {watcher.dispose();}
+		for (const list of [...this.watcherListeners.values(), ...this.panelListeners.values()]) {for (const item of list) {item.dispose();}}
+		this.saveTimers.clear(); this.externalTimers.clear(); this.watchers.clear(); this.watcherListeners.clear(); this.panelListeners.clear();
+		this.automaticSaveInFlight.clear(); this.automaticSaveQueued.clear();
+		this.automaticSaveCallbacks.clear();
+		this.emitter.dispose(); this.output.dispose();
+	}
 
 	async openCustomDocument(uri: vscode.Uri, openContext: vscode.CustomDocumentOpenContext): Promise<SpreadsheetDocument> {
+		if (!await resolveDirtyTextBuffer(uri)) {throw new Error('Se canceló la apertura para conservar los cambios de texto sin guardar.');}
 		const backup = openContext.backupId ? await readBackup(openContext.backupId) : undefined;
-		return SpreadsheetDocument.open(uri, backup);
+		try { return await SpreadsheetDocument.open(uri, backup); }
+		catch (error) {
+			if (!(error instanceof CsvDelimiterAmbiguityError)) {throw error;}
+			const delimiter = await vscode.window.showQuickPick(error.delimiters.map(value => ({
+				label: value === '\t' ? 'Tabulador (TAB)' : value === '|' ? 'Barra vertical (|)' : value,
+				description: `Separador ${JSON.stringify(value)}`, value,
+			})), { title: 'Elige el separador del archivo', placeHolder: 'El archivo admite más de una interpretación.' });
+			if (!delimiter) {throw new Error('Se canceló la selección del dialecto CSV.');}
+			return SpreadsheetDocument.open(uri, backup, { delimiter: delimiter.value, persistDelimiter: true });
+		}
 	}
 
 	resolveCustomEditor(document: SpreadsheetDocument, panel: vscode.WebviewPanel): void {
@@ -35,49 +63,55 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const documentPanels = this.panels.get(key) ?? new Set<vscode.WebviewPanel>();
 		documentPanels.add(panel);
 		this.panels.set(key, documentPanels);
-		panel.onDidDispose(() => {
-			const draft = this.panelDrafts.get(panel);
-			if (draft) {
-				this.applyEdit(document, { type: 'editCell', sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value });
-			}
+		const listeners: vscode.Disposable[] = [];
+		this.panelListeners.set(panel, listeners);
+		listeners.push(panel.onDidDispose(() => {
 			documentPanels.delete(panel);
 			this.panelDrafts.delete(panel);
 			if (documentPanels.size === 0) {this.panels.delete(key);}
 			if (documentPanels.size === 0) {this.disposeWatcher(key);}
-		});
+			if (documentPanels.size === 0) {
+				const timer = this.saveTimers.get(key);
+				if (timer) {clearTimeout(timer);}
+				this.saveTimers.delete(key);
+			}
+			for (const listener of listeners) {listener.dispose();}
+			this.panelListeners.delete(panel);
+		}));
 		this.watchDocument(document);
 		panel.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
 		};
-		panel.webview.onDidReceiveMessage((message: unknown) => {
+		listeners.push(panel.webview.onDidReceiveMessage((message: unknown) => {
+			if (document.isDisposed) {return;}
 			if (isReloadFileMessage(message)) {
-				const debugLog = this.createReloadDebugLog(document);
-				void vscode.window.showInformationMessage('Recargando');
-				void debugLog('El clic de Recargar llegó al extension host.')
-					.then(() => vscode.window.withProgress(
+				void vscode.window.withProgress(
 						{ location: vscode.ProgressLocation.Notification, title: 'Recargando' },
-						() => this.reloadFromDisk(document, debugLog),
-					));
+						() => this.reloadFromDisk(document),
+					);
 				return;
 			}
 			if (isWebviewReadyMessage(message)) {
 				this.activeSheets.set(panel, 0);
 				try {
 					this.postDocument(document, panel);
+					void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, 0) } satisfies SortStateMessage);
 					this.postSaveState(document, { type: 'saveState', state: document.hasUnsavedChanges ? 'pending' : 'clean' }, panel);
 					if (document.hasUnsavedChanges) {this.scheduleSave(document);}
 				} catch (error) {
 					const detail = errorMessage(error);
-					console.error('Spreadsheet Viewer: failed to send the document to its webview', error);
+					this.output.appendLine(`No se pudo enviar el documento a la vista: ${detail}`);
 					void panel.webview.postMessage({ type: 'reloadState', state: 'error', message: detail } satisfies ReloadStateMessage);
 					void panel.webview.postMessage({ type: 'saveState', state: 'error', message: `No se pudieron cargar los datos: ${detail}` } satisfies SaveStateMessage);
 				}
 				return;
 			}
 			if (isSelectSheetMessage(message) && (document.xlsx || document.ods)) {
+				if (message.documentId !== document.documentId || message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {return;}
 				this.activeSheets.set(panel, message.sheetIndex);
 				this.postXlsxSheet(document, panel, message.sheetIndex, message.requestId);
+				void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, message.sheetIndex) } satisfies SortStateMessage);
 				return;
 			}
 			if (isInvalidCellMessage(message)) {
@@ -89,6 +123,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				return;
 			}
 			if (isDraftStateMessage(message)) {
+				if (message.documentId !== document.documentId || message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {return;}
 				if (message.dirty) {this.panelDrafts.set(panel, message);}
 				else {this.panelDrafts.delete(panel);}
 				return;
@@ -96,7 +131,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (isHistoryMessage(message)) {
 				void vscode.commands.executeCommand(message.direction);
 			}
-		});
+			if (isSetSortMessage(message) && message.documentId === document.documentId) {
+				const sheetIndex = this.activeSheets.get(panel) ?? 0;
+				if (message.sheetId !== document.sheetId(sheetIndex) || !isValidSortCriteria(message.criteria, getColumnCount(document, sheetIndex))) {return;}
+				void this.workspaceState.update(sortStateKey(document.uri, sheetIndex), message.criteria);
+			}
+		}));
 		panel.webview.html = this.getHtml(document.uri, panel.webview);
 	}
 
@@ -116,12 +156,20 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			fileFormat: document.ods ? 'ods' : 'xlsx',
 			fileName: document.uri.path.split('/').pop() || document.uri.toString(),
 			revision: document.revision,
+			documentId: document.documentId,
+			sheetId: document.sheetId(sheetIndex),
+			sheetIds: workbook.sheets.map((_, index) => document.sheetId(index)),
 			sheetName: sheet.name,
 			sheetNames: workbook.sheets.map(item => item.name),
 			activeSheetIndex: sheetIndex,
 			...(requestId === undefined ? {} : { requestId }),
 			rows: document.editSession.getRows(sheetIndex),
 			cellKinds: sheet.cellKinds,
+			cellTypes: sheet.cellTypes,
+			cellCapabilities: sheet.cellTypes.map((row, r) => row.map((storedType, c) => {
+				const editable = storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported';
+				return { storedType, editable, ...(!editable ? { reason: `Tipo ${storedType} protegido en esta etapa.` } : {}) };
+			})),
 			formulaCaches: sheet.formulaCaches,
 			...(document.xlsx ? { workbookBase64: this.getFormulaSnapshot(document) } : {}),
 			rowCount: sheet.rowCount,
@@ -141,8 +189,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	async open(uri: vscode.Uri): Promise<void> {
 		const extension = path.posix.extname(uri.path).toLowerCase();
-		if (extension !== '.csv' && extension !== '.xlsx' && extension !== '.ods') {
-			throw new Error('Solo se admiten archivos .csv, .xlsx y .ods.');
+		if (!['.csv', '.tsv', '.tab', '.xlsx', '.ods'].includes(extension)) {
+			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx y .ods.');
 		}
 
 		const key = uri.toString();
@@ -174,9 +222,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 	}
 
-	async saveCustomDocument(document: SpreadsheetDocument, _cancellation: vscode.CancellationToken): Promise<void> {
+	async saveCustomDocument(document: SpreadsheetDocument, cancellation: vscode.CancellationToken): Promise<void> {
 		const previous = this.saveQueues.get(document) ?? Promise.resolve();
 		const current = previous.catch(() => undefined).then(async () => {
+			if (document.isDisposed) {throw new vscode.CancellationError();}
+			if (cancellation.isCancellationRequested) {
+				if (!this.externalConflicts.has(document.uri.toString())) {this.scheduleSave(document);}
+				throw new vscode.CancellationError();
+			}
 			const revision = document.revision;
 			const bytes = document.serializeCopy();
 			const conflict = this.externalConflicts.get(document.uri.toString());
@@ -195,7 +248,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			this.ownWrites.set(document, ownWrites);
 			try {
 				document.validateCopy(bytes);
-				await replaceFile(document.uri, bytes, document.sourceBytes);
+				await replaceFile(document.uri, bytes, document.sourceBytes, () => cancellation.isCancellationRequested);
 				document.sourceBytes = bytes.slice();
 				if (document.revision === revision) {
 					this.postSaveState(document, { type: 'saveState', state: 'saved' });
@@ -203,6 +256,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					this.scheduleSave(document);
 				}
 			} catch (error) {
+				if (isCancellationError(error)) {
+					// VS Code may cancel an in-flight save when a newer autosave request
+					// supersedes it. Retry quietly even if the bytes reached disk: VS Code
+					// still needs one successful save completion to clear the tab marker.
+					if (!this.externalConflicts.has(document.uri.toString())) {this.scheduleSave(document);}
+					throw error;
+				}
 				const message = errorMessage(error);
 				this.postSaveState(document, { type: 'saveState', state: 'error', message });
 				void vscode.window.showErrorMessage(`No se pudo guardar ${path.posix.basename(document.uri.path)}: ${message}`);
@@ -214,74 +274,53 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 		});
 		this.saveQueues.set(document, current);
-		return current;
+		try { await current; }
+		finally {
+			const key = document.uri.toString();
+			const completeAutomaticSave = this.automaticSaveCallbacks.get(key);
+			if (completeAutomaticSave) {
+				this.automaticSaveCallbacks.delete(key);
+				completeAutomaticSave();
+			}
+		}
 	}
 
 	async saveCustomDocumentAs(document: SpreadsheetDocument, destination: vscode.Uri, _cancellation: vscode.CancellationToken): Promise<void> {
 		if (path.posix.extname(destination.path).toLowerCase() !== path.posix.extname(document.uri.path).toLowerCase()) {
-			throw new Error('Save As debe conservar la extensión del formato actual (.csv, .xlsx u .ods).');
+			throw new Error('Save As debe conservar la extensión del formato actual.');
 		}
 		const bytes = document.serializeCopy();
 		document.validateCopy(bytes);
 		await replaceFile(destination, bytes);
 	}
 
-	async revertCustomDocument(document: SpreadsheetDocument, _cancellation: vscode.CancellationToken): Promise<void> {
-		const timer = this.saveTimers.get(document.uri.toString());
+	async revertCustomDocument(document: SpreadsheetDocument, cancellation: vscode.CancellationToken): Promise<void> {
+		const key = document.uri.toString();
+		const timer = this.saveTimers.get(key);
 		if (timer) {clearTimeout(timer);}
-		this.saveTimers.delete(document.uri.toString());
+		this.saveTimers.delete(key);
+		await this.saveQueues.get(document)?.catch(() => undefined);
+		if (cancellation.isCancellationRequested) {throw new vscode.CancellationError();}
 		const bytes = await SpreadsheetDocument.readBytes(document.uri);
+		if (cancellation.isCancellationRequested) {throw new vscode.CancellationError();}
 		document.replaceSavedBytes(bytes);
-		this.externalConflicts.delete(document.uri.toString());
-		this.conflictPrompts.delete(document.uri.toString());
-		for (const panel of this.panels.get(document.uri.toString()) ?? []) {this.panelDrafts.delete(panel);}
+		this.externalConflicts.delete(key);
+		this.conflictPrompts.delete(key);
+		for (const panel of this.panels.get(key) ?? []) {this.panelDrafts.delete(panel);}
 		this.postDocument(document);
 		this.postSaveState(document, { type: 'saveState', state: 'clean' });
 	}
 
-	private createReloadDebugLog(document: SpreadsheetDocument): (phase: string) => Promise<void> {
-		const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri
-			?? vscode.workspace.workspaceFolders?.[0]?.uri
-			?? document.uri.with({ path: path.posix.dirname(document.uri.path) });
-		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-		const uri = vscode.Uri.joinPath(root, `debug_spreadsheetviewer_${timestamp}.txt`);
-		let writes = Promise.resolve();
-		let initialized = false;
-		return (phase: string): Promise<void> => {
-			writes = writes.then(async () => {
-				const line = `${new Date().toISOString()} | ${phase}\n`;
-				let previous: Uint8Array<ArrayBufferLike> = new Uint8Array();
-				if (initialized) {
-					try {previous = await vscode.workspace.fs.readFile(uri);} catch {}
-				}
-				const addition = new TextEncoder().encode(line);
-				const contents = new Uint8Array(previous.length + addition.length);
-				contents.set(previous);
-				contents.set(addition, previous.length);
-				await vscode.workspace.fs.writeFile(uri, contents);
-				initialized = true;
-			}).catch(error => {
-				console.error('Spreadsheet Viewer: no se pudo escribir el log de depuración', error);
-			});
-			return writes;
-		};
-	}
-
-	private async reloadFromDisk(document: SpreadsheetDocument, debugLog: (phase: string) => Promise<void>): Promise<void> {
-		await debugLog('Inicia la rutina de recarga.');
+	private async reloadFromDisk(document: SpreadsheetDocument): Promise<void> {
 		this.postReloadState(document, { type: 'reloadState', state: 'loading' });
-		await debugLog('Estado "loading" enviado a la vista.');
 		const hasPendingChanges = document.hasUnsavedChanges || this.hasPendingDraft(document);
-		await debugLog(`Comprobadas ediciones pendientes: ${hasPendingChanges ? 'sí' : 'no'}.`);
 		if (hasPendingChanges) {
-			await debugLog('Esperando decisión del usuario sobre descartar ediciones locales.');
 			const choice = await vscode.window.showWarningMessage(
 				'Recargar desde disco descartará las ediciones locales pendientes. ¿Deseas continuar?',
 				{ modal: true },
 				'Recargar archivo',
 			);
 			if (choice !== 'Recargar archivo') {
-				await debugLog('Recarga cancelada por el usuario.');
 				this.postReloadState(document, { type: 'reloadState', state: 'cancelled' });
 				this.postSaveState(document, { type: 'saveState', state: 'pending' });
 				return;
@@ -293,24 +332,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		if (timer) {clearTimeout(timer);}
 		this.saveTimers.delete(key);
 		try {
-			await debugLog('Esperando a que termine cualquier guardado en curso.');
 			await this.saveQueues.get(document)?.catch(() => undefined);
-			await debugLog('Guardado en curso finalizado; leyendo bytes desde disco.');
 			const bytes = await SpreadsheetDocument.readBytes(document.uri);
-			await debugLog(`Archivo leído (${bytes.byteLength} bytes); reemplazando el modelo del documento.`);
 			document.replaceSavedBytes(bytes);
-			await debugLog('Modelo reemplazado y contenido parseado correctamente.');
 			this.externalConflicts.delete(key);
 			this.conflictPrompts.delete(key);
 			for (const panel of this.panels.get(key) ?? []) {this.panelDrafts.delete(panel);}
-			await debugLog('Enviando los datos recargados a las vistas abiertas.');
 			this.postDocument(document);
 			this.postSaveState(document, { type: 'saveState', state: 'clean' });
 			this.postReloadState(document, { type: 'reloadState', state: 'done' });
-			await debugLog('Mensajes de datos y estado "done" enviados. Recarga terminada.');
 		} catch (error) {
 			const message = errorMessage(error);
-			await debugLog(`ERROR durante la recarga: ${message}`);
+			this.output.appendLine(`No se pudo recargar ${document.uri.toString()}: ${message}`);
 			this.postReloadState(document, { type: 'reloadState', state: 'error', message });
 			this.postSaveState(document, { type: 'saveState', state: 'error', message });
 			void vscode.window.showErrorMessage(`No se pudo recargar ${path.posix.basename(document.uri.path)}: ${message}`);
@@ -322,7 +355,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	}
 
 	private applyEdit(document: SpreadsheetDocument, message: Extract<WebviewToExtensionMessage, { type: 'editCell' }>, scheduleSave = true): void {
+		if (document.isDisposed) {return;}
 		try {
+			if (message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {
+				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
+			}
 			const before = document.editSession.getCell(message.sheetIndex, message.row, message.column);
 			if (before.value === message.value && before.exists) {return;}
 			document.editCell(message.sheetIndex, message.row, message.column, message.value);
@@ -351,9 +389,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const watcher = vscode.workspace.createFileSystemWatcher(
 				new vscode.RelativePattern(directory, path.posix.basename(document.uri.path)),
 			);
-			watcher.onDidChange(() => this.scheduleExternalCheck(document));
-			watcher.onDidCreate(() => this.scheduleExternalCheck(document));
-			watcher.onDidDelete(() => this.scheduleExternalCheck(document));
+			this.watcherListeners.set(key, [
+				watcher.onDidChange(() => this.scheduleExternalCheck(document)),
+				watcher.onDidCreate(() => this.scheduleExternalCheck(document)),
+				watcher.onDidDelete(() => this.scheduleExternalCheck(document)),
+			]);
 			this.watchers.set(key, watcher);
 		} catch (error) {
 			void vscode.window.showWarningMessage(`No se pudo observar cambios externos de ${path.posix.basename(document.uri.path)}: ${errorMessage(error)}. El guardado aún comprobará la versión en disco.`);
@@ -363,6 +403,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private disposeWatcher(key: string): void {
 		this.watchers.get(key)?.dispose();
 		this.watchers.delete(key);
+		for (const listener of this.watcherListeners.get(key) ?? []) {listener.dispose();}
+		this.watcherListeners.delete(key);
 		const timer = this.externalTimers.get(key);
 		if (timer) {clearTimeout(timer);}
 		this.externalTimers.delete(key);
@@ -466,7 +508,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const draft = this.panelDrafts.get(panel);
 			if (draft) {
 				this.panelDrafts.delete(panel);
-				this.applyEdit(document, { type: 'editCell', sheetIndex: draft.sheetIndex, row: draft.row, column: draft.column, value: draft.value }, false);
+				this.applyEdit(document, { type: 'editCell', documentId: draft.documentId, revision: document.revision,
+					sheetIndex: draft.sheetIndex, sheetId: draft.sheetId, row: draft.row, column: draft.column, value: draft.value }, false);
 			}
 		}
 		const extension = path.posix.extname(document.uri.path);
@@ -490,24 +533,54 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	}
 
 	private scheduleSave(document: SpreadsheetDocument): void {
+		if (document.isDisposed) {return;}
 		const key = document.uri.toString();
 		const previous = this.saveTimers.get(key);
 		if (previous) {clearTimeout(previous);}
 		this.postSaveState(document, { type: 'saveState', state: 'pending' });
 		this.saveTimers.set(key, setTimeout(() => {
 			this.saveTimers.delete(key);
-			// Let VS Code own the save lifecycle: besides persisting through
-			// saveCustomDocument, this clears the custom editor's dirty tab indicator.
-			void vscode.workspace.save(document.uri).then(savedUri => {
-				if (!savedUri && document.hasUnsavedChanges) {
-					const message = 'VS Code no encontró una pestaña abierta para guardar este archivo.';
+			if (document.isDisposed || !this.panels.get(key)?.size) {return;}
+			// Route through the workbench's Save action so the custom editor's
+			// saveCustomDocument lifecycle completes and clears the tab's dirty marker.
+			// Avoid overlapping requests: VS Code cancels an older save when a new
+			// one starts, so edits made during a save are queued for its completion.
+			if (this.automaticSaveInFlight.has(key)) {
+				this.automaticSaveQueued.add(key);
+				return;
+			}
+			this.automaticSaveInFlight.add(key);
+			let retryToClearHostState = false;
+			let didFinish = false;
+			const finishAutomaticSave = (): void => {
+				if (didFinish) {return;}
+				didFinish = true;
+				clearTimeout(watchdog);
+				this.automaticSaveCallbacks.delete(key);
+				this.automaticSaveInFlight.delete(key);
+				const queued = this.automaticSaveQueued.delete(key);
+				if ((queued || retryToClearHostState) && !this.externalConflicts.has(key)) {this.scheduleSave(document);}
+			};
+			const watchdog = setTimeout(() => {
+				if (!document.isDisposed && document.hasUnsavedChanges) {
+					const message = 'El editor no terminó el guardado automático. Puedes volver a intentar con Ctrl/Cmd+S.';
 					this.postSaveState(document, { type: 'saveState', state: 'error', message });
-					void vscode.window.showErrorMessage(`No se pudo guardar ${path.posix.basename(document.uri.path)}: ${message}`);
+					this.output.appendLine(`${message} ${document.uri.toString()}`);
 				}
+				finishAutomaticSave();
+			}, 30_000);
+			this.automaticSaveCallbacks.set(key, finishAutomaticSave);
+			void vscode.commands.executeCommand('workbench.action.files.save', { resource: document.uri }).then(() => {
+				// The command can resolve before the custom editor finishes writing.
+				// saveCustomDocument calls finishAutomaticSave when that write settles.
 			}, (error: unknown) => {
-				// saveCustomDocument already reports persistence errors and updates the
-				// webview status; this handler prevents an unhandled rejection here.
-				console.error('Spreadsheet Viewer: VS Code save request failed', error);
+				if (document.isDisposed) {finishAutomaticSave(); return;}
+				retryToClearHostState = isCancellationError(error);
+				if (!retryToClearHostState) {
+					this.output.appendLine(`Falló el guardado automático de VS Code: ${errorMessage(error)}`);
+					this.postSaveState(document, { type: 'saveState', state: 'error', message: errorMessage(error) });
+					finishAutomaticSave();
+				}
 			});
 		}, 300));
 	}
@@ -517,7 +590,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		for (const panel of panels) {
 			if (document.csv) {
 				const data: CsvDataMessage = {
-					type: 'csvData', revision: document.revision, fileName: path.posix.basename(document.uri.path), rows: document.editSession.getRows(0),
+					type: 'csvData', revision: document.revision, documentId: document.documentId, sheetId: document.sheetId(0), fileName: path.posix.basename(document.uri.path), rows: document.editSession.getRows(0),
 					rowCount: document.csv.rowCount, columnCount: document.csv.columnCount,
 				};
 				void panel.webview.postMessage(data);
@@ -527,8 +600,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				const index = Math.min(this.activeSheets.get(panel) ?? 0, Math.max(0, workbook.sheets.length - 1));
 				this.activeSheets.set(panel, index);
 				this.postXlsxSheet(document, panel, index);
+				void panel.webview.postMessage({ type: 'sortState', criteria: this.getSortState(document.uri, index) } satisfies SortStateMessage);
 			}
 		}
+	}
+
+	private getSortState(uri: vscode.Uri, sheetIndex: number): SortStateMessage['criteria'] {
+		const value: unknown = this.workspaceState.get(sortStateKey(uri, sheetIndex));
+		return Array.isArray(value) && isValidSortCriteria(value, 256) ? value : [];
 	}
 
 	private postSaveState(document: SpreadsheetDocument, message: SaveStateMessage, onlyPanel?: vscode.WebviewPanel): void {
@@ -548,7 +627,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		return { id, delete: () => { void deleteBackup(id); } };
 	}
 
-	private getHtml(uri: vscode.Uri, webview: vscode.Webview): string {
+	getHtml(uri: vscode.Uri, webview: vscode.Webview, modeLabel?: string): string {
 		const fileName = uri.path.split('/').pop() || uri.toString();
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
@@ -561,14 +640,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval';">
 	<link rel="stylesheet" href="${stylesheetUri}">
-	<title>${escapeHtml(fileName)}</title>
+	<title>${escapeHtml(modeLabel ? `${fileName} · ${modeLabel}` : fileName)}</title>
 </head>
 <body>
 	<main>
 		<header id="file-summary">
 			<div id="file-heading-row">
 				<div id="file-heading">
-					<h1>${escapeHtml(fileName)}</h1>
+					<h1>${escapeHtml(fileName)}${modeLabel ? ` · ${escapeHtml(modeLabel)}` : ''}</h1>
 					<p id="dimensions" role="status">Cargando archivo…</p>
 				</div>
 				<div id="header-actions">
@@ -664,6 +743,9 @@ function isSelectSheetMessage(message: unknown): message is Extract<WebviewToExt
 		&& message !== null
 		&& 'type' in message
 		&& message.type === 'selectSheet'
+		&& 'documentId' in message && typeof message.documentId === 'string'
+		&& 'revision' in message && Number.isInteger(message.revision)
+		&& 'sheetId' in message && typeof message.sheetId === 'string'
 		&& 'sheetIndex' in message
 		&& Number.isInteger(message.sheetIndex)
 		&& 'requestId' in message
@@ -680,7 +762,8 @@ function isInvalidCellMessage(message: unknown): message is Extract<WebviewToExt
 function isEditCellMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'editCell' }> {
 	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'editCell') {return false;}
 	const candidate = message as Record<string, unknown>;
-	return Number.isInteger(candidate.sheetIndex) && Number.isInteger(candidate.row)
+	return typeof candidate.documentId === 'string' && Number.isInteger(candidate.revision) && typeof candidate.sheetId === 'string'
+		&& Number.isInteger(candidate.sheetIndex) && Number.isInteger(candidate.row)
 		&& Number.isInteger(candidate.column) && typeof candidate.value === 'string';
 }
 
@@ -693,8 +776,35 @@ function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensi
 function isDraftStateMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'draftState' }> {
 	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'draftState') {return false;}
 	const candidate = message as Record<string, unknown>;
-	return typeof candidate.dirty === 'boolean' && Number.isInteger(candidate.sheetIndex)
+	return typeof candidate.dirty === 'boolean' && typeof candidate.documentId === 'string' && Number.isInteger(candidate.revision)
+		&& typeof candidate.sheetId === 'string' && Number.isInteger(candidate.sheetIndex)
 		&& Number.isInteger(candidate.row) && Number.isInteger(candidate.column) && typeof candidate.value === 'string';
+}
+
+function isSetSortMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'setSort' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'setSort') {return false;}
+	const candidate = message as Record<string, unknown>;
+	return typeof candidate.documentId === 'string' && typeof candidate.sheetId === 'string' && Array.isArray(candidate.criteria)
+		&& candidate.criteria.every(item => typeof item === 'object' && item !== null
+			&& Number.isInteger((item as Record<string, unknown>).column)
+			&& ['asc', 'desc'].includes(String((item as Record<string, unknown>).direction))
+			&& ['text', 'number'].includes(String((item as Record<string, unknown>).mode)));
+}
+
+function isValidSortCriteria(criteria: unknown[], columnCount: number): boolean {
+	return criteria.length <= Math.min(columnCount, 32) && new Set(criteria.map(item => (item as { column: number }).column)).size === criteria.length
+		&& criteria.every(item => typeof item === 'object' && item !== null && Number.isInteger((item as { column: number }).column)
+			&& (item as { column: number }).column >= 0 && (item as { column: number }).column < columnCount
+			&& ['asc', 'desc'].includes((item as { direction: string }).direction)
+			&& ['text', 'number'].includes((item as { mode: string }).mode));
+}
+
+function getColumnCount(document: SpreadsheetDocument, sheetIndex: number): number {
+	return document.csv?.columnCount ?? (document.xlsx ?? document.ods)?.sheets[sheetIndex]?.columnCount ?? 0;
+}
+
+function sortStateKey(uri: vscode.Uri, sheetIndex: number): string {
+	return `spreadsheet-viewer.view-state.v1:${uri.toString()}:${sheetIndex}`;
 }
 
 function columnName(column: number): string {
@@ -709,8 +819,30 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+function isCancellationError(error: unknown): boolean {
+	return error instanceof vscode.CancellationError
+		|| (typeof error === 'object' && error !== null && 'name' in error && error.name === 'CancellationError')
+		|| (typeof error === 'object' && error !== null && 'code' in error && error.code === 'Canceled')
+		|| /^(canceled|cancelled)$/i.test(errorMessage(error).trim());
+}
+
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 	if (left.byteLength !== right.byteLength) {return false;}
 	for (let index = 0; index < left.byteLength; index++) {if (left[index] !== right[index]) {return false;}}
 	return true;
+}
+
+export async function resolveDirtyTextBuffer(uri: vscode.Uri): Promise<boolean> {
+	const textDocument = vscode.workspace.textDocuments.find(item => item.uri.toString() === uri.toString());
+	if (!textDocument?.isDirty) {return true;}
+	const action = await vscode.window.showWarningMessage(
+		'Hay cambios de texto sin guardar. Resuélvelos antes de abrir el archivo en el editor de hojas.',
+		'Guardar y abrir', 'Descartar y abrir', 'Cancelar',
+	);
+	if (action === 'Guardar y abrir') {return textDocument.save();}
+	if (action === 'Descartar y abrir') {
+		await vscode.commands.executeCommand('workbench.action.files.revert', uri);
+		return !textDocument.isDirty;
+	}
+	return false;
 }

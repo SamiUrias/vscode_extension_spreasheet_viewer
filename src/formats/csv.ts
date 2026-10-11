@@ -11,6 +11,10 @@ export interface CsvTable {
 	readonly rowCount: number;
 	readonly columnCount: number;
 	readonly delimiter: string;
+	readonly quoteChar: string;
+	readonly quotes: boolean;
+	readonly preamble: string;
+	readonly persistDelimiter: boolean;
 	readonly encoding: 'utf-8' | 'utf-16le' | 'utf-16be';
 	readonly sourceText: string;
 	readonly sourceBytes: Uint8Array;
@@ -35,7 +39,13 @@ export interface CsvCellEdit {
 	readonly value: string;
 }
 
-export function parseCsvBytes(bytes: Uint8Array): CsvTable {
+export interface CsvParseOptions { delimiter?: string; quoteChar?: string; quotes?: boolean; persistDelimiter?: boolean; }
+
+export class CsvDelimiterAmbiguityError extends Error {
+	constructor(readonly delimiters: string[]) { super('El delimitador del archivo CSV es ambiguo.'); }
+}
+
+export function parseCsvBytes(bytes: Uint8Array, options: CsvParseOptions = {}): CsvTable {
 	if (bytes.byteLength > MAX_CSV_BYTES) {
 		throw new Error(`El CSV excede el límite de ${MAX_CSV_BYTES / (1024 * 1024)} MiB.`);
 	}
@@ -43,12 +53,19 @@ export function parseCsvBytes(bytes: Uint8Array): CsvTable {
 	const { text, encoding, bom } = decodeCsv(bytes);
 	if (text.length === 0) {
 		return {
-			rows: [], rowCount: 0, columnCount: 0, delimiter: ',', encoding,
+			rows: [], rowCount: 0, columnCount: 0, delimiter: options.delimiter ?? ',', quoteChar: options.quoteChar ?? '"', quotes: options.quotes ?? true, preamble: '', persistDelimiter: options.persistDelimiter ?? false, encoding,
 			sourceText: text, sourceBytes: bytes.slice(), bom, fieldSpans: [],
 		};
 	}
 
-	const result = parseWithDetectedDelimiter(text);
+	const directive = /^(?:\uFEFF)?sep=(.)\r?\n/i.exec(text);
+	const preamble = directive?.[0] ?? '';
+	const body = text.slice(preamble.length);
+	const quoteChar = options.quoteChar ?? '"';
+	const quotes = options.quotes ?? true;
+	const delimiter = options.delimiter ?? directive?.[1] ?? detectDelimiter(body, quotes ? quoteChar : '\u0000');
+	const result = Papa.parse<string[]>(body, { header: false, dynamicTyping: false, skipEmptyLines: false,
+		comments: false, delimiter, quoteChar: quotes ? quoteChar : '\u0000' });
 
 	const errors = result.errors.filter(error =>
 		error.code !== 'UndetectableDelimiter',
@@ -62,7 +79,7 @@ export function parseCsvBytes(bytes: Uint8Array): CsvTable {
 	}
 
 	const rows = result.data;
-	if (hasTerminalRecordBreak(text) && isEmptyRecord(rows[rows.length - 1])) {
+	if (hasTerminalRecordBreak(body) && isEmptyRecord(rows[rows.length - 1])) {
 		rows.pop();
 	}
 
@@ -77,7 +94,10 @@ export function parseCsvBytes(bytes: Uint8Array): CsvTable {
 	if (rows.length * columnCount > MAX_RECTANGLE_CELLS || presentCells > MAX_PRESENT_CELLS) {
 		throw new Error('El CSV excede el límite de celdas que se pueden mostrar.');
 	}
-	const fieldSpans = scanCsvFieldSpans(text, result.meta.delimiter || ',');
+	const fieldSpans = scanCsvFieldSpans(body, delimiter, quoteChar, quotes).map(record => ({
+		...record, end: record.end + preamble.length,
+		fields: record.fields.map(field => ({ ...field, start: field.start + preamble.length, end: field.end + preamble.length })),
+	}));
 	if (fieldSpans.length !== rows.length
 		|| fieldSpans.some((record, index) => record.fields.length !== rows[index].length)) {
 		throw new Error('No se pudo conservar la estructura original de los campos CSV para editar con seguridad.');
@@ -87,7 +107,7 @@ export function parseCsvBytes(bytes: Uint8Array): CsvTable {
 		rows,
 		rowCount: rows.length,
 		columnCount,
-		delimiter: result.meta.delimiter || ',',
+		delimiter, quoteChar, quotes, preamble, persistDelimiter: options.persistDelimiter ?? false,
 		encoding,
 		sourceText: text,
 		sourceBytes: bytes.slice(),
@@ -125,7 +145,7 @@ export function serializeCsvEdits(table: CsvTable, edits: readonly CsvCellEdit[]
 				patches.push({
 					start: field.start,
 					end: field.end,
-					replacement: encodeCsvField(value, table.delimiter, field.quoted),
+					replacement: encodeCsvField(value, table.delimiter, table.quoteChar, table.quotes, field.quoted),
 					append: false,
 				});
 			}
@@ -136,7 +156,7 @@ export function serializeCsvEdits(table: CsvTable, edits: readonly CsvCellEdit[]
 			const appendedFields: string[] = [];
 			for (let column = record.fields.length; column <= lastColumn; column++) {
 				const value = rowEdits.get(column) ?? '';
-				appendedFields.push(encodeCsvField(value, table.delimiter, false));
+				appendedFields.push(encodeCsvField(value, table.delimiter, table.quoteChar, table.quotes, false));
 			}
 			patches.push({
 				start: record.end,
@@ -154,11 +174,14 @@ export function serializeCsvEdits(table: CsvTable, edits: readonly CsvCellEdit[]
 	for (const patch of patches) {
 		outputText = outputText.slice(0, patch.start) + patch.replacement + outputText.slice(patch.end);
 	}
+	if (table.persistDelimiter && !table.preamble && table.delimiter !== ',') {
+		outputText = `sep=${table.delimiter}\r\n${outputText}`;
+	}
 	return encodeCsvText(outputText, table.encoding, table.bom);
 }
 
-function parseWithDetectedDelimiter(text: string): Papa.ParseResult<string[]> {
-	const candidates = [',', ';', '\t'].map(delimiter => ({
+function detectDelimiter(text: string, quoteChar: string): string {
+	const candidates = [',', ';', '\t', '|'].map(delimiter => ({
 		delimiter,
 		result: Papa.parse<string[]>(text, {
 			header: false,
@@ -166,10 +189,16 @@ function parseWithDetectedDelimiter(text: string): Papa.ParseResult<string[]> {
 			skipEmptyLines: false,
 			comments: false,
 			delimiter,
+			quoteChar,
 		}),
 	}));
 	const valid = candidates.filter(candidate => candidate.result.errors.length === 0);
 	const choices = valid.length > 0 ? valid : candidates;
+	const scored = choices.map(candidate => ({ candidate, score: delimiterScore(candidate.result.data) }));
+	const maximumColumns = Math.max(...scored.map(item => item.score.columns));
+	const maximumConsistency = Math.max(...scored.filter(item => item.score.columns === maximumColumns).map(item => item.score.consistentRows));
+	const tied = scored.filter(item => item.score.columns === maximumColumns && item.score.consistentRows === maximumConsistency);
+	if (maximumColumns > 1 && tied.length > 1) {throw new CsvDelimiterAmbiguityError(tied.map(item => item.candidate.delimiter));}
 	const best = choices.reduce((currentBest, candidate) => {
 		const bestScore = delimiterScore(currentBest.result.data);
 		const candidateScore = delimiterScore(candidate.result.data);
@@ -179,15 +208,7 @@ function parseWithDetectedDelimiter(text: string): Papa.ParseResult<string[]> {
 		}
 		return currentBest;
 	});
-	if (delimiterScore(best.result.data).columns <= 1) {
-		const quoteError = candidates.find(candidate =>
-			candidate.result.errors.some(error => error.type === 'Quotes'),
-		);
-		if (quoteError) {
-			return quoteError.result;
-		}
-	}
-	return best.result;
+	return delimiterScore(best.result.data).columns <= 1 ? ',' : best.delimiter;
 }
 
 function delimiterScore(rows: string[][]): { columns: number; consistentRows: number } {
@@ -228,7 +249,7 @@ interface TextPatch {
 	readonly append: boolean;
 }
 
-function scanCsvFieldSpans(text: string, delimiter: string): CsvRecordSpan[] {
+function scanCsvFieldSpans(text: string, delimiter: string, quoteChar: string, quotes: boolean): CsvRecordSpan[] {
 	const records: CsvRecordSpan[] = [];
 	let cursor = 0;
 	while (cursor < text.length) {
@@ -236,15 +257,15 @@ function scanCsvFieldSpans(text: string, delimiter: string): CsvRecordSpan[] {
 		let recordComplete = false;
 		while (!recordComplete) {
 			const start = cursor;
-			const quoted = text[cursor] === '"';
+			const quoted = quotes && text[cursor] === quoteChar;
 			if (quoted) {
 				cursor++;
 				while (cursor < text.length) {
-					if (text[cursor] !== '"') {
+					if (text[cursor] !== quoteChar) {
 						cursor++;
 						continue;
 					}
-					if (text[cursor + 1] === '"') {
+					if (text[cursor + 1] === quoteChar) {
 						cursor += 2;
 						continue;
 					}
@@ -282,17 +303,20 @@ function isRecordBreak(character: string): boolean {
 	return character === '\r' || character === '\n';
 }
 
-function encodeCsvField(value: string, delimiter: string, preserveQuotes: boolean): string {
-	const mustQuote = preserveQuotes
+function encodeCsvField(value: string, delimiter: string, quoteChar: string, quotes: boolean, preserveQuotes: boolean): string {
+	if (!quotes && (value.includes(delimiter) || value.includes('\r') || value.includes('\n'))) {
+		throw new Error('El valor contiene separadores o saltos de línea que el dialecto no puede representar con quoting desactivado.');
+	}
+	const mustQuote = quotes && (preserveQuotes
 		|| value.includes(delimiter)
-		|| value.includes('"')
+		|| value.includes(quoteChar)
 		|| value.includes('\r')
 		|| value.includes('\n')
-		|| /^\s|\s$/u.test(value);
+		|| /^\s|\s$/u.test(value));
 	if (!mustQuote) {
 		return value;
 	}
-	return `"${value.replace(/"/g, '""')}"`;
+	return `${quoteChar}${value.split(quoteChar).join(quoteChar + quoteChar)}${quoteChar}`;
 }
 
 function encodeCsvText(text: string, encoding: CsvTable['encoding'], bom: Uint8Array): Uint8Array {
