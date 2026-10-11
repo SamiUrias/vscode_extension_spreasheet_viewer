@@ -1,4 +1,4 @@
-# Spreadsheet Viewer
+# Spreadsheet Viewer by Samuel Urias
 
 **View, search, sort, filter, and edit CSV, TSV, TAB, XLSX, and ODS files without leaving VS Code.** Spreadsheet Viewer keeps the values stored in your files visible and lets you save cell edits back to the original document.
 
@@ -19,7 +19,7 @@
 
 ## Get started
 
-1. Use VS Code 1.140 or newer and install **Spreadsheet Viewer** from the Extensions view.
+1. Use VS Code 1.140 or newer and install **Spreadsheet Viewer by Samuel Urias** from the Extensions view.
 2. In the Explorer, right-click a CSV, TSV, TAB, XLSX, or ODS file.
 3. Choose **Abrir en Spreadsheet Viewer** (Open in Spreadsheet Viewer).
 

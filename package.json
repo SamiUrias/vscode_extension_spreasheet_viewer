@@ -1,6 +1,6 @@
 {
   "name": "spreadsheet-viewer",
-  "displayName": "Spreadsheet Viewer",
+  "displayName": "Spreadsheet Viewer by Samuel Urias",
   "publisher": "SamuelUrias",
   "description": "View and edit CSV, TSV, TAB, XLSX, and ODS spreadsheets in VS Code, with raw values, search, sorting, filters, and save-to-file support.",
   "version": "0.0.1",
@@ -242,5 +242,9 @@
     "fflate": "0.8.3",
     "formualizer": "0.10.1",
     "papaparse": "^5.7.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SamiUrias/vscode_extension_spreasheet_viewer.git"
   }
 }
