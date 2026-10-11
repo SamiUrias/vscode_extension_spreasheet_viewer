@@ -14,8 +14,13 @@ async function main() {
 		await writeFile(path.join(directory, 'package.json'), JSON.stringify({
 			name: 'spreadsheet-save-lifecycle', publisher: 'test', version: '0.0.1',
 			engines: { vscode: '^1.137.0' }, main: './extension.js',
-			contributes: { customEditors: [{ viewType: 'spreadsheet-viewer.editor', displayName: 'Save lifecycle test',
-				selector: [{ filenamePattern: '*.csv' }, { filenamePattern: '*.xlsx' }], priority: 'option' }] },
+			contributes: {
+				customEditors: [{ viewType: 'spreadsheet-viewer.editor', displayName: 'Save lifecycle test',
+					selector: [{ filenamePattern: '*.csv' }, { filenamePattern: '*.xlsx' }], priority: 'option' }],
+				configuration: { title: 'Save lifecycle test', properties: {
+					'spreadsheet-viewer.edit.saveOnCommit': { type: 'boolean', default: true },
+				} },
+			},
 		}));
 		await esbuild.build({
 			stdin: {
@@ -30,14 +35,24 @@ setLocalFileReplaceAdapter(async (uri, bytes, expected) => {
 	const gate = nextWriteGate;
 	nextWriteGate = undefined;
 	if (gate) {gate.start(); await gate.releasePromise;}
+	let original, mode = 0o666;
+	try {
+		const info = await fs.stat(uri.fsPath);
+		mode = info.mode & 0o777;
+		original = Buffer.from(await fs.readFile(uri.fsPath));
+	} catch (error) {
+		if (error?.code !== 'ENOENT') {throw error;}
+	}
 	const same = async value => Buffer.from(await fs.readFile(uri.fsPath)).equals(Buffer.from(value));
-	if (expected && !await same(expected)) {throw new Error('El archivo cambió en disco desde que se abrió.');}
-	const mode = (await fs.stat(uri.fsPath)).mode & 0o777;
+	if (expected && (!original || !original.equals(Buffer.from(expected)))) {throw new Error('El archivo cambió en disco desde que se abrió.');}
+	if (expected) {original = Buffer.from(expected);}
 	const temporary = uri.fsPath + '.save-lifecycle.tmp';
 	try {
 		await fs.writeFile(temporary, bytes);
 		await fs.chmod(temporary, mode);
-		if (!await same(expected ?? await fs.readFile(uri.fsPath))) {throw new Error('El archivo cambió en disco durante el guardado.');}
+		if (original ? !await same(original) : await fs.stat(uri.fsPath).then(() => true, error => error?.code === 'ENOENT' ? false : Promise.reject(error))) {
+			throw new Error('El archivo cambió en disco durante el guardado.');
+		}
 		await fs.rename(temporary, uri.fsPath);
 	} finally {await fs.rm(temporary, { force: true });}
 });
@@ -79,6 +94,15 @@ exports.activate = context => {
 		commitFormula(sheetIndex, row, column, formula) {
 			return provider.applyFormulaEdit(document, { type: 'editFormula', documentId: document.documentId,
 				revision: document.revision, sheetId: document.sheetId(sheetIndex), sheetIndex, row, column, formula });
+		},
+		backup(destination) {
+			return provider.backupCustomDocument(document, { destination: vscode.Uri.file(destination) }, new vscode.CancellationTokenSource().token);
+		},
+		restore(uri, backupId) {
+			return provider.openCustomDocument(vscode.Uri.file(uri), { backupId, untitledDocumentData: undefined });
+		},
+		saveAs(recoveredDocument, destination) {
+			return provider.saveCustomDocumentAs(recoveredDocument, vscode.Uri.file(destination), new vscode.CancellationTokenSource().token);
 		},
 	};
 };`,
@@ -184,7 +208,41 @@ exports.run = async () => {
 	const formulaTab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
 		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === formulaUri.toString());
 	await vscode.window.tabGroups.close(formulaTab());
-	console.log('PASS: CSV consecutive edits, batch edit/clear, insert/undo/redo, in-flight save; XLSX formula edit/save/reopen/undo/redo');
+	const recoveryPath = path.join(__dirname, 'recovery.csv');
+	const recoveryUri = vscode.Uri.file(recoveryPath);
+	const recoveryBaseline = 'name,value\\nfirst,1\\n';
+	const recoveryWorking = 'name,value\\nfirst,9\\n';
+	await writeFile(recoveryPath, recoveryBaseline);
+	await vscode.workspace.getConfiguration('spreadsheet-viewer.edit').update('saveOnCommit', false, vscode.ConfigurationTarget.Global);
+	await vscode.commands.executeCommand('vscode.openWith', recoveryUri, 'spreadsheet-viewer.editor');
+	await waitFor('recovery workbook open', async () => api.document?.uri.toString() === recoveryUri.toString());
+	const recoveryTab = () => vscode.window.tabGroups.all.flatMap(group => group.tabs).find(item =>
+		item.input instanceof vscode.TabInputCustom && item.input.uri.toString() === recoveryUri.toString());
+	api.commit(1, 1, '9');
+	await waitFor('unsaved recovery edit', async () => api.document?.hasUnsavedChanges === true);
+	assert.equal(await readFile(recoveryPath, 'utf8'), recoveryBaseline, 'manual-save edit must remain only in the working copy');
+	const backupPath = path.join(__dirname, 'recovery.backup');
+	const backup = await api.backup(backupPath);
+	assert.equal(backup.id, vscode.Uri.file(backupPath).toString());
+	const recovered = await api.restore(recoveryPath, backup.id);
+	try {
+		assert.equal(recovered.recoveryConflict, false, 'an unchanged baseline should restore without conflict');
+		assert.deepEqual(Buffer.from(recovered.serializeCopy()), Buffer.from(recoveryWorking));
+		assert.equal(recovered.undo(), true, 'the recovered working copy has one undoable transaction');
+		assert.deepEqual(Buffer.from(recovered.serializeCopy()), Buffer.from(recoveryBaseline));
+	} finally {recovered.dispose();}
+	const external = 'name,value\\nexternal,2\\n';
+	await writeFile(recoveryPath, external);
+	const conflicted = await api.restore(recoveryPath, backup.id);
+	const saveAsPath = path.join(__dirname, 'recovered-copy.csv');
+	try {
+		assert.equal(conflicted.recoveryConflict, true, 'an externally changed baseline must be detected');
+		await api.saveAs(conflicted, saveAsPath);
+		assert.equal(await readFile(saveAsPath, 'utf8'), recoveryWorking);
+		assert.equal(await readFile(recoveryPath, 'utf8'), external, 'Save As must preserve the external source');
+	} finally {conflicted.dispose();}
+	await vscode.window.tabGroups.close(recoveryTab());
+	console.log('PASS: CSV consecutive edits, batch edit/clear, insert/undo/redo, in-flight save; XLSX formula lifecycle; recovery backup, undo, conflict, and Save As');
 };
 `);
 		// An integrated terminal can inherit this from VS Code's Node processes.
