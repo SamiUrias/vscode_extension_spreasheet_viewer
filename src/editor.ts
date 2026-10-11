@@ -344,7 +344,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const sheet = workbook.sheets[sheetIndex];
 		const snapshot = document.editSession.getSheetSnapshot(sheetIndex);
 		const workbookHasFormulas = document.xlsx?.sheets.some((_, index) => document.editSession.getSheetSnapshot(index).cellTypes?.some(row => row.includes('formula'))) ?? false;
-		const formulaSnapshot = workbookHasFormulas ? this.getFormulaSnapshot(document) : undefined;
+		const formulaSnapshot = workbookHasFormulas && document.supportsFormulaCalculation ? this.getFormulaSnapshot(document) : undefined;
 		const sentSnapshot = this.formulaSnapshotsSent.get(panel);
 		const workbookBase64 = formulaSnapshot && (sentSnapshot?.documentId !== document.documentId || sentSnapshot.revision !== document.revision)
 			? formulaSnapshot : undefined;
@@ -354,7 +354,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const mergedRanges = document.xlsx?.sheets[sheetIndex]?.metadata?.mergedRanges ?? document.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges ?? [];
 		const data: XlsxDataMessage = {
 			type: 'xlsxData',
-			fileFormat: document.ods ? 'ods' : 'xlsx',
+			fileFormat: document.hasMacroWorkbook ? 'xlsm' : document.isXlsm ? 'xlsm' : document.ods ? 'ods' : 'xlsx',
 			fileName: document.uri.path.split('/').pop() || document.uri.toString(),
 			revision: document.revision,
 			documentId: document.documentId,
@@ -427,8 +427,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 
 	async open(uri: vscode.Uri): Promise<void> {
 		const extension = uriExtname(uri.path).toLowerCase();
-		if (!['.csv', '.tsv', '.tab', '.xlsx', '.ods'].includes(extension)) {
-			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx y .ods.');
+		if (!['.csv', '.tsv', '.tab', '.xlsx', '.xlsm', '.ods'].includes(extension)) {
+			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx, .xlsm y .ods.');
 		}
 
 		const key = uri.toString();
@@ -541,6 +541,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	}
 
 	async saveCustomDocumentAs(document: SpreadsheetDocument, destination: vscode.Uri, _cancellation: vscode.CancellationToken): Promise<void> {
+		if (document.hasProtectedPackage) {throw new Error('Guardar como está desactivado para XLSM y libros firmados para proteger macros y firmas digitales.');}
 		await this.confirmDraftsBeforeSave(document);
 		if (uriExtname(destination.path).toLowerCase() !== uriExtname(document.uri.path).toLowerCase()) {
 			throw new Error('Save As debe conservar la extensión del formato actual.');

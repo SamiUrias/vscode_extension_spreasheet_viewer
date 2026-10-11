@@ -61,6 +61,9 @@ export interface XlsxWorkbook {
 	readonly definedNames?: string[];
 	readonly hasExternalReferences?: boolean;
 	readonly hasTheme?: boolean;
+	readonly macroEnabled?: boolean;
+	readonly hasVbaProject?: boolean;
+	readonly hasDigitalSignatures?: boolean;
 	readonly styles?: XlsxStyleMetadata;
 }
 
@@ -100,6 +103,11 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 
 	const workbook = parseXml(workbookXml, 'xl/workbook.xml');
 	const relationships = parseXml(relationshipsXml, 'xl/_rels/workbook.xml.rels');
+	const contentTypes = files['[Content_Types].xml'] ? parseXml(files['[Content_Types].xml']!, '[Content_Types].xml') : undefined;
+	const macroEnabled = (contentTypes ? elements(contentTypes, 'Override') : []).some(item => item.getAttribute('PartName')?.toLowerCase() === '/xl/workbook.xml'
+		&& item.getAttribute('ContentType')?.toLowerCase() === 'application/vnd.ms-excel.sheet.macroenabled.main+xml');
+	const hasVbaProject = Object.keys(files).some(name => /^xl\/vbaProject\.bin$/i.test(name));
+	const hasDigitalSignatures = Object.keys(files).some(name => /^_xmlsignatures\//i.test(name) || /^xl\/vbaProjectSignature\.bin$/i.test(name));
 	const targets = new Map<string, string>();
 	for (const relationship of elements(relationships, 'Relationship')) {
 		const id = relationship.getAttribute('Id') ?? '';
@@ -118,6 +126,8 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 		throw new Error(`El XLSX excede el límite de ${MAX_SHEETS} hojas.`);
 	}
 	const warnings: string[] = [];
+	if (macroEnabled || hasVbaProject) {warnings.push('El libro contiene contenido XLSM/macros VBA; se abre solo para lectura y las macros nunca se ejecutan.');}
+	if (hasDigitalSignatures) {warnings.push('El libro contiene firmas digitales; se abre solo para lectura para conservar el paquete original.');}
 	const unsupported = [
 		{ pattern: /^xl\/vbaProject\.bin$/i, label: 'macros VBA' },
 		{ pattern: /^xl\/(?:charts|pivotTables|drawings|tables)\//i, label: 'gráficos, tablas dinámicas o estructuras avanzadas' },
@@ -153,7 +163,8 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 	const definedNames = elements(workbook, 'definedName').map(node => node.getAttribute('name') ?? '').filter(Boolean);
 	const styleBytes = files['xl/styles.xml'];
 	return {
-		sheets, warnings, unknownParts, date1904: workbookProperties?.getAttribute('date1904') === '1' || workbookProperties?.getAttribute('date1904') === 'true',
+		sheets, warnings, unknownParts, macroEnabled, hasVbaProject, hasDigitalSignatures,
+		date1904: workbookProperties?.getAttribute('date1904') === '1' || workbookProperties?.getAttribute('date1904') === 'true',
 		definedNames, hasExternalReferences: elements(workbook, 'externalReference').length > 0,
 		hasTheme: Object.keys(files).some(name => /^xl\/theme\/theme\d+\.xml$/i.test(name)),
 		...(styleBytes ? { styles: parseStyleMetadata(parseXml(styleBytes, 'xl/styles.xml')) } : {}),

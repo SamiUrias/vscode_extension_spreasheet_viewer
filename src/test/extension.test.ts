@@ -20,12 +20,14 @@ suite('Spreadsheet Viewer editor', () => {
 		assert.strictEqual(isSupportedSpreadsheetUri(vscode.Uri.file('/tmp/REPORT.CSV')), true);
 		assert.strictEqual(isSupportedSpreadsheetUri(vscode.Uri.file('/tmp/report.tsv')), true);
 		assert.strictEqual(isSupportedSpreadsheetUri(vscode.Uri.file('/tmp/report.xlsx')), true);
+		assert.strictEqual(isSupportedSpreadsheetUri(vscode.Uri.file('/tmp/report.xlsm')), true);
 		assert.strictEqual(isSupportedSpreadsheetUri(vscode.Uri.file('/tmp/report.txt')), false);
 	});
 
 	test('contributes the Explorer command and optional custom editor', () => {
 		const extension = vscode.extensions.all.find(item => item.packageJSON.name === 'spreadsheet-viewer');
 		assert.ok(extension, 'The extension should be loaded in the Extension Host');
+		assert.strictEqual(extension.packageJSON.browser, './dist/extension-web.js');
 
 		const contributions = extension.packageJSON.contributes as {
 			commands: Array<{ command: string; title: string; category?: string; icon?: string }>;
@@ -48,7 +50,7 @@ suite('Spreadsheet Viewer editor', () => {
 			&& item.key === 'ctrl+alt+shift+o' && item.mac === 'cmd+alt+shift+o' && item.when.includes('resourceExtname')));
 		assert.deepStrictEqual(
 			contributions.customEditors.find(editor => editor.viewType === 'spreadsheet-viewer.editor')?.selector.map(item => item.filenamePattern),
-			['**/*.[cC][sS][vV]', '**/*.[tT][sS][vV]', '**/*.[tT][aA][bB]', '**/*.[xX][lL][sS][xX]', '**/*.[oO][dD][sS]'],
+			['**/*.[cC][sS][vV]', '**/*.[tT][sS][vV]', '**/*.[tT][aA][bB]', '**/*.[xX][lL][sS][xX]', '**/*.[xX][lL][sS][mM]', '**/*.[oO][dD][sS]'],
 		);
 		assert.strictEqual(contributions.customEditors.find(editor => editor.viewType === 'spreadsheet-viewer.editor')?.priority, 'option');
 		assert.deepStrictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showResetButton'], { type: 'boolean', default: true, description: 'Muestra el botón para restablecer la vista de la hoja.' });

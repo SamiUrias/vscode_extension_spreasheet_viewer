@@ -147,7 +147,7 @@ export interface CsvDataMessage {
 
 export interface XlsxDataMessage {
 	type: 'xlsxData';
-	fileFormat?: 'xlsx' | 'ods';
+	fileFormat?: 'xlsx' | 'xlsm' | 'ods';
 	revision: number;
 	documentId: string;
 	sheetId: string;

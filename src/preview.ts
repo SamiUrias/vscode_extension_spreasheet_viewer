@@ -241,7 +241,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 			const sheet = workbook.sheets[index];
 			if (!sheet) {return;}
 			message = {
-				type: 'xlsxData', fileFormat: document.ods ? 'ods' : 'xlsx', revision: session.revision,
+				type: 'xlsxData', fileFormat: session.spreadsheet?.hasMacroWorkbook ? 'xlsm' : session.spreadsheet?.isXlsm ? 'xlsm' : document.ods ? 'ods' : 'xlsx', revision: session.revision,
 				documentId: session.documentId, sheetId: previewSheetId(session, index),
 				sheetIds: workbook.sheets.map((_, sheetIndex) => previewSheetId(session, sheetIndex)),
 				fileName: uriBasename(session.uri.path), sheetName: sheet.name,
@@ -277,7 +277,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					cellVisualStyles: document.xlsx.styles?.cellVisualStyles,
 					date1904: document.xlsx.date1904,
 				} : {}),
-				...(document.xlsx && session.bytes ? { workbookBase64: bytesToBase64(session.bytes) } : {}),
+				...(document.xlsx && session.bytes && session.spreadsheet?.supportsFormulaCalculation ? { workbookBase64: bytesToBase64(session.bytes) } : {}),
 				rowCount: sheet.rowCount, columnCount: sheet.columnCount, warnings: workbook.warnings,
 				readonly: true, sourceMode: session.mode, sourceStatus,
 			};

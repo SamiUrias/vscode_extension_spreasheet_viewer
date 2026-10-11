@@ -46,8 +46,8 @@ export function activateCore(context: vscode.ExtensionContext): void {
 			const uri = explicitResource ? resource : getActiveResource();
 			if (!isUri(uri) || !isSupportedSpreadsheetUri(uri)) {
 				void vscode.window.showErrorMessage(explicitResource
-					? 'El recurso seleccionado no es una hoja compatible (.csv, .tsv, .tab, .xlsx u .ods).'
-					: 'Abre o selecciona un archivo .csv, .tsv, .tab, .xlsx u .ods para visualizarlo.');
+					? 'El recurso seleccionado no es una hoja compatible (.csv, .tsv, .tab, .xlsx, .xlsm u .ods).'
+					: 'Abre o selecciona un archivo .csv, .tsv, .tab, .xlsx, .xlsm u .ods para visualizarlo.');
 				return;
 			}
 			try {
@@ -119,5 +119,5 @@ function getActiveResource(): vscode.Uri | undefined {
 }
 
 export function isSupportedSpreadsheetUri(uri: vscode.Uri): boolean {
-	return /\.(csv|tsv|tab|xlsx|ods)$/i.test(uri.path);
+	return /\.(csv|tsv|tab|xlsx|xlsm|ods)$/i.test(uri.path);
 }

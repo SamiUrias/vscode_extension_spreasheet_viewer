@@ -351,14 +351,14 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.requestId !== pendingSheetRequestId) {
 		return;
 	}
-	if (isXlsxDataMessage(event.data) && event.data.fileFormat !== 'ods') {
+	if (isXlsxDataMessage(event.data) && event.data.fileFormat === 'xlsx') {
 		if (event.data.workbookBase64) {
 			formulaWorkbookSnapshot = { documentId: event.data.documentId, revision: event.data.revision, base64: event.data.workbookBase64 };
 		} else if (formulaWorkbookSnapshot?.documentId === event.data.documentId
 			&& formulaWorkbookSnapshot.revision === event.data.revision) {
 			event.data.workbookBase64 = formulaWorkbookSnapshot.base64;
 		}
-	}
+	} else if (isXlsxDataMessage(event.data) && event.data.fileFormat === 'xlsm') {formulaWorkbookSnapshot = undefined;}
 	const previousSheetIndex = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : undefined;
 	const previousSheetId = snapshot?.sheetId;
 	const previousDocumentId = snapshot?.documentId;
@@ -392,7 +392,9 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	formatNote.textContent = snapshot.type === 'xlsxData'
 		? snapshot.fileFormat === 'ods'
 			? `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos visuales de ODS; las fórmulas muestran su expresión y valor almacenado, sin recalcularse.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
-		: `Hoja: ${snapshot.sheetName}. La vista cruda conserva los valores almacenados; el modo libro puede aplicar formatos numéricos sin modificar el archivo. Las fórmulas muestran su expresión y los resultados calculados solo como información; no se guardan como valores.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
+			: snapshot.fileFormat === 'xlsm'
+				? `Hoja: ${snapshot.sheetName}. XLSM se muestra solo para lectura; las fórmulas conservan su expresión y caché sin recalcularse. No se ejecutan macros.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
+				: `Hoja: ${snapshot.sheetName}. La vista cruda conserva los valores almacenados; el modo libro puede aplicar formatos numéricos sin modificar el archivo. Las fórmulas muestran su expresión y los resultados calculados solo como información; no se guardan como valores.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
 		: '';
 	if (viewStateNotice) {formatNote.textContent = `${formatNote.textContent} ${viewStateNotice}`.trim(); viewStateNotice = '';}
 	if (snapshot.readonly) {
@@ -455,7 +457,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (changedSheet || changedContent || restoredView) {
 		scheduleSearch();
 	}
-	if (snapshot.type === 'xlsxData' && snapshot.fileFormat !== 'ods' && snapshot.workbookBase64 && snapshot.cellKinds.some(row => row.includes('formula'))) {
+	if (snapshot.type === 'xlsxData' && snapshot.fileFormat === 'xlsx' && snapshot.workbookBase64 && snapshot.cellKinds.some(row => row.includes('formula'))) {
 		const calculationSnapshot = snapshot;
 		const generation = ++formulaCalculationGeneration;
 		void calculateFormulasInWorker(calculationSnapshot, generation).then(results => {
@@ -1094,7 +1096,7 @@ function selectCell(row: number, column: number, extend = false, coveredMode: 's
 }
 
 function updateFormulaEditorControls(): void {
-	const enabled = showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat !== 'ods' && snapshot.readonly !== true;
+	const enabled = showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat === 'xlsx' && snapshot.readonly !== true;
 	formulaModeControl.hidden = !enabled;
 	formulaEditMode.disabled = !enabled || !selectedCell || !canEditFormulaCell(selectedCell.row, selectedCell.column);
 	formulaAssistanceControls.hidden = !showFormulaAssistance || !enabled;
@@ -1208,7 +1210,7 @@ function sendCellEdit(position: { row: number; column: number }, value: string):
 }
 
 function sendFormulaEdit(position: { row: number; column: number }, formula: string): void {
-	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.fileFormat === 'ods' || snapshot.readonly) {return;}
+	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.fileFormat !== 'xlsx' || snapshot.readonly) {return;}
 	sendDraftState(false, formula, position);
 	vscodeApi.postMessage({ type: 'editFormula', documentId: snapshot.documentId, revision: snapshot.revision,
 		sheetIndex: snapshot.activeSheetIndex, sheetId: snapshot.sheetId, ...position, formula });
@@ -2274,8 +2276,8 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 			&& row.every(kind => ['value', 'empty', 'missing', 'formula'].includes(String(kind))))
 		&& typeof candidate.formulaCaches === 'object'
 		&& candidate.formulaCaches !== null
-		&& (candidate.fileFormat === undefined || candidate.fileFormat === 'xlsx' || candidate.fileFormat === 'ods')
-		&& (candidate.fileFormat === 'ods' || candidate.workbookBase64 === undefined || typeof candidate.workbookBase64 === 'string')
+		&& (candidate.fileFormat === undefined || candidate.fileFormat === 'xlsx' || candidate.fileFormat === 'xlsm' || candidate.fileFormat === 'ods')
+		&& (candidate.fileFormat !== 'xlsx' || candidate.workbookBase64 === undefined || typeof candidate.workbookBase64 === 'string')
 		&& (candidate.date1904 === undefined || typeof candidate.date1904 === 'boolean')
 		&& (candidate.cellStyleIndexes === undefined || Array.isArray(candidate.cellStyleIndexes)
 			&& candidate.cellStyleIndexes.length === candidate.rowCount
@@ -2371,7 +2373,7 @@ function canEditCell(row: number, column: number): boolean {
 }
 
 function canEditFormulaCell(row: number, column: number): boolean {
-	return showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat !== 'ods'
+	return showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat === 'xlsx'
 		&& snapshot.readonly !== true && snapshot.cellCapabilities[row]?.[column]?.formulaEditable === true;
 }
 

@@ -35,7 +35,7 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 	const capability = snapshot.type === 'xlsxData' ? snapshot.cellCapabilities[row]?.[column] : undefined;
 	const result = kind === 'formula' ? context.getFormulaResult(row, column) : undefined;
 	context.cellState.textContent = kind === 'formula'
-		? snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods' ? 'Fórmula (no recalculada)'
+		? snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm') ? 'Fórmula (no recalculada)'
 			: result?.status === 'calculated' ? 'Fórmula (calculada)'
 			: result?.status === 'unsupported' ? unsupportedFormulaLabel(result.reason)
 				: result ? 'Fórmula (error de cálculo)' : 'Calculando fórmula…'
@@ -47,7 +47,7 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 	}
 	if (capability?.reason) {context.cellState.textContent += ` · ${capability.reason}`;}
 	context.cellState.dataset.state = kind === 'formula'
-		? snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods' ? 'formula'
+		? snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm') ? 'formula'
 			: result?.status ?? 'calculating'
 		: kind === 'empty' || kind === 'missing' || !exists ? 'empty' : 'raw';
 	context.cellValue.textContent = exists ? values[column]! : '';
@@ -60,7 +60,7 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 		const cache = context.getFormulaCache(row, column) || 'Sin valor almacenado';
 		context.cellValue.textContent += `\nValor almacenado en caché: ${cache}`;
 		if (result?.status === 'calculated') {context.cellValue.textContent += `\n\nFórmula (calculada)\n${result.value}`;}
-		else if (snapshot.type === 'xlsxData' && snapshot.fileFormat === 'ods') {context.cellValue.textContent += '\n\nFórmula (no recalculada)';}
+		else if (snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm')) {context.cellValue.textContent += '\n\nFórmula (no recalculada)';}
 		else if (result?.status === 'unsupported') {context.cellValue.textContent += `\n\n${unsupportedFormulaLabel(result.reason)}`;}
 		else if (result) {context.cellValue.textContent += `\n\nError al calcular: ${result.value}`;}
 		else {context.cellValue.textContent += '\n\nCalculando fórmula…';}

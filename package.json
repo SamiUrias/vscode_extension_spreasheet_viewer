@@ -2,7 +2,7 @@
   "name": "spreadsheet-viewer",
   "displayName": "Spreadsheet Viewer by Samuel Urias",
   "publisher": "SamuelUrias",
-  "description": "View and edit CSV, TSV, TAB, XLSX, and ODS spreadsheets in VS Code, with raw values, search, sorting, filters, and save-to-file support.",
+  "description": "View and edit CSV, TSV, TAB, XLSX, XLSM, and ODS spreadsheets in VS Code, with raw values, search, sorting, filters, and save-to-file support.",
   "version": "0.0.1",
   "license": "MIT",
   "keywords": [
@@ -76,6 +76,9 @@
             "filenamePattern": "**/*.[xX][lL][sS][xX]"
           },
           {
+            "filenamePattern": "**/*.[xX][lL][sS][mM]"
+          },
+          {
             "filenamePattern": "**/*.[oO][dD][sS]"
           }
         ],
@@ -86,12 +89,12 @@
       "explorer/context": [
         {
           "command": "spreadsheet-viewer.open",
-          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i",
           "group": "1_modification"
         },
         {
           "command": "spreadsheet-viewer.preview",
-          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i",
           "group": "1_modification@2"
         },
         {
@@ -103,12 +106,12 @@
       "editor/title": [
         {
           "command": "spreadsheet-viewer.open",
-          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i",
           "group": "navigation"
         },
         {
           "command": "spreadsheet-viewer.preview",
-          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i",
           "group": "navigation@2"
         },
         {
@@ -120,12 +123,12 @@
       "tabContext": [
         {
           "command": "spreadsheet-viewer.open",
-          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i",
           "group": "1_modification"
         },
         {
           "command": "spreadsheet-viewer.preview",
-          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i",
+          "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i",
           "group": "1_modification@2"
         },
         {
@@ -167,7 +170,7 @@
         "command": "spreadsheet-viewer.open",
         "key": "ctrl+alt+shift+o",
         "mac": "cmd+alt+shift+o",
-        "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|ods)$/i"
+        "when": "resourceExtname =~ /\\.(csv|tsv|tab|xlsx|xlsm|ods)$/i"
       }
     ],
     "configuration": {
@@ -268,6 +271,7 @@
     "test:filesystem-capability": "npm run compile-tests && node scripts/test-filesystem-capability.js",
     "test:runtime": "npm run compile-tests && node scripts/test-runtime.js",
     "test:web-target": "npm run package && node scripts/test-web-target.js",
+    "test:xlsm-format": "npm run compile-tests && node scripts/test-xlsm-format.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",

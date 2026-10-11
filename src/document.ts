@@ -25,7 +25,13 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	private csvOptions: CsvParseOptions;
 
 	sheetId(sheetIndex: number): string { return `${this.uri.toString()}:sheet:${sheetIndex}`; }
-	get isReadOnly(): boolean {return !isWritableFileSystem(vscode.workspace.fs.isWritableFileSystem(this.uri.scheme));}
+	get isXlsm(): boolean {return uriExtname(this.uri.path).toLowerCase() === '.xlsm';}
+	get hasMacroWorkbook(): boolean {return Boolean(this.xlsx && (this.isXlsm || this.xlsx.macroEnabled || this.xlsx.hasVbaProject));}
+	get hasProtectedPackage(): boolean {return Boolean(this.xlsx && (this.hasMacroWorkbook || this.xlsx.hasDigitalSignatures));}
+	get supportsFormulaCalculation(): boolean {return Boolean(this.xlsx && !this.hasMacroWorkbook);}
+	get isReadOnly(): boolean {
+		return this.hasProtectedPackage || !isWritableFileSystem(vscode.workspace.fs.isWritableFileSystem(this.uri.scheme));
+	}
 
 	private constructor(readonly uri: vscode.Uri, bytes: Uint8Array, baselineBytes = bytes, csvOptions: CsvParseOptions = optionsForUri(uri)) {
 		this.csvOptions = csvOptions;
@@ -127,9 +133,9 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 			throw new Error('El recurso seleccionado no es un archivo.');
 		}
 		const extension = uriExtname(uri.path).toLowerCase();
-		const limit = ['.csv', '.tsv', '.tab'].includes(extension) ? MAX_CSV_BYTES : extension === '.xlsx' ? MAX_XLSX_BYTES : MAX_ODS_BYTES;
-		if (!['.csv', '.tsv', '.tab', '.xlsx', '.ods'].includes(extension)) {
-			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx y .ods.');
+		const limit = ['.csv', '.tsv', '.tab'].includes(extension) ? MAX_CSV_BYTES : ['.xlsx', '.xlsm'].includes(extension) ? MAX_XLSX_BYTES : MAX_ODS_BYTES;
+		if (!['.csv', '.tsv', '.tab', '.xlsx', '.xlsm', '.ods'].includes(extension)) {
+			throw new Error('Solo se admiten archivos .csv, .tsv, .tab, .xlsx, .xlsm y .ods.');
 		}
 		if (stat.size > limit) {
 			throw new Error(`El archivo excede el límite de ${limit / (1024 * 1024)} MiB.`);
@@ -225,7 +231,7 @@ function optionsForUri(uri: vscode.Uri): CsvParseOptions {
 function parseDocument(uri: vscode.Uri, bytes: Uint8Array, csvOptions: CsvParseOptions = optionsForUri(uri)): { csv: CsvTable | undefined; xlsx: XlsxWorkbook | undefined; ods: OdsWorkbook | undefined } {
 	const extension = uriExtname(uri.path).toLowerCase();
 	if (['.csv', '.tsv', '.tab'].includes(extension)) {return { csv: parseCsvBytes(bytes, csvOptions), xlsx: undefined, ods: undefined };}
-	if (extension === '.xlsx') {return { csv: undefined, xlsx: parseXlsxBytes(bytes), ods: undefined };}
+	if (extension === '.xlsx' || extension === '.xlsm') {return { csv: undefined, xlsx: parseXlsxBytes(bytes), ods: undefined };}
 	if (extension === '.ods') {return { csv: undefined, xlsx: undefined, ods: parseOdsBytes(bytes) };}
-	throw new Error('Solo se admiten archivos .csv, .xlsx y .ods.');
+	throw new Error('Solo se admiten archivos .csv, .xlsx, .xlsm y .ods.');
 }

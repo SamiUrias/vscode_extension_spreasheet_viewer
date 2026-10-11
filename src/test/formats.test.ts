@@ -155,6 +155,19 @@ function encodeUtf16(text: string, littleEndian: boolean): Buffer {
 }
 
 suite('XLSX reader', () => {
+	test('detects macro-enabled workbooks, VBA payloads, and signatures without executing them', () => {
+		const parts: Record<string, Uint8Array> = { ...unzipSync(createXlsxFixture()) };
+		parts['[Content_Types].xml'] = xml('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml"/></Types>');
+		parts['xl/vbaProject.bin'] = new Uint8Array([0, 1, 2]);
+		parts['_xmlsignatures/sig1.xml'] = xml('<Signature/>');
+		const workbook = parseXlsxBytes(zipSync(parts));
+		assert.equal(workbook.macroEnabled, true);
+		assert.equal(workbook.hasVbaProject, true);
+		assert.equal(workbook.hasDigitalSignatures, true);
+		assert.ok(workbook.warnings.some(warning => warning.includes('macros nunca se ejecutan')));
+		assert.ok(workbook.warnings.some(warning => warning.includes('firmas digitales')));
+	});
+
 	test('reads raw numeric/date values, booleans, gaps, shared/inline strings and formula cache', () => {
 		const workbook = parseXlsxBytes(createXlsxFixture());
 		assert.deepStrictEqual(workbook.sheets.map(sheet => sheet.name), ['Datos', 'Vacia']);

@@ -1,12 +1,12 @@
 # Spreadsheet Viewer by Samuel Urias
 
-**View, search, sort, filter, and edit CSV, TSV, TAB, XLSX, and ODS files without leaving VS Code.** Spreadsheet Viewer keeps the values stored in your files visible and lets you save cell edits back to the original document.
+**View, search, sort, filter, and edit CSV, TSV, TAB, XLSX, and ODS files without leaving VS Code.** Spreadsheet Viewer keeps the values stored in your files visible and lets you save cell edits back to the original document. XLSM workbooks open read-only.
 
 > **Language:** The extension's interface is currently in **Spanish**. This Marketplace page is in English. English interface translations are planned for a future release.
 
 ## Highlights
 
-- **One table for common spreadsheet files:** open CSV, TSV, TAB, XLSX, and ODS files in an editor tab.
+- **One table for common spreadsheet files:** open CSV, TSV, TAB, XLSX, XLSM, and ODS files in an editor tab. XLSM workbooks are read-only.
 - **Edit and save cells:** edit values in place or in the cell editor and save changes to the original file.
 - **Manage CSV records:** insert or append an empty row, or delete selected rows with confirmation. These actions can be undone and are configurable in Settings.
 - **Choose when changes are written:** automatic saving after confirming an edit is on by default; it can be disabled to save with `Ctrl+S` (`Cmd+S` on macOS).
@@ -24,12 +24,12 @@
 ## Get started
 
 1. Use VS Code 1.140 or newer and install **Spreadsheet Viewer by Samuel Urias** from the Extensions view.
-2. In the Explorer, right-click a CSV, TSV, TAB, XLSX, or ODS file.
+2. In the Explorer, right-click a CSV, TSV, TAB, XLSX, XLSM, or ODS file.
 3. Choose **Abrir en Spreadsheet Viewer** (Open in Spreadsheet Viewer).
 
 You can also use the editor title button or run **Spreadsheet Viewer: Abrir en Spreadsheet Viewer** from the Command Palette. The default shortcut is `Ctrl+Alt+Shift+O` (`Cmd+Alt+Shift+O` on macOS).
 
-Spreadsheet Viewer is an optional editor for these formats. To make it the default for a file type, use **Open With…** in VS Code and select the extension.
+Spreadsheet Viewer is an optional editor for these formats. To make it the default for an editable file type, use **Open With…** in VS Code and select the extension.
 
 Files opened through a VS Code file-system provider are editable only when that provider reports write support for its URI scheme. Unknown or read-only schemes open as read-only; saves also recheck provider capability and preserve the in-memory draft if writing is unavailable.
 
@@ -79,6 +79,7 @@ Opening the editable view while the text buffer has unsaved changes asks whether
 
 - CSV values remain text. The editor supports UTF-8 and UTF-16 files with a byte-order mark and detects comma, semicolon, or tab separators. `.tsv` and `.tab` files use tabs.
 - XLSX and ODS values are read from their stored XML values. For example, a date-formatted XLSX number is shown as its stored serial value, not converted to a formatted date.
+- XLSM opens in read-only mode. VBA macros and workbook code are never executed; formulas show their stored expression and cached value without recalculation. The package is never rewritten, preserving its macros and signatures.
 - XLSX formula expressions and cached values remain distinct. Formula calculation is for display only and does not replace the original formula or cache. Unsupported formulas show their stored cache and are identified as unsupported.
 - ODS formulas are shown with their stored cached value and are not recalculated.
 - XLSX opens in raw-value mode. **Ver libro** optionally applies supported Excel number formats (including percentages and dates) to the grid; editing and saving keep the original raw values. Values with more than 15 significant digits and formulas remain raw. This is a presentation feature, not full Excel formatting support.
