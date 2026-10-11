@@ -847,6 +847,8 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Verificar parser, clipboard, tipos, lint y build producción con Node 24.21.
 - [ ] Confirmar pegado y borrado con teclado en la UI del Extension Host. El test de lifecycle llama a los métodos reales del proveedor, pero no simula los eventos de teclado ni el despacho desde la tabla webview.
 
+**Estado V2-13:** implementación y pruebas focalizadas aprobadas; queda una validación manual de teclado en la UI. No bloquea el trabajo independiente de V2-14A. Para retomarla, abrir una CSV/XLSX de prueba en Extension Development Host, pegar 2×3 y un valor sobre un rango, borrar una selección, y comprobar undo/redo y guardado; registrar host/versión si no se puede automatizar.
+
 #### V2-14A — Estructura CSV en adaptador y modelo
 
 **Depende de:** V2-03/V2-12A. **Archivos:** csv/edit-model/operations/tests. **Pasos:** transacción de insertar/añadir/borrar registros basada en spans completos con terminadores; resolver edits de celdas previos en una nueva baseline de trabajo en memoria con historial reversible, sin escribir disco intermedio. Conservar comentarios/preamble/BOM y bytes no afectados; definir EOL nuevo desde terminador más cercano (LF fallback). Registro añadido tiene ancho de tabla, sin convertir valores.
