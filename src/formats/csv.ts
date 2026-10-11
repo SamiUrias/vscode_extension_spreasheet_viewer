@@ -45,6 +45,10 @@ export interface CsvCellEdit {
 	readonly value: string;
 }
 
+export type CsvRowOperation =
+	| { readonly kind: 'insert'; readonly index: number; readonly rows: readonly (readonly string[])[] }
+	| { readonly kind: 'delete'; readonly rows: readonly number[] };
+
 export interface CsvParseOptions { delimiter?: string; quoteChar?: string; quotes?: boolean; persistDelimiter?: boolean; commentPrefix?: string; }
 
 export class CsvDelimiterAmbiguityError extends Error {
@@ -204,6 +208,52 @@ export function serializeCsvEdits(table: CsvTable, edits: readonly CsvCellEdit[]
 		outputText = `sep=${table.delimiter}\r\n${outputText}`;
 	}
 	return encodeCsvText(outputText, table.encoding, table.bom);
+}
+
+/** Build a new byte copy for safe whole-record insertion/deletion, retaining every untouched raw record. */
+export function serializeCsvRowOperation(table: CsvTable, operation: CsvRowOperation): Uint8Array {
+	const text = table.sourceText;
+	const recordStarts = table.fieldSpans.map(record => record.fields[0]?.start ?? record.end);
+	const eol = nearestRecordEnding(text, recordStarts, operation.kind === 'insert' ? operation.index : undefined);
+	let output: string;
+	if (operation.kind === 'insert') {
+		if (!Number.isInteger(operation.index) || operation.index < 0 || operation.index > table.rowCount
+			|| operation.rows.length === 0 || table.columnCount === 0 || table.rowCount + operation.rows.length > 50_000) {
+			throw new Error('La inserción CSV está fuera de los límites permitidos.');
+		}
+		const serialized = operation.rows.map(row => {
+			if (row.length !== table.columnCount || row.some(value => typeof value !== 'string')) {throw new Error('Cada registro nuevo debe tener el ancho de la tabla y valores de texto.');}
+			return row.map(value => encodeCsvField(value, table.delimiter, table.quoteChar, table.quotes, false)).join(table.delimiter);
+		}).join(eol);
+		const position = operation.index < table.rowCount ? recordStarts[operation.index]! : text.length;
+		const prefix = position === text.length && position > 0 && !hasTerminalRecordBreak(text) ? eol : '';
+		const suffix = position < text.length || hasTerminalRecordBreak(text) ? eol : '';
+		output = text.slice(0, position) + prefix + serialized + suffix + text.slice(position);
+	} else {
+		const selected = new Set(operation.rows);
+		if (!selected.size || selected.size !== operation.rows.length || [...selected].some(index => !Number.isInteger(index)
+			|| index < 0 || index >= table.rowCount || table.rowKinds[index] !== 'data')) {
+			throw new Error('Solo se pueden eliminar registros de datos existentes, sin duplicados.');
+		}
+		const chunks = table.fieldSpans.map((record, index) => {
+			const start = recordStarts[index]!;
+			const end = recordStarts[index + 1] ?? text.length;
+			return selected.has(index) ? '' : text.slice(start, end);
+		});
+		output = text.slice(0, table.preamble.length) + chunks.join('');
+	}
+	const bytes = encodeCsvText(output, table.encoding, table.bom);
+	parseCsvBytes(bytes, { delimiter: table.delimiter, quoteChar: table.quoteChar, quotes: table.quotes, commentPrefix: table.commentPrefix });
+	return bytes;
+}
+
+function nearestRecordEnding(text: string, starts: readonly number[], index?: number): string {
+	const preferred = index === undefined ? undefined : starts[Math.min(index, Math.max(0, starts.length - 1))];
+	const point = preferred ?? text.length;
+	const after = /\r\n|\r|\n/.exec(text.slice(point));
+	if (after) {return after[0];}
+	const before = [...text.slice(0, point).matchAll(/\r\n|\r|\n/g)].at(-1)?.[0];
+	return before ?? '\n';
 }
 
 function detectDelimiter(text: string, quoteChar: string, commentPrefix?: string): string {

@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { unzipSync, zipSync } from 'fflate';
-import { parseCsvBytes, serializeCsvEdits } from '../formats/csv';
+import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation } from '../formats/csv';
 import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
@@ -95,6 +95,18 @@ suite('CSV reader', () => {
 		const output = serializeCsvEdits(table, [{ row: 1, column: 0, value: 'new, "value"' }]);
 		assert.deepStrictEqual(parseCsvBytes(output).rows, [['a', 'b'], ['new, "value"', '0.25']]);
 		assert.strictEqual(new TextDecoder().decode(output.slice(3)), 'a,b\r\n"new, ""value""",0.25\r\n');
+	});
+
+	test('CSV row operations preserve untouched records, preamble, comments, multiline cells, and EOLs', () => {
+		const original = Buffer.from('\uFEFFsep=;\r\nname;value\r\n#keep this note\r\n"multi\nline";1\r\nlast;2\r\n');
+		const table = parseCsvBytes(original, { commentPrefix: '#' });
+		const inserted = serializeCsvRowOperation(table, { kind: 'insert', index: 3, rows: [['new;name', '003']] });
+		assert.deepStrictEqual(parseCsvBytes(inserted, { commentPrefix: '#' }).rows,
+			[['name', 'value'], [''], ['multi\nline', '1'], ['new;name', '003'], ['last', '2']]);
+		assert.match(new TextDecoder().decode(inserted), /#keep this note\r\n"multi\nline";1\r\n"new;name";003\r\nlast;2\r\n$/);
+		const deleted = serializeCsvRowOperation(table, { kind: 'delete', rows: [2] });
+		assert.deepStrictEqual(parseCsvBytes(deleted, { commentPrefix: '#' }).rows, [['name', 'value'], [''], ['last', '2']]);
+		assert.throws(() => serializeCsvRowOperation(table, { kind: 'delete', rows: [1] }), /registros de datos/);
 	});
 
 	test('CSV model undo/redo and invalid edits preserve the prior value', () => {

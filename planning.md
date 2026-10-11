@@ -837,6 +837,11 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Depende de:** V2-03/V2-12A. **Archivos:** csv/edit-model/operations/tests. **Pasos:** transacción de insertar/añadir/borrar registros basada en spans completos con terminadores; resolver edits de celdas previos en una nueva baseline de trabajo en memoria con historial reversible, sin escribir disco intermedio. Conservar comentarios/preamble/BOM y bytes no afectados; definir EOL nuevo desde terminador más cercano (LF fallback). Registro añadido tiene ancho de tabla, sin convertir valores.
 
+- [x] Añadir serializador CSV de operaciones de insertar/eliminar registros completos. Conserva bytes de todos los registros no afectados, terminadores vecinos, BOM, directiva `sep=`, comentarios y quoting de campos multilínea.
+- [x] Validar estructura reparseando el resultado; impedir borrar comentarios, índices inválidos, inserciones fuera de límite y registros de ancho incorrecto.
+- [x] Probar inserción/eliminación con preámbulo, comentarios, CRLF, comillas y multilinea; suites de formato, tipos y lint pasan.
+- [ ] Integrar estas operaciones en el journal transaccional y rebasar edits de celdas sin guardar. Aún no hay comandos/acciones UI; V2-14A permanece parcialmente implementada y V2-14B no inicia hasta cerrar esa integración.
+
 **Aceptación:** borrar última/primera/multilinea/discontinuas; añadir con/sin salto final; insertar sin tocar comments; UTF-16 ambos endian; undo restaura bytes originales; tabla vacía admite primer registro con ancho elegido. **Fuera:** estructura XLSX/ODS ni UI todavía. **Checks:** byte-level fixtures propios y unit.
 
 #### V2-14B — Acciones de filas CSV
