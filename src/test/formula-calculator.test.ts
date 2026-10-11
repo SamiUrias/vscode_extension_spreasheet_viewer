@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { unzipSync, zipSync } from 'fflate';
 import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { calculateFormulaResults } from '../webview/formula-calculator';
+import { VERIFIED_FORMULA_FUNCTIONS } from '../formula-assistance';
 
 const workbookPath = resolve(process.cwd(), 'src/test/fixtures/xlsx/formula_excel.xlsx');
 const bytes = readFileSync(workbookPath);
@@ -49,6 +50,20 @@ async function run(): Promise<void> {
 		const counts = { calculated: 0, error: 0, unsupported: 0 };
 		for (const result of Object.values(results)) {counts[result.status]++;}
 		assert.deepEqual(counts, expectedStatusCounts[sheetName], `${sheetName}: perfil de compatibilidad; actual=${JSON.stringify(counts)} esperado=${JSON.stringify(expectedStatusCounts[sheetName])}`);
+	}
+	const calculatedFunctions = new Set<string>();
+	for (const sheet of workbook.sheets) {
+		for (let row = 0; row < sheet.rows.length; row++) {
+			for (let column = 0; column < (sheet.rows[row]?.length ?? 0); column++) {
+				const formula = sheet.rows[row]?.[column];
+				if (typeof formula !== 'string' || !formula.startsWith('=')
+					|| resultsBySheet[sheet.name]?.[`${formulaColumnName(column)}${row + 1}`]?.status !== 'calculated') {continue;}
+				for (const match of formula.matchAll(/(?<![A-Z0-9_.])([A-Z][A-Z0-9_.]*)\s*\(/gi)) {calculatedFunctions.add(match[1]!.toUpperCase());}
+			}
+		}
+	}
+	for (const item of VERIFIED_FORMULA_FUNCTIONS) {
+		assert.ok(calculatedFunctions.has(item.name), `${item.name} completion must have a calculated example in the compatibility fixture`);
 	}
 
 	const calculations = resultsBySheet.Calculos;
@@ -163,6 +178,12 @@ async function run(): Promise<void> {
 	console.log('Formualizer compatibility tests passed: 2,968 formulas across 7 sheets.');
 	console.log('Calculated: 2,860; formula errors: 1; explicitly unsupported/cache-only: 107.');
 	console.log('Unsupported cases: Formualizer #N/IMPL!, dynamic-array #SPILL!, serial-zero TEXT dates, and EDATE/EOMONTH serials in 1904 books.');
+}
+
+function formulaColumnName(column: number): string {
+	let name = '';
+	for (let value = column + 1; value > 0; value = Math.floor((value - 1) / 26)) {name = String.fromCharCode(65 + (value - 1) % 26) + name;}
+	return name;
 }
 
 function bytesWithFormula(bytes: Uint8Array, reference: string, formula: string): Uint8Array {

@@ -9,6 +9,7 @@ import { selectGridCell, type CellRange } from './selection';
 import { isCellInVisibleRange } from '../range-selection';
 import { parseClipboardTsv, serializeVisibleSelection } from '../clipboard';
 import { presentXlsxCell, type CellPresentation } from './presentation';
+import { completeFormulaFunction, getFormulaCompletions, insertFormulaReference, type FormulaCompletion } from '../formula-assistance';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
 
@@ -97,7 +98,12 @@ const cellEditorGroup = requiredElement<HTMLDivElement>('#cell-editor-group');
 const formulaEditMode = requiredElement<HTMLInputElement>('#formula-edit-mode');
 const formulaModeControl = requiredElement<HTMLLabelElement>('#formula-mode-control');
 const cellEditLabel = requiredElement<HTMLLabelElement>('#cell-edit-label');
+const formulaAssistanceControls = requiredElement<HTMLDivElement>('#formula-assistance-controls');
+const formulaCompletions = requiredElement<HTMLDivElement>('#formula-completions');
+const pickFormulaReferenceButton = requiredElement<HTMLButtonElement>('#pick-formula-reference');
 let showFormulaEditing = formulaEditMode.dataset.settingEnabled !== 'false';
+let showFormulaAssistance = formulaAssistanceControls.dataset.settingEnabled !== 'false';
+let pickingFormulaReference = false;
 
 const defaultRowHeight = 28;
 const minimumRowHeight = 20;
@@ -251,7 +257,14 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'formulaEditingVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showFormulaEditing = event.data.visible;
-		if (!showFormulaEditing) {formulaEditMode.checked = false;}
+		if (!showFormulaEditing && !editorDirty) {formulaEditMode.checked = false;}
+		updateFormulaEditorControls();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'formulaAssistanceVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showFormulaAssistance = event.data.visible;
+		if (!showFormulaAssistance) {setFormulaReferencePicking(false);}
 		updateFormulaEditorControls();
 		return;
 	}
@@ -626,10 +639,30 @@ goToCellButton.addEventListener('click', goToCell);
 cellEditor.addEventListener('input', () => {
 	editorDirty = true;
 	sendDraftState(true);
+	updateFormulaCompletions();
 });
 formulaEditMode.addEventListener('change', () => {
 	if (editorDirty) {formulaEditMode.checked = !formulaEditMode.checked; return;}
 	updateFormulaEditorControls();
+});
+pickFormulaReferenceButton.addEventListener('click', () => {
+	if (!showFormulaAssistance || !formulaEditMode.checked || !selectedCell || !canEditFormulaCell(selectedCell.row, selectedCell.column)) {return;}
+	setFormulaReferencePicking(!pickingFormulaReference);
+});
+formulaCompletions.addEventListener('mousedown', event => {event.preventDefault();});
+formulaCompletions.addEventListener('click', event => {
+	if (!(event.target instanceof Element)) {return;}
+	const option = event.target.closest<HTMLButtonElement>('button[data-formula-name]');
+	if (!option) {return;}
+	const completion = JSON.parse(option.dataset.completion ?? 'null') as FormulaCompletion | null;
+	if (!completion) {return;}
+	const result = completeFormulaFunction(cellEditor.value, completion);
+	cellEditor.value = result.value;
+	cellEditor.setSelectionRange(result.cursor, result.cursor);
+	editorDirty = true;
+	sendDraftState(true);
+	updateFormulaCompletions();
+	cellEditor.focus();
 });
 cellEditor.addEventListener('blur', commitSelectedEdit);
 cellEditor.addEventListener('keydown', event => {
@@ -902,6 +935,21 @@ gridRoot.addEventListener('pointerdown', event => {
 	const cell = event.target.closest<HTMLElement>('.grid-cell[data-source-row][data-column]');
 	if (!cell || !snapshot) {return;}
 	const row = Number(cell.dataset.sourceRow); const column = Number(cell.dataset.column);
+	if (pickingFormulaReference && formulaEditMode.checked && selectedCell
+		&& canEditFormulaCell(selectedCell.row, selectedCell.column) && Number.isInteger(row) && Number.isInteger(column)) {
+		event.preventDefault(); event.stopPropagation();
+		const reference = `${columnName(column)}${row + 1}`;
+		const inserted = insertFormulaReference(cellEditor.value, cellEditor.selectionStart, reference);
+		cellEditor.value = inserted.value;
+		cellEditor.setSelectionRange(inserted.cursor, inserted.cursor);
+		editorDirty = true;
+		cellState.textContent = `Referencia ${reference} insertada; la fórmula sigue sin confirmar.`;
+		setFormulaReferencePicking(false);
+		sendDraftState(true);
+		updateFormulaCompletions();
+		cellEditor.focus();
+		return;
+	}
 	selectCell(row, column, event.shiftKey);
 	dragRangeAnchor = selectionRange?.anchor ?? { row, column };
 	dragPointer = { x: event.clientX, y: event.clientY };
@@ -1049,12 +1097,16 @@ function updateFormulaEditorControls(): void {
 	const enabled = showFormulaEditing && snapshot?.type === 'xlsxData' && snapshot.fileFormat !== 'ods' && snapshot.readonly !== true;
 	formulaModeControl.hidden = !enabled;
 	formulaEditMode.disabled = !enabled || !selectedCell || !canEditFormulaCell(selectedCell.row, selectedCell.column);
+	formulaAssistanceControls.hidden = !showFormulaAssistance || !enabled;
+	pickFormulaReferenceButton.disabled = !formulaEditMode.checked || !selectedCell || !canEditFormulaCell(selectedCell.row, selectedCell.column);
+	if (!formulaEditMode.checked || !enabled || !showFormulaAssistance) {setFormulaReferencePicking(false);}
 	if (!formulaEditMode.checked) {
 		cellEditLabel.textContent = 'Editar valor crudo';
 		cellEditor.setAttribute('aria-label', 'Editar valor crudo');
 		const normallyEditable = Boolean(selectedCell && canEditCell(selectedCell.row, selectedCell.column));
 		cellEditor.disabled = !normallyEditable;
 		applyCellEditButton.disabled = !normallyEditable || !editorDirty;
+		updateFormulaCompletions();
 		return;
 	}
 	const canEditFormula = Boolean(selectedCell && canEditFormulaCell(selectedCell.row, selectedCell.column));
@@ -1062,6 +1114,32 @@ function updateFormulaEditorControls(): void {
 	cellEditor.setAttribute('aria-label', 'Editar fórmula XLSX');
 	cellEditor.disabled = !canEditFormula;
 	applyCellEditButton.disabled = !canEditFormula || !editorDirty;
+	updateFormulaCompletions();
+}
+
+function updateFormulaCompletions(): void {
+	formulaCompletions.replaceChildren();
+	if (!showFormulaAssistance || !formulaEditMode.checked || !editorDirty) {formulaCompletions.hidden = true; return;}
+	const completions = getFormulaCompletions(cellEditor.value, cellEditor.selectionStart);
+	if (completions.length === 0) {formulaCompletions.hidden = true; return;}
+	for (const completion of completions.slice(0, 8)) {
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.setAttribute('role', 'option');
+		button.dataset.formulaName = completion.name;
+		button.dataset.completion = JSON.stringify(completion);
+		button.textContent = `${completion.signature} — ${completion.description}`;
+		formulaCompletions.append(button);
+	}
+	formulaCompletions.hidden = false;
+}
+
+function setFormulaReferencePicking(active: boolean): void {
+	pickingFormulaReference = active;
+	pickFormulaReferenceButton.setAttribute('aria-pressed', String(active));
+	pickFormulaReferenceButton.textContent = active ? 'Selecciona una celda…' : 'Insertar referencia seleccionada';
+	if (active) {gridScroll.setAttribute('data-picking-formula-reference', 'true');}
+	else {gridScroll.removeAttribute('data-picking-formula-reference');}
 }
 
 function updateCsvRowActions(): void {

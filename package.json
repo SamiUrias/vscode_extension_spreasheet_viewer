@@ -198,6 +198,11 @@
           "default": true,
           "description": "Permite crear y editar fórmulas XLSX mediante el modo explícito de edición de fórmula."
         },
+        "spreadsheet-viewer.xlsx.showFormulaAssistance": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra sugerencias de funciones probadas y la inserción explícita de referencias XLSX."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,

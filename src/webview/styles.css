@@ -228,6 +228,7 @@ main {
 #reset-view-control,
 #auto-fit-control,
 #clear-sort-control,
+#formula-assistance-controls > span,
 .copy-control {
 	position: relative;
 	display: inline-flex;
@@ -237,6 +238,7 @@ main {
 #reset-view-tooltip,
 #auto-fit-tooltip,
 #clear-sort-tooltip,
+#pick-formula-reference-tooltip,
 .copy-control [role="tooltip"] {
 	position: absolute;
 	z-index: 20;
@@ -264,6 +266,9 @@ main {
 #clear-sort:focus-visible + #clear-sort-tooltip {
 	opacity: 1;
 }
+
+#pick-formula-reference:hover + #pick-formula-reference-tooltip,
+#pick-formula-reference:focus-visible + #pick-formula-reference-tooltip {opacity: 1;}
 
 .copy-control button:hover + [role="tooltip"],
 .copy-control button:focus-visible + [role="tooltip"] {opacity: 1;}
@@ -496,6 +501,33 @@ main {
 	gap: 4px 8px;
 	min-width: 0;
 }
+
+#formula-assistance-controls {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+#formula-assistance-controls[hidden] {display: none;}
+
+#formula-completions {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	max-height: 6rem;
+	overflow: auto;
+}
+
+#formula-completions[hidden] {display: none;}
+
+#formula-completions button {
+	text-align: left;
+	max-width: 100%;
+}
+
+#grid-scroll[data-picking-formula-reference="true"] {cursor: crosshair;}
 
 #cell-editor-group[hidden] {
 	display: none;

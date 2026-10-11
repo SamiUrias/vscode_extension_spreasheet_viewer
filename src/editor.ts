@@ -82,6 +82,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('allowFormulaEditing', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'formulaEditingVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showFormulaAssistance', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showFormulaAssistance', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'formulaAssistanceVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });}
@@ -1217,6 +1221,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showWorkbookAppearance = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showWorkbookAppearance', true);
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
 		const showFormulaEditing = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('allowFormulaEditing', true);
+		const showFormulaAssistance = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaAssistance', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
@@ -1338,6 +1343,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				<label id="formula-mode-control"${showFormulaEditing ? '' : ' hidden'}><input id="formula-edit-mode" type="checkbox" data-setting-enabled="${showFormulaEditing}" aria-describedby="formula-mode-tooltip"> Editar como fórmula <span id="formula-mode-tooltip" role="tooltip">Habilita la edición o creación explícita de una fórmula XLSX. La sintaxis se valida antes de guardarla.</span></label>
 				<label id="cell-edit-label" class="control-label" for="cell-editor">Editar valor crudo</label>
 				<textarea id="cell-editor" rows="2" spellcheck="false" aria-label="Editar valor crudo" disabled></textarea>
+				<div id="formula-assistance-controls" data-setting-enabled="${showFormulaAssistance}"${showFormulaAssistance ? '' : ' hidden'}>
+					<span><button id="pick-formula-reference" type="button" aria-pressed="false" aria-describedby="pick-formula-reference-tooltip">Insertar referencia seleccionada</button><span id="pick-formula-reference-tooltip" role="tooltip">Activa el modo y haz clic en una celda para insertar su referencia sin cambiar el borrador de fórmula.</span></span>
+					<div id="formula-completions" role="listbox" aria-label="Funciones compatibles" hidden></div>
+				</div>
 				<button id="apply-cell-edit" type="button" disabled>Aplicar</button>
 			</div>
 		</section>
