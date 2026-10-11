@@ -32,13 +32,15 @@ main {
 
 #file-heading-row {
 	display: flex;
-	align-items: center;
-	justify-content: space-between;
+	align-items: flex-start;
+	flex-direction: column;
 	gap: 12px;
+	min-width: 0;
 }
 
 #file-heading {
 	min-width: 0;
+	width: 100%;
 }
 
 #file-heading h1 {
@@ -46,6 +48,7 @@ main {
 	font-weight: 600;
 	line-height: 1.3;
 	margin: 0;
+	word-break: normal;
 	overflow-wrap: break-word;
 }
 
@@ -215,14 +218,17 @@ main {
 
 #header-actions {
 	display: flex;
-	align-items: center;
-	justify-content: flex-end;
+	align-items: flex-start;
+	justify-content: flex-start;
 	gap: 8px;
-	flex: 0 0 auto;
+	flex: 0 1 auto;
+	flex-wrap: wrap;
+	min-width: 0;
+	width: 100%;
 }
 
-#copy-actions {display: flex; align-items: center; gap: 4px;}
-#csv-row-actions {display: flex; align-items: center; gap: 4px;}
+#copy-actions {display: flex; align-items: center; gap: 4px; flex-wrap: wrap;}
+#csv-row-actions {display: flex; align-items: center; gap: 4px; flex-wrap: wrap;}
 #xlsx-structure-actions {display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: min(720px, 90vw);}
 #xlsx-style-actions {display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;}
 #xlsx-style-controls:not([hidden]) {display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: min(760px, 90vw);}
