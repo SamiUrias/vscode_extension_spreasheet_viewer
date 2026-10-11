@@ -51,6 +51,10 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showClearSortButton', true);
 					void session.panel.webview.postMessage({ type: 'clearSortButtonVisibility', visible });
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showCopyButtons', session.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showCopyButtons', true);
+					void session.panel.webview.postMessage({ type: 'copyButtonVisibility', visible });
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', session.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', session.uri);
 				if (visualChanged) {this.postSnapshot(session);}
@@ -148,6 +152,15 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 				return;
 			}
 			if (isReloadMessage(message)) {void this.refresh(session); return;}
+			if (isCopyMessage(message)) {
+				if (message.text.length > 5 * 1024 * 1024) {
+					void vscode.window.showWarningMessage('El texto copiado supera 5 MiB y puede ser demasiado grande para el portapapeles.', 'Copiar de todos modos')
+						.then(choice => choice === 'Copiar de todos modos' ? writeClipboard(message.text) : undefined);
+				} else {
+					void writeClipboard(message.text);
+				}
+				return;
+			}
 			if (isSelectSheetMessage(message) && this.isCurrentSheetRequest(session, message)) {
 				session.activeSheetIndex = message.sheetIndex;
 				void panel.webview.postMessage({ type: 'restoreViewState', mode: 'preview', state: this.readViewState(session) });
@@ -350,5 +363,13 @@ function isPersistViewStateMessage(value: unknown): value is Extract<WebviewToEx
 function isResetViewMessage(value: unknown): value is Extract<WebviewToExtensionMessage, { type: 'resetView' }> {
 	return typeof value === 'object' && value !== null && 'type' in value && value.type === 'resetView'
 		&& 'mode' in value && (value.mode === 'edit' || value.mode === 'preview');
+}
+function isCopyMessage(message: unknown): message is { type: 'copyToClipboard'; text: string } {
+	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'copyToClipboard'
+		&& 'text' in message && typeof message.text === 'string' && message.text.length <= 50 * 1024 * 1024;
+}
+async function writeClipboard(text: string): Promise<void> {
+	try {await vscode.env.clipboard.writeText(text);}
+	catch (error) {void vscode.window.showErrorMessage(`No se pudo copiar la selección: ${errorMessage(error)}`);}
 }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

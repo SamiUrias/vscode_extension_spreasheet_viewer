@@ -788,6 +788,13 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Aceptación:** copiado de comillas/tab/saltos/Unicode/ceros/fórmulas, filas discontinuas y vacíos; roundtrip TSV; copy en textarea normal; preview permite copy; no escritura al archivo. **Fuera:** pegar/cut o serializar resultados de fórmula al libro. **Checks:** clipboard unit + host de macOS/Windows/Linux cuando disponible.
 
+- [x] Añadir serializador/parser TSV puro y prueba de roundtrip para caracteres especiales, vacíos y fin de línea.
+- [x] Integrar copia de selección en orden visible con acciones crudo/mostrado/encabezados, atajo `Ctrl+C`/`Cmd+C` en la tabla y fallback a clipboard host; vista previa también permite copiar.
+- [x] Añadir límite visible para payloads grandes sin truncar, tooltips y `spreadsheet-viewer.view.showCopyButtons` (`true` por defecto) en manifest, configuración de pruebas y documentación.
+- [ ] Verificar en Extension Host que copiar desde inputs mantiene su comportamiento y comprobar clipboard de macOS/Windows/Linux disponible.
+
+**Estado de verificación:** los cinco tests TSV, typecheck, lint y paquete de producción pasan. `npm test` no alcanza a ejecutar las suites en el entorno actual: Node 18.20.4 no admite la bandera `/v` que usa `string-width` (`SyntaxError: Invalid regular expression flags`). Queda pendiente la prueba manual del clipboard en Extension Host.
+
 #### V2-12A — Transacciones de edición
 
 **Depende de:** V2-02A/V2-10. **Archivos:** operations/edit-model/document/editor/protocol/tests. **Pasos:** preflight y aplicar lote sobre copia/journal sin tocar modelo hasta validación completa; before/after incluye existencia/tipo; adaptar editCell como transacción 1×1; derivar snapshot vigente (rows/kinds/types/existence/caches) desde journal, sin metadata obsoleta; undo/redo closures referencian la transacción aplicada, no la selección actual; un evento/revisión/save por lote. Cache dirty/serialización por revisión sin perder detección de revert al original.

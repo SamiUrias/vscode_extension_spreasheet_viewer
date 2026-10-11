@@ -12,6 +12,7 @@
 - **Find data quickly:** search the active sheet and jump to a cell by reference, such as `B54`.
 - **Sort and filter the view:** sort by multiple columns and filter by raw values or conditions. These operations do not reorder or remove data in the file.
 - **Navigate with the keyboard:** move through cells, select ranges, and begin editing by typing or pressing `F2`.
+- **Copy selected cells:** copy raw TSV values, the current displayed values, or column labels with the selection. Filtered and sorted rows are copied in their visible order.
 - **Adjust the table layout:** resize columns and rows, auto-fit columns, wrap text, and freeze visible rows or columns.
 - **Remember your view:** restore selection, scroll position, search, sort, filters, and sizes per file and sheet. This can be disabled in Settings.
 - **Preview without editing:** inspect a file from disk, preview unsaved CSV/TSV/TAB text, or explicitly preview another text file as CSV.
@@ -45,7 +46,7 @@ Sorting and filtering only change the visible projection. The source rows and th
 - Use the cell reference field to jump to a location such as `B54`.
 - Use the search field and its previous/next controls to move through matches in the active sheet.
 
-Range selection follows the visible order and skips filtered-out rows. Copying, pasting, and moving cell ranges are not available yet.
+Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Copying does not change the file. Paste and moving ranges are not available yet.
 
 ### Adjust the view
 
@@ -86,6 +87,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.restoreState` | `true` | Save and restore view preferences per file, sheet, and mode. |
 | `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
+| `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
 
 For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.
 

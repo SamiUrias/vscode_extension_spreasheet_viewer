@@ -5,6 +5,7 @@ import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, 
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell, type CellRange } from './selection';
 import { isCellInVisibleRange } from '../range-selection';
+import { serializeVisibleSelection } from '../clipboard';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
 
@@ -52,6 +53,8 @@ const reloadFileButton = requiredElement<HTMLButtonElement>('#reload-file');
 const toggleCommentsButton = requiredElement<HTMLButtonElement>('#toggle-comments');
 const clearSortButton = requiredElement<HTMLButtonElement>('#clear-sort');
 let showClearSortButton = clearSortButton.dataset.settingEnabled !== 'false';
+const copyActions = requiredElement<HTMLDivElement>('#copy-actions');
+let showCopyButtons = !copyActions.hidden;
 const sortWarning = requiredElement<HTMLParagraphElement>('#sort-warning');
 const filterChips = requiredElement<HTMLDivElement>('#filter-chips');
 const projectionCount = requiredElement<HTMLOutputElement>('#projection-count');
@@ -148,6 +151,12 @@ gridScroll.setAttribute('role', 'grid');
 gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'copyButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showCopyButtons = event.data.visible;
+		copyActions.hidden = !showCopyButtons;
+		return;
+	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 		&& event.data.type === 'resetViewButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		resetViewButton.hidden = !event.data.visible;
@@ -469,6 +478,11 @@ gridScroll.addEventListener('keydown', event => {
 		return;
 	}
 	if (event.isComposing) {return;}
+	if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && showCopyButtons) {
+		event.preventDefault();
+		void copySelection('raw');
+		return;
+	}
 	const rows = getRowProjection().visibleRows;
 	const currentVisibleRow = getRowProjection().sourceToVisible.get(selectedCell.row) ?? 0;
 	let visibleRow = currentVisibleRow;
@@ -513,6 +527,39 @@ gridScroll.addEventListener('keydown', event => {
 	column = Math.max(0, Math.min(snapshot.columnCount - 1, column));
 	selectCell(rows[visibleRow]!, column, extend);
 });
+
+requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
+requiredElement<HTMLButtonElement>('#copy-displayed').addEventListener('click', () => {void copySelection('displayed');});
+requiredElement<HTMLButtonElement>('#copy-headers').addEventListener('click', () => {void copySelection('headers');});
+
+async function copySelection(mode: 'raw' | 'displayed' | 'headers'): Promise<void> {
+	if (!showCopyButtons || !snapshot || !selectedCell) {return;}
+	const projection = getRowProjection();
+	const start = selectionRange?.anchor ?? selectedCell;
+	const end = selectionRange?.focus ?? selectedCell;
+	// Display formatting is not implemented yet, so both value modes copy the text shown in the grid.
+	// Formula calculations are metadata only; raw copy preserves the formula expression.
+	const headers = mode === 'headers' ? Array.from({ length: snapshot.columnCount }, (_, column) => snapshot!.type === 'csvData'
+		? snapshot!.headerLabels?.[column] ?? columnName(column) : columnName(column)) : undefined;
+	const text = serializeVisibleSelection(snapshot.rows, projection.visibleRows, { anchor: start, focus: end }, snapshot.columnCount, headers);
+	if (text === undefined) {return;}
+	if (text.length > 50 * 1024 * 1024) {
+		saveStatus.textContent = 'La selección supera el límite de 50 MiB y no se copió.';
+		saveStatus.classList.add('save-error');
+		return;
+	}
+	try {
+		if (text.length > 5 * 1024 * 1024) {vscodeApi.postMessage({ type: 'copyToClipboard', text });}
+		else if (navigator.clipboard?.writeText) {await navigator.clipboard.writeText(text);}
+		else {vscodeApi.postMessage({ type: 'copyToClipboard', text });}
+		saveStatus.textContent = 'Selección copiada';
+		saveStatus.classList.remove('save-error');
+	} catch {
+		vscodeApi.postMessage({ type: 'copyToClipboard', text });
+		saveStatus.textContent = 'Selección copiada';
+		saveStatus.classList.remove('save-error');
+	}
+}
 
 let dragPointer: { x: number; y: number } | undefined;
 let dragFrame: number | undefined;

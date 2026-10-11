@@ -197,6 +197,11 @@
           "type": "boolean",
           "default": true,
           "description": "Muestra el botón para quitar todos los criterios de orden activos."
+        },
+        "spreadsheet-viewer.view.showCopyButtons": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra los controles para copiar la selección como TSV."
         }
       }
     }

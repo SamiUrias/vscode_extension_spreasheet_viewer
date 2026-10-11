@@ -28,6 +28,9 @@ export interface InvalidCellMessage {
 	type: 'invalidCell';
 }
 
+export interface CopyToClipboardMessage { type: 'copyToClipboard'; text: string; }
+export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; visible: boolean; }
+
 export interface EditCellMessage {
 	type: 'editCell';
 	documentId: string;
@@ -66,7 +69,7 @@ export interface DraftStateMessage {
 	value: string;
 }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | EditCellMessage | HistoryMessage | DraftStateMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | HistoryMessage | DraftStateMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';
@@ -137,5 +140,5 @@ export interface CellCapability {
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
 export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage;
 

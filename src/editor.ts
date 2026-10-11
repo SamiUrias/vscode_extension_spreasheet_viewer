@@ -52,6 +52,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						void panel.webview.postMessage({ type: 'clearSortButtonVisibility', visible });
 					}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showCopyButtons', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showCopyButtons', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {
+						void panel.webview.postMessage({ type: 'copyButtonVisibility', visible });
+					}
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', document.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', document.uri);
 				if (visualChanged) {this.postDocument(document);}
@@ -159,6 +165,15 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isInvalidCellMessage(message)) {
 				void vscode.window.showErrorMessage('Celda inválida');
+				return;
+			}
+			if (isCopyToClipboardMessage(message)) {
+				if (message.text.length > 5 * 1024 * 1024) {
+					void vscode.window.showWarningMessage('El texto copiado supera 5 MiB y puede ser demasiado grande para el portapapeles.', 'Copiar de todos modos')
+						.then(choice => choice === 'Copiar de todos modos' ? writeClipboard(message.text) : undefined);
+				} else {
+					void writeClipboard(message.text);
+				}
 				return;
 			}
 			if (isEditCellMessage(message)) {
@@ -725,6 +740,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const fileName = uri.path.split('/').pop() || uri.toString();
 		const showResetButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showResetButton', true);
 		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
+		const showCopyButtons = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showCopyButtons', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const nonce = randomBytes(16).toString('base64');
@@ -747,6 +763,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					<p id="dimensions" role="status">Cargando archivo…</p>
 				</div>
 				<div id="header-actions">
+					<div id="copy-actions"${showCopyButtons ? '' : ' hidden'} aria-label="Copiar selección">
+						<span class="copy-control"><button id="copy-raw" type="button" aria-describedby="copy-raw-tooltip">Copiar</button><span id="copy-raw-tooltip" role="tooltip">Copia la selección cruda en TSV; las fórmulas se copian como expresión.</span></span>
+						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">Copiar mostrado</button><span id="copy-displayed-tooltip" role="tooltip">Copia los valores tal como aparecen en la cuadrícula con la presentación actual.</span></span>
+						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
+					</div>
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
 					<span id="clear-sort-control">
 						<button id="clear-sort" type="button" data-setting-enabled="${showClearSortButton}" aria-describedby="clear-sort-tooltip" hidden>Limpiar orden</button>
@@ -843,6 +864,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	}
 }
 
+async function writeClipboard(text: string): Promise<void> {
+	try {await vscode.env.clipboard.writeText(text);}
+	catch (error) {void vscode.window.showErrorMessage(`No se pudo copiar la selección: ${errorMessage(error)}`);}
+}
+
 
 function escapeHtml(value: string): string {
 	return value.replace(/[&<>"']/g, character => {
@@ -887,6 +913,11 @@ function isInvalidCellMessage(message: unknown): message is Extract<WebviewToExt
 		&& message !== null
 		&& 'type' in message
 		&& message.type === 'invalidCell';
+}
+
+function isCopyToClipboardMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'copyToClipboard' }> {
+	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'copyToClipboard'
+		&& 'text' in message && typeof message.text === 'string' && message.text.length <= 50 * 1024 * 1024;
 }
 
 function isEditCellMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'editCell' }> {
