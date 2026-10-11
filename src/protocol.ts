@@ -37,6 +37,10 @@ export interface CellEditDeltaMessage {
 	type: 'cellEditDelta'; documentId: string; baseRevision: number; revision: number;
 	cells: Array<{ row: number; column: number; value: string }>;
 }
+export interface WorkbookCellEditDeltaMessage {
+	type: 'workbookCellEditDelta'; documentId: string; baseRevision: number; revision: number; sheetIndex: number;
+	cells: Array<{ row: number; column: number; value: string; kind: string; storedType: string; editable: boolean; reason?: string }>;
+}
 export interface RequestSnapshotMessage { type: 'requestSnapshot'; documentId: string; revision: number; }
 export interface XlsxStructureActionsVisibilityMessage { type: 'xlsxStructureActionsVisibility'; visible: boolean; }
 export interface FocusCellMessage { type: 'focusCell'; row: number; column: number; }
@@ -192,5 +196,5 @@ export interface CellCapability {
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
 export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

@@ -11,7 +11,7 @@ import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
 import type { RecoveryDraft } from './recovery';
 import { isCellCoveredByRange } from './cell-reference';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
-import type { CellEditDeltaMessage } from './protocol';
+import type { CellEditDeltaMessage, WorkbookCellEditDeltaMessage } from './protocol';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -599,7 +599,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				redo: () => { if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, [{ sheetIndex: message.sheetIndex, row: message.row, column: message.column, value: message.value }]); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
-			if (!this.postCsvCellEditDelta(document, baseRevision, [{ sheetIndex: message.sheetIndex, row: message.row, column: message.column }])) {this.postDocument(document);}
+			if (!this.postCellEditDelta(document, baseRevision, [{ sheetIndex: message.sheetIndex, row: message.row, column: message.column }])) {this.postDocument(document);}
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
 			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
 		} catch (error) {
@@ -632,7 +632,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				redo: () => { if (document.redo(transactionId)) {this.clearPendingDraftsForCells(document, edits); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
-			if (!this.postCsvCellEditDelta(document, baseRevision, edits)) {this.postDocument(document);}
+			if (!this.postCellEditDelta(document, baseRevision, edits)) {this.postDocument(document);}
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
 			if (scheduleSave && this.saveOnCommit(document)) {this.scheduleSave(document);}
 			return true;
@@ -644,19 +644,41 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 	}
 
-	private postCsvCellEditDelta(
+	private postCellEditDelta(
 		document: SpreadsheetDocument,
 		baseRevision: number,
 		edits: readonly { sheetIndex: number; row: number; column: number }[],
 	): boolean {
-		if (!document.csv || edits.some(edit => edit.sheetIndex !== 0)) {return false;}
-		const settings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri);
-		const headerRow = settings.get<boolean>('firstRowHeader', true) ? document.csv.rowKinds.findIndex(kind => kind === 'data') : -1;
-		if (edits.some(edit => edit.row === headerRow)) {return false;}
-		const cells = edits.map(edit => ({ row: edit.row, column: edit.column, value: document.editSession.getCell(0, edit.row, edit.column).value }));
-		if (cells.some(cell => !Number.isInteger(cell.row) || cell.row < 0 || cell.row >= document.csv!.rowCount
-			|| !Number.isInteger(cell.column) || cell.column < 0 || cell.column >= document.csv!.columnCount)) {return false;}
-		const message: CellEditDeltaMessage = { type: 'cellEditDelta', documentId: document.documentId, baseRevision, revision: document.revision, cells };
+		if (document.csv) {
+			if (edits.some(edit => edit.sheetIndex !== 0)) {return false;}
+			const settings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri);
+			const headerRow = settings.get<boolean>('firstRowHeader', true) ? document.csv.rowKinds.findIndex(kind => kind === 'data') : -1;
+			if (edits.some(edit => edit.row === headerRow)) {return false;}
+			const cells = edits.map(edit => ({ row: edit.row, column: edit.column, value: document.editSession.getCell(0, edit.row, edit.column).value }));
+			if (cells.some(cell => !Number.isInteger(cell.row) || cell.row < 0 || cell.row >= document.csv!.rowCount
+				|| !Number.isInteger(cell.column) || cell.column < 0 || cell.column >= document.csv!.columnCount)) {return false;}
+			const message: CellEditDeltaMessage = { type: 'cellEditDelta', documentId: document.documentId, baseRevision, revision: document.revision, cells };
+			for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage(message);}
+			return true;
+		}
+		const workbook = document.xlsx ?? document.ods;
+		if (!workbook || workbook.sheets.some(sheet => sheet.cellKinds.some(row => row.includes('formula')))
+			|| edits.length === 0 || edits.some(edit => edit.sheetIndex !== edits[0]!.sheetIndex)) {return false;}
+		const sheetIndex = edits[0]!.sheetIndex;
+		const sheet = workbook.sheets[sheetIndex];
+		if (!sheet) {return false;}
+		const updated = document.editSession.getSheetSnapshot(sheetIndex);
+		if (!updated.cellKinds || !updated.cellTypes) {return false;}
+		const cells = edits.map(edit => {
+			const storedType = updated.cellTypes![edit.row]?.[edit.column];
+			const kind = updated.cellKinds![edit.row]?.[edit.column];
+			const value = updated.rows[edit.row]?.[edit.column];
+			return storedType && kind && value !== undefined ? { row: edit.row, column: edit.column, value, kind, storedType, editable: true } : undefined;
+		});
+		if (cells.some(cell => !cell) || cells.some(cell => cell!.row < 0 || cell!.row >= sheet.rowCount
+			|| cell!.column < 0 || cell!.column >= sheet.columnCount)) {return false;}
+		const message: WorkbookCellEditDeltaMessage = { type: 'workbookCellEditDelta', documentId: document.documentId,
+			baseRevision, revision: document.revision, sheetIndex, cells: cells as NonNullable<(typeof cells)[number]>[] };
 		for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage(message);}
 		return true;
 	}

@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-18B están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18 y V2-18B aún requiere abrir fixtures guardados en Excel o LibreOffice. V2-19A1 está implementada; V2-19A2 está en progreso y cubre deltas de edición CSV; después sigue V2-19A3 para deltas XLSX/ODS. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-18B están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18 y V2-18B aún requiere abrir fixtures guardados en Excel o LibreOffice. V2-19A1 está implementada; V2-19A2 implementa deltas de edición CSV y tiene integración de Extension Host pendiente; V2-19A3 está en progreso para ediciones XLSX/ODS sin fórmulas. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -989,11 +989,15 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A y V2
 - [x] Webview valida `baseRevision`, actualiza solo filas tocadas y solicita snapshot completo ante revisión inesperada o coordenadas no válidas.
 - [ ] Probar interacción real del provider/Webview y medir los bytes de un cambio de celda frente al snapshot completo. `npm run test:save-lifecycle` se intentó el 2026-10-11, pero el runner no pudo descargar VS Code por DNS (`ENOTFOUND update.code.visualstudio.com`); registrar tamaños del delta y snapshot en próximas mediciones del benchmark.
 
-#### V2-19A3 — Deltas de edición XLSX/ODS
+#### V2-19A3 — Deltas de edición XLSX/ODS sin fórmulas
 
-**Depende de:** V2-19A2. **Archivos:** protocol/editor/Webview/tests. **Pasos:** delta de celda que incluya valor, tipo, kind y metadatos requeridos en el snapshot; cuando fórmulas o cachés dependan del cambio, proveer la actualización de revisión adecuada o usar snapshot completo. ODS mantiene las fórmulas como solo lectura. Undo/redo y operaciones estructurales pueden pedir snapshot completo.
+**Depende de:** V2-19A2. **Archivos:** protocol/editor/Webview/tests. **Pasos:** aplicar deltas de celda con valor, tipo, kind y capability para libros sin fórmulas; la hoja activa recibe las celdas y las demás avanzan de revisión sin reemplazar la matriz. Si alguna hoja contiene fórmulas, conservar snapshot completo para que el cálculo/cache no quede obsoleto. ODS mantiene las fórmulas como solo lectura. Undo/redo y operaciones estructurales pueden pedir snapshot completo.
 
-**Aceptación:** no se mezclan documento/revisión/hoja; estilos, presentación, permisos, fórmulas y cachés siguen correctos; pérdida de delta hace resync seguro; comparación de tamaños cubre XLSX/ODS. **Fuera:** cambiar alcance de edición por formato.
+**Aceptación:** no se mezclan documento/revisión/hoja; estilos, presentación y permisos se conservan; pérdida de delta hace resync seguro; fórmula en cualquier hoja selecciona snapshot completo; comparación de tamaño incluye XLSX/ODS. **Fuera:** cambiar alcance de edición por formato.
+
+- [x] Enviar deltas con valor/tipo/kind/capability solo si ninguna hoja contiene fórmulas; enviar snapshot completo si las hay.
+- [x] Aplicar deltas solo a la hoja activa, avanzar revisión de paneles en otras hojas y solicitar resync tras desfase.
+- [ ] Verificar cambios, celdas protegidas y fórmulas en Provider/Webview dentro de Extension Host; el intento de ejecutar VS Code está bloqueado por DNS.
 
 #### V2-19B — Grid en dos ejes y worker de fórmulas
 
@@ -1133,7 +1137,7 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 >
 > Al cerrar, actualiza estado de **esa tarjeta** con archivos, evidencia/tests y pendientes; reporta qué acciones manuales la verifican. Todo botón añadido debe tener tooltip; toda nueva funcionalidad queda activada por defecto y se puede desactivar desde `settings.json`. Documenta las opciones en `CONFIGURATION.md` y la experiencia en `README.md` en el mismo cambio. Ejecuta los criterios de aceptación y, cuando la etapa quede verificada y la documentación esté actualizada, crea un commit. Si un check requerido está bloqueado por el entorno, describe el comando y error, deja el check pendiente y no marques la etapa como verificada. No declares v2 completa ni soporte de host/formato complejo antes de sus criterios. Si detectas una brecha nueva, agrégala a F/T y describe su efecto; no la implementes como refactor incidental.
 
-El trabajo implementado llega hasta **V2-19A1**; V2-19A2 (deltas CSV) está en progreso y después sigue V2-19A3 (deltas XLSX/ODS). Hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
+El trabajo implementado llega hasta **V2-19A1**; V2-19A2 (deltas CSV) tiene verificación de integración pendiente y V2-19A3 (deltas XLSX/ODS sin fórmulas) está en progreso. Hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
 
