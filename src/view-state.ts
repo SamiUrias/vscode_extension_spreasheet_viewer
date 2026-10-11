@@ -1,3 +1,5 @@
+import { validateColumnFilters, type ColumnFilter } from './table-view';
+
 export const VIEW_STATE_STORAGE_KEY = 'spreadsheet-viewer.viewState.v1';
 export const MAX_VIEW_STATE_BYTES = 256 * 1024;
 export const MAX_VIEW_STATE_FILES = 100;
@@ -10,9 +12,11 @@ export interface SheetViewState {
 	selection?: { row: number; column: number };
 	scroll: { top: number; left: number };
 	sort: ViewSortCriterion[];
+	filters: ColumnFilter[];
 	columnWidths: Record<string, number>;
 	rowHeights: Record<string, number>;
 	showComments: boolean;
+	searchAllRows: boolean;
 }
 
 export function createHeaderSignature(values: readonly string[]): string {
@@ -143,7 +147,8 @@ function validateSheetState(value: Record<string, unknown>): SheetViewState | un
 	if (!isBoundedString(value.schema, 128) || typeof value.query !== 'string' || value.query.length > 2048 || !isPlainObject(value.scroll)
 		|| !isFiniteBetween(value.scroll.top, 0, 1_000_000_000) || !isFiniteBetween(value.scroll.left, 0, 1_000_000_000)
 		|| !Array.isArray(value.sort) || value.sort.length > 256 || !isPlainObject(value.columnWidths)
-		|| !isPlainObject(value.rowHeights) || typeof value.showComments !== 'boolean') {return undefined;}
+		|| !isPlainObject(value.rowHeights) || typeof value.showComments !== 'boolean'
+		|| (value.searchAllRows !== undefined && typeof value.searchAllRows !== 'boolean')) {return undefined;}
 	let selection: SheetViewState['selection'];
 	if (value.selection !== undefined) {
 		if (!isPlainObject(value.selection) || !isIntegerBetween(value.selection.row, 0, 50_000)
@@ -157,11 +162,13 @@ function validateSheetState(value: Record<string, unknown>): SheetViewState | un
 			|| (criterion.mode !== 'text' && criterion.mode !== 'number')) {return undefined;}
 		sort.push({ column: criterion.column, direction: criterion.direction, mode: criterion.mode });
 	}
+	const filters = validateColumnFilters(value.filters ?? [], 256);
+	if (!filters) {return undefined;}
 	const columnWidths = validateSizeMap(value.columnWidths, 256, 48, 800);
 	const rowHeights = validateSizeMap(value.rowHeights, 50_000, 20, 600);
 	if (!columnWidths || !rowHeights) {return undefined;}
 	return { schema: value.schema, query: value.query, selection, scroll: { top: value.scroll.top, left: value.scroll.left }, sort,
-		columnWidths, rowHeights, showComments: value.showComments };
+		filters, columnWidths, rowHeights, showComments: value.showComments, searchAllRows: value.searchAllRows === true };
 }
 
 function validateSizeMap(value: Record<string, unknown>, maximumEntries: number, minimum: number, maximum: number): Record<string, number> | undefined {

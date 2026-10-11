@@ -6,6 +6,7 @@ export async function findSearchMatches(
 	columnCount: number,
 	query: string,
 	isCancelled: () => boolean = () => false,
+	visibleRows?: readonly number[],
 ): Promise<number[] | undefined> {
 	if (query.length === 0) {
 		return [];
@@ -13,11 +14,13 @@ export async function findSearchMatches(
 	const term = query.toLocaleLowerCase();
 	const matches: number[] = [];
 	let checkedCells = 0;
-	for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+	const rowsToSearch = visibleRows ?? rows.map((_, index) => index);
+	for (const rowIndex of rowsToSearch) {
 		if (isCancelled()) {
 			return undefined;
 		}
 		const row = rows[rowIndex];
+		if (!row) {continue;}
 		for (let columnIndex = 0; columnIndex < row.length; columnIndex++) {
 			if (row[columnIndex].toLocaleLowerCase().includes(term)) {
 				matches.push(rowIndex * columnCount + columnIndex);

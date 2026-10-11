@@ -734,12 +734,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				</div>
 				<div id="header-actions">
 					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
+					<button id="clear-sort" type="button" title="Quitar todos los criterios de orden" hidden>Limpiar orden</button>
 					<button id="reset-view" type="button" title="Restablecer selección, búsqueda, tamaños y orden">Restablecer vista</button>
 					<p id="save-status" role="status" aria-live="polite">Sin cambios</p>
 					<button id="reload-file" type="button" title="Volver a leer el archivo desde disco">↻ Recargar</button>
 				</div>
 			</div>
 			<p id="format-note" role="status"></p>
+				<p id="sort-warning" role="status" aria-live="polite"></p>
 		</header>
 		<nav id="navigation-bar" aria-label="Navegación de hoja y celda">
 			<label id="sheet-control" class="navigation-group" hidden>
@@ -761,8 +763,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					<button id="next-match" type="button" aria-label="Coincidencia siguiente" title="Coincidencia siguiente">↓</button>
 					<output id="search-status" aria-live="polite">Escribe para buscar</output>
 				</div>
+				<div class="control-row search-options">
+					<label><input id="search-all-rows" type="checkbox"> Toda la hoja</label>
+					<button id="reveal-hidden-match" type="button" hidden>Mostrar coincidencia</button>
+				</div>
 			</div>
 		</nav>
+		<div id="projection-toolbar">
+			<div id="filter-chips" aria-label="Filtros activos"></div>
+			<output id="projection-count" aria-live="polite"></output>
+			<output id="filter-status" aria-live="polite"></output>
+		</div>
+		<section id="filter-popover" role="dialog" aria-label="Filtrar columna" hidden></section>
 		<section id="selection" aria-live="polite">
 			<div id="selection-meta">
 				<strong id="cell-reference">Sin selección</strong>

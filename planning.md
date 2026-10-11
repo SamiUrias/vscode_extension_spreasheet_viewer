@@ -484,7 +484,7 @@ La proyección expone `visibleRows: number[]` y `sourceToVisible: Map<number, nu
 
 #### Ordenamiento, filtros y búsqueda
 
-Orden textual por comparación determinista de cadenas; opción sensible a mayúsculas. Numérico explícito por columna con decimal.js y regex decimal vigente, sin trim implícito; cota de lexema numérico 4 096 caracteres y exponente decimal entre −10 000 y 10 000 para evitar expansiones abusivas; vacíos al final en ambas direcciones, incompatibles en grupo final estable con aviso. Orden múltiple se aplica según prioridad de criterios; empates por índice fuente. No ordenar una columna por resultado de fórmula cambiante inicialmente: usar expresión cruda y explicarlo.
+Orden textual por comparación determinista de cadenas, sensible a mayúsculas. Numérico explícito por columna con comparador decimal exacto de lexemas, sin conversión a `Number` ni trim implícito; cota de lexema numérico 4 096 caracteres y exponente decimal entre −10 000 y 10 000 para evitar expansiones abusivas; vacíos al final en ambas direcciones, incompatibles en grupo final estable con aviso. Orden múltiple se aplica según prioridad de criterios; empates por índice fuente. No ordenar una columna por resultado de fórmula cambiante inicialmente: usar expresión cruda y explicarlo.
 
 Filtros por columna: modo `values` con conjunto de valores crudos seleccionados (OR) o modo `conditions` con hasta dos cláusulas AND/OR. AND entre columnas. Operadores: igual/diferente/contiene/no contiene/comienza/termina/vacío/no vacío; numérico explícito permite >, >=, <, <=. No comparar fechas CSV automáticamente. Vacío incluye ausente y cadena vacía para filtrar, con detalle que los distingue. No usar etiquetas formateadas como claves de valor. Lista de valores con búsqueda y paginación de 200 elementos; búsqueda cubre todos, no solo primera página. Límite propuesto: 10 000 valores seleccionados y 64 KiB por criterio; al exceder, explicar y ofrecer condición.
 
@@ -706,21 +706,49 @@ Las tarjetas V2-00A, V2-00B, V2-01A, V2-01B, V2-02A, V2-02B y V2-03 están **imp
 
 #### V2-07 — Ordenamiento multicolumna y comparaciones
 
-**Depende de:** V2-05/V2-06. **Archivos:** table-view, controles headers, dependency decimal.js y tests. **Pasos:** comparadores de texto/número del contrato; click asc/desc/sin orden, Shift añade criterio, Ctrl/Cmd elimina criterio de columna; número de prioridad y acción limpiar; persistir criterios; reordenar índices, no matrices. Header queda fijo fuera de datos.
+**Depende de:** V2-05/V2-06. **Archivos:** table-view, controles headers y tests. **Pasos:** comparadores de texto/número del contrato; click asc/desc/sin orden, Shift añade criterio, Ctrl/Cmd elimina criterio de columna; número de prioridad y acción limpiar; persistir criterios; reordenar índices, no matrices. Header CSV queda fijo fuera de datos.
 
 **Aceptación:** empates estables; 9007199254740992/9007199254740993 distintos; `00123` no cambia; decimales negativos/exponentes; vacíos al final; mixtos anuncian incompatibles; editar después de ordenar modifica fuente y undo la misma celda; no dirty sin edits. **Fuera:** inferir tipo por primera fila ni aplicar sort al XML. **Checks:** comparator/projection tests + compile.
 
+**Estado:** implementación lista; pendiente verificación visual en Extension Host.
+
+- [x] Añadir sort estable por texto o decimal exacto sin mutar filas fuente.
+- [x] Completar interacción de un criterio y Shift multiorden; mostrar prioridad y permitir quitar criterio o limpiar todos.
+- [x] Mantener el encabezado CSV anclado arriba y excluirlo de la comparación numérica.
+- [x] Dejar vacíos e incompatibles numéricos al final en ambos sentidos, anunciando las columnas incompatibles.
+- [x] Mantener compatibilidad con persistencia de V2-06 y añadir pruebas de lexemas, estabilidad y proyección.
+- [ ] Verificar manualmente prioridad, limpieza, edición de B54 ordenada y lectura del aviso de incompatibles.
+
 #### V2-08A — Motor de filtros completo
 
-**Depende de:** V2-07. **Archivos:** table-view/types/tests. **Pasos:** implementar values y dos conditions AND/OR, operadores 15.7, validación de términos/tipos y AND entre columnas. Derivar valores únicos sobre candidatos que cumplen otras columnas (sin autofiltro propio); paginar y buscar sin truncar universo. Recalcular proyección por revisión con cancelación cuando sea grande.
+**Depende de:** V2-07. **Archivos:** table-view/types/tests. **Pasos:** implementar values y dos conditions AND/OR, operadores 15.7, validación de términos/tipos y AND entre columnas. Derivar valores únicos sobre candidatos que cumplen otras columnas (sin autofiltro propio); paginar y buscar sin truncar universo. Cachear proyección por snapshot/criterios; las filas y condiciones tienen límites explícitos, y los recorridos de búsqueda cancelan generaciones obsoletas.
 
 **Aceptación:** igual/diferente/contains/prefix/suffix/empty/comparaciones numéricas; combinar dos cláusulas OR y AND; values con vacío/ausente; 50 000 filas y >200 únicos; filtro corrupto rechazado; no mutación ni edición parcial. **Fuera:** construir UI todavía; tests de casos reales, no mirrors de implementación.
+
+**Estado:** motor implementado; validación manual con datos grandes pendiente.
+
+- [x] Añadir filtros por valores crudos o hasta dos condiciones por columna, con AND/OR y AND entre columnas.
+- [x] Comparar texto exacto y decimales sin `Number`; separar vacío de campo ausente.
+- [x] Validar operadores, tipos, índices, máximo de 10 000 valores y 64 KiB por criterio.
+- [x] Derivar opciones distintas sobre filas que cumplen los otros filtros, sin truncar la lista subyacente.
+- [x] Añadir pruebas de combinación, límites, precisión y no mutación de la matriz.
+- [x] Probar proyección de 50 000 filas y más de 200 valores distintos; mantener el cálculo puro síncrono mientras el costo medido siga acotado.
 
 #### V2-08B — Popup de filtro y búsqueda con proyección
 
 **Depende de:** V2-08A. **Archivos:** grid/main/styles/view-state/search/tests. **Pasos:** botón accesible por columna con popup values/conditions, búsqueda, todos/ninguno y Aplicar/Cancelar/Limpiar; borrador del popup no altera vista antes de Aplicar. Mostrar chips y conteo visible/total; integrar ámbitos de búsqueda y referencias ocultas. Keyboard focus, Escape y devolución a header.
 
 **Aceptación:** cancelar mantiene criterios; cero filas conserva controles; consulta busca todo universo de valores; referencia oculta pide mostrar; editar fila que desaparece aplica una vez y mueve foco con anuncio; reset restaura orden/filas; headers no confunden click sort con resize/filter. **Fuera:** ocultar errores de parseo. **Checks:** tests filtros/búsqueda y manual teclado/tema.
+
+**Estado:** interfaz implementada; pendiente verificación visual y de teclado en Extension Host.
+
+- [x] Añadir botón de filtro por columna con modos de valores y condiciones, borrador independiente y acciones Aplicar/Cancelar/Limpiar.
+- [x] Añadir búsqueda sobre todos los valores únicos, paginación de 200, Todos/Ninguno, chips y contador de filas visibles.
+- [x] Integrar búsqueda de filas visibles o toda la hoja; ofrecer revelar coincidencias/referencias ocultas quitando filtros.
+- [x] Persistir filtros y ámbito de búsqueda, con migración de estados V1 previos.
+- [x] Mantener controles al quedar cero filas y mover selección oculta tras aplicar cambios.
+- [x] Añadir tests de motor, búsqueda visible y restauración de filtros.
+- [ ] Verificar cancelar, teclado/Escape, filtros con más de 200 valores y edición que deja de coincidir en Extension Host.
 
 #### V2-09 — Autoajuste, multilinea y freeze de vista
 

@@ -8,6 +8,16 @@ Para una vista de solo lectura usa **Spreadsheet Viewer: Vista previa de hoja** 
 
 Las opciones de VS Code, sus valores y su efecto están documentados en [CONFIGURATION.md](CONFIGURATION.md).
 
+## Ordenar y filtrar
+
+Haz clic en un encabezado para ordenar ascendente y luego descendente; el siguiente clic quita ese criterio. Un clic en otra columna reemplaza el orden actual; usa `Shift` + clic para agregarla al orden existente. Los números junto a las flechas indican prioridad. `T` indica comparación de texto y `N` numérica; `Alt` + clic cambia el modo (si la columna aún no está ordenada, inicia un orden numérico). `Ctrl` + clic (Windows/Linux) o `Cmd` + clic (macOS) quita directamente ese criterio; **Limpiar orden** quita todos. El modo numérico compara el texto decimal con precisión, sin convertirlo a un número flotante. Los vacíos y valores incompatibles quedan al final. En CSV, la fila usada como encabezado queda fija arriba.
+
+El botón de filtro `▽` junto a cada columna permite elegir valores crudos o escribir una o dos condiciones. Al abrir un filtro nuevo, la selección inicia vacía: usa **Todos** y luego desmarca valores para excluir algunos, o elige directamente los valores que quieres conservar. Puedes combinar condiciones de una columna con **Y** o **O**; los filtros de distintas columnas se combinan con **Y**. Por ejemplo, selecciona `Guatemala` en País y escribe `mayor que 1000000` en Población para ver solo las filas que cumplen ambas. En la lista de valores, **Todos** y **Ninguno** modifican la selección; el campo de búsqueda encuentra valores aunque estén en otra página. **Aplicar** confirma el borrador; **Cancelar** conserva el filtro anterior; **Limpiar** quita el filtro de esa columna. Los chips sobre la tabla muestran filtros activos y permiten quitarlos.
+
+Los filtros solo cambian las filas visibles, nunca el archivo. Las celdas vacías y los campos ausentes se distinguen en el filtro por valores. El contador muestra las filas visibles frente al total. La búsqueda recorre las filas visibles por defecto; activa **Toda la hoja** para incluir también filas filtradas. Si una coincidencia o referencia está oculta, puedes mostrarla con **Mostrar coincidencia/celda**, que quita los filtros; presiona `Escape` para cancelar y conservar la selección. El orden y los filtros se guardan como estado de vista, separados por archivo y hoja.
+
+El planning llama **V2-07** a la etapa de ordenar, **V2-08A** al motor que evalúa filtros y **V2-08B** a los controles de filtro y su integración con búsqueda y navegación.
+
 ## Fidelidad y límites conocidos
 
 - Los valores se muestran sin formatos visuales ni conversiones inferidas. CSV conserva valores como texto; XLSX y ODS muestran los valores almacenados en XML, incluyendo seriales numéricos de fechas y decimales tal como están escritos. En ODS los valores se leen de `content.xml`; los estilos no se aplican a la tabla.

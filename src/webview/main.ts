@@ -4,7 +4,7 @@ import { findSearchMatches } from '../search';
 import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, type RowLayout } from './grid-layout';
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell } from './selection';
-import { cycleSort, projectRows, type SortCriterion } from '../table-view';
+import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
 
 window.addEventListener('error', event => {
@@ -49,6 +49,12 @@ const formatNote = requiredElement<HTMLParagraphElement>('#format-note');
 const saveStatus = requiredElement<HTMLParagraphElement>('#save-status');
 const reloadFileButton = requiredElement<HTMLButtonElement>('#reload-file');
 const toggleCommentsButton = requiredElement<HTMLButtonElement>('#toggle-comments');
+const clearSortButton = requiredElement<HTMLButtonElement>('#clear-sort');
+const sortWarning = requiredElement<HTMLParagraphElement>('#sort-warning');
+const filterChips = requiredElement<HTMLDivElement>('#filter-chips');
+const projectionCount = requiredElement<HTMLOutputElement>('#projection-count');
+const filterStatus = requiredElement<HTMLOutputElement>('#filter-status');
+const filterPopover = requiredElement<HTMLElement>('#filter-popover');
 const resetViewButton = requiredElement<HTMLButtonElement>('#reset-view');
 const sheetControl = requiredElement<HTMLLabelElement>('#sheet-control');
 const sheetSelector = requiredElement<HTMLSelectElement>('#sheet-selector');
@@ -58,6 +64,8 @@ const searchInput = requiredElement<HTMLInputElement>('#search-input');
 const previousMatchButton = requiredElement<HTMLButtonElement>('#previous-match');
 const nextMatchButton = requiredElement<HTMLButtonElement>('#next-match');
 const searchStatus = requiredElement<HTMLOutputElement>('#search-status');
+const searchAllRowsInput = requiredElement<HTMLInputElement>('#search-all-rows');
+const revealHiddenMatchButton = requiredElement<HTMLButtonElement>('#reveal-hidden-match');
 const cellEditor = requiredElement<HTMLTextAreaElement>('#cell-editor');
 const applyCellEditButton = requiredElement<HTMLButtonElement>('#apply-cell-edit');
 const cellEditorGroup = requiredElement<HTMLDivElement>('#cell-editor-group');
@@ -96,6 +104,20 @@ let inlineEditorDirty = false;
 let inlineEditValue = '';
 let editingCell: { row: number; column: number } | undefined;
 let sortCriteria: SortCriterion[] = [];
+let columnFilters: ColumnFilter[] = [];
+let searchAllRows = false;
+let popupColumn: number | undefined;
+let popupAnchor: HTMLButtonElement | undefined;
+let popupSearch = '';
+let popupLimit = 200;
+let popupConditionCount = 1;
+let popupMessage = '';
+let pendingHiddenCell: { row: number; column: number } | undefined;
+let cachedProjection: ReturnType<typeof projectRows> | undefined;
+let cachedProjectionSnapshot: CsvDataMessage | XlsxDataMessage | undefined;
+let cachedProjectionCriteria: SortCriterion[] | undefined;
+let cachedProjectionComments: boolean | undefined;
+let cachedProjectionFilters: ColumnFilter[] | undefined;
 let showComments = false;
 let viewMode: ViewMode = 'edit';
 let pendingViewRestore: RestoreViewStateMessage | undefined;
@@ -113,6 +135,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'sortState'
 		&& 'criteria' in event.data && Array.isArray(event.data.criteria)) {
 		sortCriteria = event.data.criteria as SortCriterion[];
+		cachedProjection = undefined;
 		gridRendererState.rowsViewport = undefined;
 		renderGrid();
 		return;
@@ -155,14 +178,20 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (snapshot && snapshot.documentId !== event.data.documentId) {
 		showComments = false;
 		toggleCommentsButton.textContent = 'Mostrar comentarios';
+		columnFilters = [];
+		sortCriteria = [];
+		searchAllRows = false;
+		searchAllRowsInput.checked = false;
 	}
 	if (startupDataTimer !== undefined) {
 		window.clearTimeout(startupDataTimer);
 		startupDataTimer = undefined;
 	}
 	snapshot = event.data;
+	const changedSheet = snapshot.type === 'xlsxData'
+		&& (previousSheetIndex !== snapshot.activeSheetIndex || snapshot.requestId !== undefined);
 	formulaResults = {};
-	const restoredView = restoreViewForSnapshot(snapshot);
+	const restoredView = restoreViewForSnapshot(snapshot, changedSheet);
 	const changedContent = previousRevision !== undefined && previousRevision !== snapshot.revision;
 	dimensions.textContent = `${snapshot.rowCount.toLocaleString()} filas · ${snapshot.columnCount.toLocaleString()} columnas`;
 	toggleCommentsButton.hidden = snapshot.type !== 'csvData' || snapshot.rowKinds?.includes('comment') !== true;
@@ -192,8 +221,6 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	} else {
 		sheetControl.hidden = true;
 	}
-	const changedSheet = snapshot.type === 'xlsxData'
-		&& (previousSheetIndex !== snapshot.activeSheetIndex || snapshot.requestId !== undefined);
 	if (selectedCell && (selectedCell.row >= snapshot.rowCount || selectedCell.column >= snapshot.columnCount)) {
 		selectedCell = undefined;
 	}
@@ -228,6 +255,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		restoreScrollAfterSelection = undefined;
 		renderGrid();
 	}
+	reconcileFilteredSelection();
+	updateProjectionControls(getRowProjection());
 	if (changedSheet || changedContent || restoredView) {
 		scheduleSearch();
 	}
@@ -288,8 +317,20 @@ reloadFileButton.addEventListener('click', () => {
 toggleCommentsButton.addEventListener('click', () => {
 	showComments = !showComments;
 	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
+	cachedProjection = undefined;
 	renderGrid();
+	updateProjectionControls();
 	schedulePersistViewState();
+	if (searchInput.value) {scheduleSearch();}
+});
+clearSortButton.addEventListener('click', () => {
+	if (!snapshot || sortCriteria.length === 0) {return;}
+	sortCriteria = [];
+	cachedProjection = undefined;
+	vscodeApi.postMessage({ type: 'setSort', documentId: snapshot.documentId, sheetId: snapshot.sheetId, criteria: sortCriteria });
+	schedulePersistViewState();
+	gridRendererState.rowsViewport = undefined;
+	renderGrid();
 });
 resetViewButton.addEventListener('click', () => {if (snapshot) {resetCurrentView(snapshot);}});
 
@@ -345,7 +386,16 @@ cellReferenceInput.addEventListener('keydown', event => {
 	}
 });
 
-searchInput.addEventListener('input', () => {scheduleSearch(); schedulePersistViewState();});
+searchInput.addEventListener('input', () => {
+	pendingHiddenCell = undefined; revealHiddenMatchButton.hidden = true; filterStatus.textContent = '';
+	scheduleSearch(); schedulePersistViewState();
+});
+searchAllRowsInput.addEventListener('change', () => {
+	searchAllRows = searchAllRowsInput.checked;
+	scheduleSearch();
+	schedulePersistViewState();
+});
+revealHiddenMatchButton.addEventListener('click', () => revealPendingCell());
 previousMatchButton.addEventListener('click', () => navigateSearch(-1));
 nextMatchButton.addEventListener('click', () => navigateSearch(1));
 
@@ -362,6 +412,14 @@ gridScroll.addEventListener('scroll', () => {
 });
 
 window.addEventListener('pagehide', () => flushViewState());
+window.addEventListener('keydown', event => {
+	if (event.key === 'Escape' && !filterPopover.hidden) {closeFilterPopup(true); event.preventDefault();}
+	else if (event.key === 'Escape' && pendingHiddenCell) {pendingHiddenCell = undefined; revealHiddenMatchButton.hidden = true; filterStatus.textContent = '';}
+});
+document.addEventListener('pointerdown', event => {
+	if (!filterPopover.hidden && event.target instanceof Node && !filterPopover.contains(event.target)
+		&& !(event.target instanceof Element && event.target.closest('.column-filter-button'))) {closeFilterPopup(false);}
+});
 
 gridScroll.addEventListener('keydown', event => {
 	if (event.target !== gridScroll || !snapshot || !selectedCell) {
@@ -412,6 +470,8 @@ function renderGrid(): void {
 		sendDraftState, setInlineEditorDirty: value => {inlineEditorDirty = value;},
 		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit,
 		projection: getRowProjection(),
+		openFilter: openColumnFilter,
+		isFiltered: column => columnFilters.some(filter => filter.column === column),
 		sortHeader: (column, event) => {
 		if (event.altKey) {
 			const existing = sortCriteria.find(item => item.column === column);
@@ -422,13 +482,15 @@ function renderGrid(): void {
 			sortCriteria = cycleSort(sortCriteria, column, { shift: event.shiftKey, remove: event.ctrlKey || event.metaKey });
 		}
 		if (snapshot) {vscodeApi.postMessage({ type: 'setSort', documentId: snapshot.documentId, sheetId: snapshot.sheetId, criteria: sortCriteria });}
+		cachedProjection = undefined;
 		schedulePersistViewState();
 			gridRendererState.rowsViewport = undefined;
 			renderGrid();
+			if (searchInput.value) {scheduleSearch();}
 		},
 		sortLabel: column => {
 			const index = sortCriteria.findIndex(item => item.column === column);
-			return index < 0 ? '' : ` ${sortCriteria[index]!.direction === 'asc' ? '↑' : '↓'}${sortCriteria.length > 1 ? index + 1 : ''}`;
+			return index < 0 ? '' : ` ${sortCriteria[index]!.direction === 'asc' ? '↑' : '↓'}${index + 1}${sortCriteria[index]!.mode === 'number' ? 'N' : 'T'}`;
 		},
 	});
 	rowsViewport = gridRendererState.rowsViewport;
@@ -543,6 +605,13 @@ function goToCell(): void {
 		vscodeApi.postMessage({ type: 'invalidCell' });
 		return;
 	}
+	if (!getRowProjection().sourceToVisible.has(position.row)) {
+		pendingHiddenCell = position;
+		revealHiddenMatchButton.hidden = false;
+		revealHiddenMatchButton.textContent = 'Mostrar celda';
+		filterStatus.textContent = `La celda ${cellReferenceInput.value.toUpperCase()} está oculta. Puedes mostrarla quitando los filtros.`;
+		return;
+	}
 	selectCell(position.row, position.column);
 	gridScroll.focus({ preventScroll: true });
 }
@@ -572,11 +641,13 @@ function scheduleSearch(): void {
 	updateSearchStatus();
 	renderGrid();
 	const generation = searchGeneration;
+	const visibleRows = searchAllRows ? undefined : getRowProjection().visibleRows;
 	void findSearchMatches(
 		sheet.rows,
 		sheet.columnCount,
 		query,
 		() => generation !== searchGeneration || snapshot !== sheet,
+		visibleRows,
 	).then(results => {
 		if (results === undefined || generation !== searchGeneration || snapshot !== sheet) {
 			return;
@@ -587,7 +658,7 @@ function scheduleSearch(): void {
 		updateSearchStatus();
 		if (results.length > 0) {
 			const firstMatch = results[0];
-			selectCell(Math.floor(firstMatch / sheet.columnCount), firstMatch % sheet.columnCount);
+			navigateToMatch(firstMatch);
 		} else {
 			renderGrid();
 		}
@@ -612,7 +683,23 @@ function navigateSearch(direction: -1 | 1): void {
 	}
 	updateSearchStatus();
 	const match = searchResults[currentSearchIndex];
-	selectCell(Math.floor(match / snapshot.columnCount), match % snapshot.columnCount);
+	navigateToMatch(match);
+}
+
+function navigateToMatch(match: number): void {
+	if (!snapshot) {return;}
+	const row = Math.floor(match / snapshot.columnCount), column = match % snapshot.columnCount;
+	if (!getRowProjection().sourceToVisible.has(row)) {
+		pendingHiddenCell = { row, column };
+		revealHiddenMatchButton.hidden = false;
+		revealHiddenMatchButton.textContent = 'Mostrar coincidencia';
+		filterStatus.textContent = `La coincidencia ${columnName(column)}${row + 1} está oculta por filtros o comentarios. Puedes mostrarla quitando los filtros.`;
+		return;
+	}
+	pendingHiddenCell = undefined;
+	revealHiddenMatchButton.hidden = true;
+	filterStatus.textContent = '';
+	selectCell(row, column);
 }
 
 function updateSearchStatus(): void {
@@ -669,18 +756,297 @@ function ensureSelectionVisible(row: number, column: number): void {
 }
 
 function getRowProjection() {
+	if (cachedProjection && cachedProjectionSnapshot === snapshot && cachedProjectionCriteria === sortCriteria && cachedProjectionComments === showComments && cachedProjectionFilters === columnFilters) {
+		return cachedProjection;
+	}
 	const hidden = new Set<number>();
 	const rowKinds = snapshot?.type === 'csvData' ? snapshot.rowKinds : undefined;
 	for (let row = 0; !showComments && row < (rowKinds?.length ?? 0); row++) {
 		if (rowKinds?.[row] === 'comment') {hidden.add(row);}
 	}
-	return projectRows(snapshot?.rows ?? [], sortCriteria, hidden);
+	const fixed = new Set<number>();
+	if (snapshot?.type === 'csvData' && snapshot.headerLabels) {
+		const headerRow = rowKinds?.findIndex(kind => kind === 'data') ?? -1;
+		if (headerRow >= 0) {fixed.add(headerRow);}
+	}
+	cachedProjection = projectRows(snapshot?.rows ?? [], sortCriteria, hidden, fixed, columnFilters);
+	cachedProjectionSnapshot = snapshot;
+	cachedProjectionCriteria = sortCriteria;
+	cachedProjectionComments = showComments;
+	cachedProjectionFilters = columnFilters;
+	clearSortButton.hidden = sortCriteria.length === 0;
+	sortWarning.textContent = cachedProjection.incompatibleColumns.length
+		? `Orden numérico: valores no numéricos se colocan al final en las columnas ${cachedProjection.incompatibleColumns.map(columnName).join(', ')}.`
+		: '';
+	return cachedProjection;
 }
 
-function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage): boolean {
+function getProjectionFixedRows(): { hidden: Set<number>; fixed: Set<number> } {
+	const hidden = new Set<number>(), fixed = new Set<number>();
+	const rowKinds = snapshot?.type === 'csvData' ? snapshot.rowKinds : undefined;
+	for (let row = 0; !showComments && row < (rowKinds?.length ?? 0); row++) {if (rowKinds?.[row] === 'comment') {hidden.add(row);}}
+	if (snapshot?.type === 'csvData' && snapshot.headerLabels) {
+		const headerRow = rowKinds?.findIndex(kind => kind === 'data') ?? -1;
+		if (headerRow >= 0) {fixed.add(headerRow);}
+	}
+	return { hidden, fixed };
+}
+
+function updateProjectionControls(projection = getRowProjection()): void {
+	filterChips.replaceChildren();
+	for (const filter of columnFilters) {
+		const chip = document.createElement('span');
+		chip.className = 'filter-chip';
+		const description = document.createElement('span');
+		description.textContent = `${columnLabel(filter.column)}: ${describeFilter(filter)}`;
+		chip.append(description);
+		const remove = document.createElement('button');
+		remove.type = 'button'; remove.textContent = '×';
+		remove.setAttribute('aria-label', `Quitar filtro de ${columnLabel(filter.column)}`);
+		remove.addEventListener('click', () => applyColumnFilter(filter.column, undefined));
+		chip.append(remove); filterChips.append(chip);
+	}
+	const contexts = getProjectionFixedRows();
+	const headerCount = contexts.fixed.size;
+	const total = snapshot?.rowCount ?? 0;
+	projectionCount.textContent = `${Math.max(0, projection.visibleRows.length - headerCount)} / ${Math.max(0, total - headerCount - contexts.hidden.size)} filas visibles`;
+}
+
+function describeFilter(filter: ColumnFilter): string {
+	if (filter.kind === 'values') {return `${filter.values.length} valor${filter.values.length === 1 ? '' : 'es'}`;}
+	return filter.conditions.map(condition => `${operatorLabel(condition.operator)}${condition.value ? ` ${condition.value}` : ''}`).join(filter.join === 'and' ? ' Y ' : ' O ');
+}
+
+function columnLabel(column: number): string {
+	const label = snapshot?.type === 'csvData' ? snapshot.headerLabels?.[column] : undefined;
+	return label ? `${columnName(column)} · ${label}` : columnName(column);
+}
+
+function applyColumnFilter(column: number, candidate: ColumnFilter | undefined): void {
+	if (!snapshot) {return;}
+	commitSelectedEdit();
+	commitInlineEdit();
+	const proposed = columnFilters.filter(filter => filter.column !== column);
+	if (candidate) {proposed.push(candidate);}
+	const validated = validateColumnFilters(proposed, snapshot.columnCount);
+	if (!validated) {filterStatus.textContent = 'El filtro excede los límites o contiene una condición no válida.'; if (popupColumn !== undefined) {popupMessage = filterStatus.textContent; renderFilterPopup();} return;}
+	columnFilters = validated;
+	cachedProjection = undefined;
+	invalidateSearch();
+	pendingHiddenCell = undefined;
+	revealHiddenMatchButton.hidden = true;
+	filterStatus.textContent = '';
+	gridRendererState.rowsViewport = undefined;
+	const projection = getRowProjection();
+	reconcileFilteredSelection(projection);
+	renderGrid();
+	updateProjectionControls(projection);
+	schedulePersistViewState();
+	if (searchInput.value) {scheduleSearch();}
+	gridRoot.querySelectorAll<HTMLButtonElement>('.column-filter-button')[column]?.focus();
+}
+
+function reconcileFilteredSelection(projection = getRowProjection()): void {
+	if (!snapshot || !selectedCell || projection.sourceToVisible.has(selectedCell.row)) {return;}
+	const firstVisible = projection.visibleRows.find(row => row < snapshot!.rowCount);
+	if (firstVisible === undefined || snapshot.columnCount === 0) {
+		selectedCell = undefined;
+		cellReference.textContent = 'Sin filas visibles'; cellState.textContent = 'Ninguna fila coincide con los filtros.';
+		cellValue.textContent = ''; cellEditor.value = '';
+		filterStatus.textContent = 'La selección quedó oculta; no hay filas que coincidan con los filtros.';
+	} else {
+		selectCell(firstVisible, Math.min(selectedCell.column, snapshot.columnCount - 1));
+		filterStatus.textContent = 'La fila seleccionada dejó de coincidir; la selección pasó a la primera fila visible.';
+	}
+}
+
+function openColumnFilter(column: number, button: HTMLButtonElement): void {
+	if (!snapshot) {return;}
+	if (popupColumn !== undefined) {closeFilterPopup(false);}
+	popupColumn = column; popupAnchor = button; popupSearch = ''; popupLimit = 200; popupMessage = '';
+	const current = columnFilters.find(filter => filter.column === column);
+	if (current?.kind === 'values') {
+		popupMode = 'values'; popupSelectedValues = new Set(current.values);
+		popupConditions = [];
+	} else if (current?.kind === 'conditions') {
+		popupMode = 'conditions'; popupConditions = current.conditions.map(item => ({ ...item }));
+		popupJoin = current.join; popupSelectedValues = new Set();
+	} else {
+		popupMode = 'values'; popupSelectedValues = new Set(); popupConditions = [{ operator: 'contains', mode: 'text', value: '' }]; popupJoin = 'and';
+	}
+	popupConditionCount = Math.max(1, popupConditions.length);
+	filterPopover.hidden = false; button.setAttribute('aria-expanded', 'true');
+	renderFilterPopup();
+	const rect = button.getBoundingClientRect();
+	filterPopover.style.left = `${Math.max(8, Math.min(window.innerWidth - 356, rect.left))}px`;
+	filterPopover.style.top = `${Math.max(8, Math.min(window.innerHeight - 520, rect.bottom + 4))}px`;
+	filterPopover.querySelector<HTMLSelectElement>('#filter-mode')?.focus();
+}
+
+let popupMode: 'values' | 'conditions' = 'values';
+let popupJoin: 'and' | 'or' = 'and';
+let popupSelectedValues = new Set<string | null>();
+let popupConditions: FilterCondition[] = [];
+let popupAvailableValues: ReturnType<typeof getColumnFilterValues> = [];
+
+function closeFilterPopup(returnFocus: boolean): void {
+	filterPopover.hidden = true;
+	filterPopover.replaceChildren();
+	if (popupAnchor) {popupAnchor.setAttribute('aria-expanded', 'false'); if (returnFocus) {popupAnchor.focus();}}
+	popupAnchor = undefined; popupColumn = undefined;
+}
+
+function renderFilterPopup(): void {
+	if (popupColumn === undefined || !snapshot) {return;}
+	filterPopover.replaceChildren();
+	const heading = document.createElement('h2'); heading.textContent = `Filtrar ${columnLabel(popupColumn)}`; filterPopover.append(heading);
+	const modeLabel = document.createElement('label'); modeLabel.textContent = 'Tipo de filtro';
+	const mode = document.createElement('select'); mode.id = 'filter-mode';
+	mode.add(new Option('Seleccionar valores', 'values')); mode.add(new Option('Usar condiciones', 'conditions'));
+	mode.value = popupMode; mode.addEventListener('change', () => {
+		if (popupMode === 'conditions') {popupConditions = readConditionDraft(); popupJoin = filterPopover.querySelector<HTMLSelectElement>('#filter-condition-join')?.value as typeof popupJoin ?? popupJoin;}
+		popupMode = mode.value as typeof popupMode; popupMessage = ''; renderFilterPopup();
+	});
+	modeLabel.append(mode); filterPopover.append(modeLabel);
+	const content = document.createElement('div'); content.className = 'filter-popup-content'; filterPopover.append(content);
+	if (popupMode === 'values') {renderValuesFilter(content);} else {renderConditionsFilter(content);}
+	const message = document.createElement('p'); message.className = 'filter-popup-message'; message.setAttribute('role', 'status'); message.textContent = popupMessage; filterPopover.append(message);
+	const actions = document.createElement('div'); actions.className = 'filter-popup-actions';
+	const apply = makeButton('Aplicar', () => {
+		const candidate = readPopupCandidate();
+		if (candidate === null) {popupMessage = 'Revisa el filtro y sus límites antes de aplicarlo.'; renderFilterPopup(); return;}
+		const proposed = columnFilters.filter(filter => filter.column !== popupColumn);
+		if (candidate) {proposed.push(candidate);}
+		if (!validateColumnFilters(proposed, snapshot!.columnCount)) {popupMessage = 'El filtro supera el límite de valores o contiene una condición no válida.'; renderFilterPopup(); return;}
+		const column = popupColumn!; closeFilterPopup(false); applyColumnFilter(column, candidate);
+	});
+	const cancel = makeButton('Cancelar', () => closeFilterPopup(true));
+	const clear = makeButton('Limpiar', () => {const column = popupColumn!; closeFilterPopup(true); applyColumnFilter(column, undefined);});
+	actions.append(apply, cancel, clear); filterPopover.append(actions);
+}
+
+function renderValuesFilter(container: HTMLElement): void {
+	const { hidden, fixed } = getProjectionFixedRows();
+	popupAvailableValues = getColumnFilterValues(snapshot?.rows ?? [], popupColumn!, columnFilters, hidden, fixed);
+	const search = document.createElement('input'); search.type = 'search'; search.placeholder = 'Buscar entre todos los valores'; search.value = popupSearch;
+	search.setAttribute('aria-label', 'Buscar valores de filtro'); container.append(search);
+	const controls = document.createElement('div'); controls.className = 'filter-popup-actions';
+	controls.append(makeButton('Todos', () => {
+		if (popupAvailableValues.length > 10_000) {popupMessage = 'Hay más de 10 000 valores; busca y selecciona un subconjunto.'; renderFilterPopup(); return;}
+		popupSelectedValues = new Set(popupAvailableValues.map(item => item.value)); popupMessage = ''; updateValueOptions();
+	}), makeButton('Ninguno', () => {popupSelectedValues.clear(); updateValueOptions();}));
+	container.append(controls);
+	const list = document.createElement('div'); list.id = 'filter-value-list'; list.className = 'filter-value-list'; list.setAttribute('role', 'group'); list.setAttribute('aria-label', 'Valores disponibles'); container.append(list);
+	const listStatus = document.createElement('p'); listStatus.id = 'filter-value-status'; listStatus.className = 'filter-popup-message'; container.append(listStatus);
+	const more = makeButton('Mostrar 200 más', () => {popupLimit += 200; updateValueOptions();});
+	more.id = 'filter-value-more'; container.append(more);
+	search.addEventListener('input', () => {popupSearch = search.value; popupLimit = 200; updateValueOptions();});
+	updateValueOptions();
+}
+
+function updateValueOptions(): void {
+	const list = filterPopover.querySelector<HTMLElement>('#filter-value-list');
+	const status = filterPopover.querySelector<HTMLElement>('#filter-value-status');
+	const more = filterPopover.querySelector<HTMLButtonElement>('#filter-value-more');
+	if (!list || !status || !more) {return;}
+	const query = popupSearch.toLocaleLowerCase();
+	const matching = popupAvailableValues.filter(item => filterValueLabel(item.value).toLocaleLowerCase().includes(query));
+	const shown = matching.slice(0, popupLimit); list.replaceChildren();
+	for (const item of shown) {
+		const label = document.createElement('label'); label.className = 'filter-value-option';
+		const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+		checkbox.checked = popupSelectedValues.has(item.value);
+		checkbox.addEventListener('change', () => {if (checkbox.checked) {popupSelectedValues.add(item.value);} else {popupSelectedValues.delete(item.value);}});
+		const text = document.createElement('span'); text.textContent = `${filterValueLabel(item.value)} (${item.count})`;
+		label.append(checkbox, text); list.append(label);
+	}
+	status.textContent = `${popupSelectedValues.size} valores seleccionados; ${matching.length.toLocaleString()} coincidencias disponibles.`;
+	more.hidden = shown.length >= matching.length;
+}
+
+function renderConditionsFilter(container: HTMLElement): void {
+	const joinLabel = document.createElement('label'); joinLabel.textContent = 'Combinar condiciones';
+	const join = document.createElement('select'); join.id = 'filter-condition-join';
+	join.add(new Option('Y (AND)', 'and')); join.add(new Option('O (OR)', 'or')); join.value = popupJoin;
+	join.addEventListener('change', () => {popupJoin = join.value as typeof popupJoin;});
+	joinLabel.append(join); container.append(joinLabel);
+	const rows = document.createElement('div'); rows.id = 'filter-condition-rows'; container.append(rows);
+	for (let index = 0; index < popupConditionCount; index++) {rows.append(createConditionRow(index, popupConditions[index]));}
+	if (popupConditionCount < 2) {container.append(makeButton('Añadir segunda condición', () => {popupConditions = readConditionDraft(); popupConditionCount = 2; renderFilterPopup();}));}
+	else {container.append(makeButton('Quitar segunda condición', () => {popupConditions = readConditionDraft().slice(0, 1); popupConditionCount = 1; renderFilterPopup();}));}
+}
+
+function createConditionRow(index: number, saved?: FilterCondition): HTMLElement {
+	const row = document.createElement('div'); row.className = 'filter-condition-row'; row.dataset.index = String(index);
+	const mode = document.createElement('select'); mode.className = 'condition-mode'; mode.setAttribute('aria-label', `Tipo de comparación ${index + 1}`);
+	mode.add(new Option('Texto', 'text')); mode.add(new Option('Número', 'number')); mode.value = saved?.mode ?? 'text';
+	const operator = document.createElement('select'); operator.className = 'condition-operator'; operator.setAttribute('aria-label', `Operador ${index + 1}`);
+	const term = document.createElement('input'); term.className = 'condition-value'; term.type = 'text'; term.placeholder = 'Valor'; term.value = saved?.value ?? ''; term.setAttribute('aria-label', `Valor de condición ${index + 1}`);
+	const fillOperators = () => {
+		const previous = saved?.operator ?? operator.value;
+		operator.replaceChildren();
+		for (const [value, label] of operatorsFor(mode.value as 'text' | 'number')) {operator.add(new Option(label, value));}
+		if ([...operator.options].some(option => option.value === previous)) {operator.value = previous;}
+		term.hidden = ['empty', 'notEmpty'].includes(operator.value);
+	};
+	mode.addEventListener('change', () => {saved = undefined; fillOperators();});
+	operator.addEventListener('change', () => {term.hidden = ['empty', 'notEmpty'].includes(operator.value);});
+	fillOperators();
+	if (!saved && index === 0) {operator.value = 'contains';}
+	term.hidden = ['empty', 'notEmpty'].includes(operator.value);
+	row.append(mode, operator, term); return row;
+}
+
+function readConditionDraft(): FilterCondition[] {
+	return [...filterPopover.querySelectorAll<HTMLElement>('.filter-condition-row')].map(row => ({
+		mode: row.querySelector<HTMLSelectElement>('.condition-mode')!.value as 'text' | 'number',
+		operator: row.querySelector<HTMLSelectElement>('.condition-operator')!.value as FilterOperator,
+		value: row.querySelector<HTMLInputElement>('.condition-value')!.value,
+	}));
+}
+
+function readPopupCandidate(): ColumnFilter | undefined | null {
+	if (popupColumn === undefined) {return null;}
+	if (popupMode === 'values') {
+		if (popupSelectedValues.size === popupAvailableValues.length && popupAvailableValues.every(value => popupSelectedValues.has(value.value))) {return undefined;}
+		return { column: popupColumn, kind: 'values', values: [...popupSelectedValues] };
+	}
+	const conditions = readConditionDraft();
+	return { column: popupColumn, kind: 'conditions', join: filterPopover.querySelector<HTMLSelectElement>('#filter-condition-join')?.value as 'and' | 'or' ?? 'and', conditions };
+}
+
+function filterValueLabel(value: string | null): string {return value === null ? '(sin campo)' : value === '' ? '(vacío)' : value;}
+
+function operatorsFor(mode: 'text' | 'number'): Array<[FilterOperator, string]> {
+	return mode === 'number'
+		? [['equals', 'es igual a'], ['notEquals', 'es distinto de'], ['gt', 'es mayor que'], ['gte', 'es mayor o igual que'], ['lt', 'es menor que'], ['lte', 'es menor o igual que'], ['empty', 'está vacío'], ['notEmpty', 'no está vacío']]
+		: [['equals', 'es igual a'], ['notEquals', 'es distinto de'], ['contains', 'contiene'], ['notContains', 'no contiene'], ['startsWith', 'comienza con'], ['endsWith', 'termina con'], ['empty', 'está vacío'], ['notEmpty', 'no está vacío']];
+}
+
+function operatorLabel(operator: FilterOperator): string {
+	return [...operatorsFor('text'), ...operatorsFor('number')].find(item => item[0] === operator)?.[1] ?? operator;
+}
+
+function makeButton(label: string, action: () => void): HTMLButtonElement {
+	const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.addEventListener('click', action); return button;
+}
+
+function revealPendingCell(): void {
+	if (!pendingHiddenCell || !snapshot) {return;}
+	const target = pendingHiddenCell;
+	pendingHiddenCell = undefined; revealHiddenMatchButton.hidden = true;
+	columnFilters = []; showComments = true; toggleCommentsButton.textContent = 'Ocultar comentarios';
+	cachedProjection = undefined; gridRendererState.rowsViewport = undefined;
+	filterStatus.textContent = 'Se quitaron los filtros para mostrar la celda.';
+	updateProjectionControls(); renderGrid(); selectCell(target.row, target.column); gridScroll.focus({ preventScroll: true }); schedulePersistViewState();
+	if (searchInput.value) {scheduleSearch();}
+}
+
+function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage, changedSheet: boolean): boolean {
 	const message = pendingViewRestore;
 	pendingViewRestore = undefined;
-	if (!message || message.mode !== viewMode || !message.state) {return false;}
+	if (!message || message.mode !== viewMode) {return false;}
+	if (!message.state) {if (changedSheet) {resetSheetView(current);} return false;}
 	const saved = message.state;
 	if (saved.schema !== viewSchema(current)) {
 		viewStateNotice = 'Cambió el formato del archivo; se abrió la vista predeterminada.';
@@ -702,6 +1068,9 @@ function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage): bool
 		: undefined;
 	const columnSchemaChanged = sheetState.schema !== sheetSchema(current);
 	sortCriteria = columnSchemaChanged ? sheetState.sort.filter(item => item.column < columnCount) : [...sheetState.sort];
+	columnFilters = validateColumnFilters((sheetState.filters ?? []).filter(item => item.column < columnCount), columnCount) ?? [];
+	searchAllRows = sheetState.searchAllRows;
+	searchAllRowsInput.checked = searchAllRows;
 	if (columnSchemaChanged) {
 		for (const key of Object.keys(sheetState.columnWidths)) {if (Number(key) >= columnCount) {delete sheetState.columnWidths[key];}}
 	}
@@ -722,8 +1091,13 @@ function resetCurrentView(current: CsvDataMessage | XlsxDataMessage): void {
 	const draftSelection = selectedCell;
 	for (const key of Object.keys(viewSheets)) {delete viewSheets[key];}
 	sortCriteria = [];
+	columnFilters = [];
 	searchInput.value = '';
+	searchAllRows = false;
+	searchAllRowsInput.checked = false;
 	showComments = false;
+	cachedProjection = undefined;
+	filterStatus.textContent = '';
 	resetSheetView(current);
 	gridScroll.scrollTop = 0;
 	gridScroll.scrollLeft = 0;
@@ -732,6 +1106,7 @@ function resetCurrentView(current: CsvDataMessage | XlsxDataMessage): void {
 	if (keepDraftCell && draftSelection) {selectedCell = draftSelection; renderGrid();}
 	else if (current.rowCount && current.columnCount) {selectedCell = undefined; selectCell(0, 0);}
 	else {renderGrid();}
+	updateProjectionControls();
 	if (persistViewTimer !== undefined) {window.clearTimeout(persistViewTimer); persistViewTimer = undefined;}
 	void vscodeApi.postMessage({ type: 'resetView', mode: viewMode });
 }
@@ -742,8 +1117,13 @@ function resetSheetView(current: CsvDataMessage | XlsxDataMessage): void {
 	rowLayoutsBySheet.delete(sheetIndex);
 	selectedCell = undefined;
 	sortCriteria = [];
+	columnFilters = [];
 	searchInput.value = '';
+	searchAllRows = false;
+	searchAllRowsInput.checked = false;
 	showComments = false;
+	cachedProjection = undefined;
+	gridRendererState.rowsViewport = undefined;
 	toggleCommentsButton.textContent = 'Mostrar comentarios';
 	gridScroll.scrollTop = 0;
 	gridScroll.scrollLeft = 0;
@@ -768,9 +1148,10 @@ function flushViewState(activeSheetOverride?: string): void {
 	layout.heights.forEach((height, index) => {if (height !== defaultRowHeight) {rowHeightOverrides[String(index)] = height;}});
 	viewSheets[sheetId] = {
 		schema: sheetSchema(snapshot), query: searchInput.value.slice(0, 2048),
+		searchAllRows,
 		...(selectedCell ? { selection: { ...selectedCell } } : {}),
 		scroll: { top: Math.max(0, gridScroll.scrollTop), left: Math.max(0, gridScroll.scrollLeft) },
-		sort: [...sortCriteria], columnWidths: columnWidthOverrides, rowHeights: rowHeightOverrides, showComments,
+		sort: [...sortCriteria], filters: columnFilters, columnWidths: columnWidthOverrides, rowHeights: rowHeightOverrides, showComments,
 	};
 	const sheets = Object.fromEntries(Object.entries(viewSheets).slice(-256));
 	void vscodeApi.postMessage({ type: 'persistViewState', mode: viewMode, state: {

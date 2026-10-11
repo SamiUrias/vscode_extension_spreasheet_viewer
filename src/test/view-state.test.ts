@@ -11,6 +11,8 @@ suite('Persistent view state', () => {
 		assert.strictEqual(restored.corrupted, false);
 		assert.deepStrictEqual(restored.state?.sheets['sheet:0']?.selection, { row: 53, column: 1 });
 		assert.strictEqual(restored.state?.sheets['sheet:0']?.query, 'Guatemala');
+		assert.deepStrictEqual(restored.state?.sheets['sheet:0']?.filters, makeState(state.uri).sheets['sheet:0']!.filters);
+		assert.strictEqual(restored.state?.sheets['sheet:0']?.searchAllRows, true);
 	});
 
 	test('keeps edit and preview preferences separate for the same URI', () => {
@@ -32,6 +34,15 @@ suite('Persistent view state', () => {
 		const large = makeState('file:///large.csv');
 		large.sheets['sheet:0']!.query = 'x'.repeat(MAX_VIEW_STATE_BYTES);
 		assert.strictEqual(validateViewState(large, large.uri, large.mode), undefined);
+	});
+
+	test('migrates V1 view states written before filters were added', () => {
+		const oldState = makeState('file:///old.csv');
+		const oldSheet = oldState.sheets['sheet:0']! as unknown as Record<string, unknown>;
+		delete oldSheet.filters; delete oldSheet.searchAllRows;
+		const migrated = validateViewState(oldState, oldState.uri, oldState.mode);
+		assert.deepStrictEqual(migrated?.sheets['sheet:0']?.filters, []);
+		assert.strictEqual(migrated?.sheets['sheet:0']?.searchAllRows, false);
 	});
 
 	test('keeps the most recently used 100 file/mode records', () => {
@@ -63,7 +74,8 @@ function makeState(uri: string): ViewStateV1 {
 		version: 1, uri, mode: 'edit', schema: 'csv-v1', activeSheetId: 'sheet:0', updatedAt: 1,
 		sheets: { 'sheet:0': {
 			schema: 'columns:3', query: 'Guatemala', selection: { row: 53, column: 1 }, scroll: { top: 1200, left: 64 },
-			sort: [{ column: 1, direction: 'asc', mode: 'text' }], columnWidths: { '1': 220 }, rowHeights: { '53': 34 }, showComments: false,
+			sort: [{ column: 1, direction: 'asc', mode: 'text' }], filters: [{ column: 2, kind: 'conditions', join: 'and', conditions: [{ operator: 'startsWith', mode: 'text', value: 'America' }] }],
+			columnWidths: { '1': 220 }, rowHeights: { '53': 34 }, showComments: false, searchAllRows: true,
 		} },
 	};
 }

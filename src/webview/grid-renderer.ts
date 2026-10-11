@@ -23,6 +23,7 @@ export interface GridRenderContext {
 	setInlineEditorDirty(value: boolean): void; commitInlineEdit(): void; cancelInlineEdit(): void;
 	selectCell(row: number, column: number): void; beginInlineEdit(row: number, column: number): void;
 	projection: RowProjection; sortHeader(column: number, event: MouseEvent): void; sortLabel(column: number): string;
+	openFilter(column: number, button: HTMLButtonElement): void; isFiltered(column: number): boolean;
 }
 
 export function renderSpreadsheetGrid(context: GridRenderContext): void {
@@ -31,7 +32,7 @@ export function renderSpreadsheetGrid(context: GridRenderContext): void {
 		updateGridColumnSizing, getActiveRowLayout, findRowAtOffset, startRowResize,
 		resizeRowWithKeyboard, columnName, isSelected, isFormula, getFormulaCache, getFormulaResult,
 		isEditing, isActiveSearchMatch, inlineEditValue, setInlineEditValue, sendDraftState, setInlineEditorDirty,
-		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit, projection, sortHeader, sortLabel } = context;
+		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit, projection, sortHeader, sortLabel, openFilter, isFiltered } = context;
 	let { rowsViewport, renderedColumnCount } = state;
 
 	if (!snapshot || snapshot.rowCount === 0 || snapshot.columnCount === 0) {
@@ -74,8 +75,18 @@ const templateColumns = gridTemplateColumns(widths);
 				headerLabel.textContent = label;
 				heading.append(headerLabel);
 			}
-			heading.title = 'Click: ordenar; Shift+click: añadir criterio; Ctrl/Cmd+click: quitar criterio; Alt+click: alternar texto/número';
+			heading.title = 'Click: ascendente, descendente, quitar; Shift+click: añadir criterio; Ctrl/Cmd+click: quitar criterio; Alt+click: alternar texto/número. El número indica prioridad.';
 			heading.addEventListener('click', event => sortHeader(column, event));
+			const filterButton = document.createElement('button');
+			filterButton.className = 'column-filter-button';
+			filterButton.type = 'button';
+			filterButton.textContent = isFiltered(column) ? '▼' : '▽';
+			filterButton.setAttribute('aria-label', `Filtrar columna ${columnName(column)}${label ? ` (${label})` : ''}`);
+			filterButton.setAttribute('aria-haspopup', 'dialog');
+			filterButton.setAttribute('aria-expanded', 'false');
+			filterButton.title = isFiltered(column) ? 'Editar o limpiar filtro' : 'Filtrar esta columna';
+			filterButton.addEventListener('click', event => {event.stopPropagation(); openFilter(column, filterButton);});
+			heading.append(filterButton);
 			const resizeHandle = document.createElement('span');
 			resizeHandle.className = 'column-resize-handle';
 			resizeHandle.setAttribute('role', 'separator');
@@ -109,6 +120,14 @@ const templateColumns = gridTemplateColumns(widths);
 	const endVisibleRow = Math.min(visibleRowCount, lastViewportRow + overscan + 1);
 	rowsViewport.style.height = `${projectedOffsets[visibleRowCount] ?? 0}px`;
 	rowsViewport.replaceChildren();
+	if (visibleRowCount === 0) {
+		rowsViewport.style.height = 'auto';
+		const empty = document.createElement('p');
+		empty.className = 'empty-state';
+		empty.textContent = 'Ninguna fila coincide con los filtros. Puedes ajustar o limpiar el filtro en los encabezados.';
+		rowsViewport.append(empty);
+		return;
+	}
 	for (let rowIndex = firstVisibleRow; rowIndex < endVisibleRow; rowIndex++) {
 		const sourceRow = projection.visibleRows[rowIndex]!;
 		const row = document.createElement('div');
