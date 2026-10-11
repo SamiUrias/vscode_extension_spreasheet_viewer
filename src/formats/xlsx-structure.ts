@@ -1,5 +1,6 @@
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import { unzipSync, zipSync } from 'fflate';
+import { transformFormulaReferences, type FormulaParserService } from '../formula-reference';
 import { parseXlsxBytes, type XlsxWorkbook } from './xlsx';
 
 export type XlsxStructureOperation =
@@ -12,9 +13,9 @@ export interface XlsxStructureCapability { readonly allowed: boolean; readonly r
 export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapability {
 	try {
 		const workbook = parseXlsxBytes(bytes);
-		assertSupportedStructureProfile(workbook);
+		assertSupportedStructureProfile(workbook, true);
 		const files = unzipSync(bytes);
-		if (files['xl/calcChain.xml'] || files['xl/connections.xml'] || Object.keys(files).some(name => /^xl\/(?:queryTables|slicerCaches|slicers)\//i.test(name))) {
+		if (files['xl/connections.xml'] || Object.keys(files).some(name => /^xl\/(?:queryTables|slicerCaches|slicers)\//i.test(name))) {
 			throw new Error('El libro contiene conexiones o referencias de cálculo no compatibles.');
 		}
 		const workbookXml = files['xl/workbook.xml']; const relsXml = files['xl/_rels/workbook.xml.rels'];
@@ -29,6 +30,7 @@ export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapa
 			const worksheet = parseXml(part, 'hoja XLSX');
 			const unsupportedNodes = ['extLst', 'autoFilter', 'dataValidations', 'conditionalFormatting', 'tableParts', 'legacyDrawing', 'drawing', 'mergeCells', 'hyperlinks', 'sheetProtection'];
 			if (unsupportedNodes.some(name => descendants(worksheet, name).length > 0)) {throw new Error('Una hoja contiene filtros, vínculos o extensiones que la operación no actualiza.');}
+			assertNormalFormulaNodes(worksheet);
 		}
 		return { allowed: true };
 	} catch (error) {
@@ -41,9 +43,9 @@ export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapa
  * references or coordinates are not rewritten by this module. The caller can retain `before` as
  * one reversible history snapshot.
  */
-export function applyXlsxStructureOperation(bytes: Uint8Array, operation: XlsxStructureOperation): XlsxStructureSnapshot {
+export async function applyXlsxStructureOperation(bytes: Uint8Array, operation: XlsxStructureOperation, parser?: FormulaParserService): Promise<XlsxStructureSnapshot> {
 	const workbook = parseXlsxBytes(bytes);
-	assertSupportedStructureProfile(workbook);
+	assertSupportedStructureProfile(workbook, true);
 	const sheet = workbook.sheets[operation.sheetIndex];
 	if (!sheet) {throw new Error('La hoja XLSX seleccionada ya no existe.');}
 	if (!Number.isSafeInteger(operation.index) || operation.index < 0 || !Number.isSafeInteger(operation.count) || operation.count < 1) {
@@ -60,7 +62,7 @@ export function applyXlsxStructureOperation(bytes: Uint8Array, operation: XlsxSt
 	const nextColumns = isRow ? sheet.columnCount : sheet.columnCount + (operation.kind === 'insertColumns' ? operation.count : -operation.count);
 	if (Math.max(1, nextRows) * Math.max(1, nextColumns) > 1_000_000) {throw new Error('La operación excede el límite de un millón de celdas.');}
 	const files = unzipSync(bytes);
-	if (files['xl/calcChain.xml'] || files['xl/connections.xml'] || Object.keys(files).some(name => /^xl\/(?:queryTables|slicerCaches|slicers)\//i.test(name))) {
+	if (files['xl/connections.xml'] || Object.keys(files).some(name => /^xl\/(?:queryTables|slicerCaches|slicers)\//i.test(name))) {
 		throw new Error('No se puede cambiar la estructura: el libro contiene conexiones o referencias de cálculo no compatibles.');
 	}
 	const workbookXml = files['xl/workbook.xml'];
@@ -81,6 +83,12 @@ export function applyXlsxStructureOperation(bytes: Uint8Array, operation: XlsxSt
 		if (unsupportedNodes.some(name => descendants(worksheet, name).length > 0)) {
 			throw new Error('No se puede cambiar la estructura: una hoja contiene referencias o extensiones que esta operación no actualiza.');
 		}
+		assertNormalFormulaNodes(worksheet);
+	}
+	const hasFormulas = workbook.sheets.some(sheet => sheet.cellTypes.some(row => row.includes('formula')));
+	if (hasFormulas) {
+		if (!parser) {throw new Error('Se requiere el parser de fórmulas para cambiar la estructura de este libro.');}
+		await rewriteWorkbookFormulaReferences(files, book, rels, workbook, operation, parser);
 	}
 	const selected = sheetNodes[operation.sheetIndex];
 	const relationId = selected?.getAttribute('r:id') ?? '';
@@ -103,19 +111,97 @@ export function applyXlsxStructureOperation(bytes: Uint8Array, operation: XlsxSt
 	return { before: bytes.slice(), after, operation: { ...operation } };
 }
 
-export function assertSupportedStructureProfile(workbook: XlsxWorkbook): void {
+export function assertSupportedStructureProfile(workbook: XlsxWorkbook, allowNormalFormulas = false): void {
 	if (workbook.unknownParts?.length) {throw new Error('No se puede cambiar la estructura: el libro contiene componentes XLSX no interpretados.');}
 	if (workbook.definedNames?.length) {throw new Error('No se puede cambiar la estructura: hay nombres definidos que podrían apuntar a celdas.');}
 	if (workbook.hasExternalReferences) {throw new Error('No se puede cambiar la estructura: hay referencias externas.');}
 	for (const sheet of workbook.sheets) {
-		if (sheet.cellTypes.some(row => row.some(type => type === 'formula' || type === 'unsupported'))) {
-			throw new Error('No se puede cambiar la estructura: una hoja contiene fórmulas o tipos de celda no compatibles.');
+		if (sheet.cellTypes.some(row => row.some(type => type === 'unsupported' || type === 'formula' && !allowNormalFormulas))) {
+			throw new Error('No se puede cambiar la estructura: una hoja contiene fórmulas no compatibles o tipos de celda desconocidos.');
 		}
 		const metadata = sheet.metadata;
 		if (metadata?.protected || metadata?.mergedRanges.length || metadata?.hyperlinkCount || metadata?.tableCount || metadata?.hasNotes || metadata?.hasDrawings) {
 			throw new Error('No se puede cambiar la estructura: una hoja contiene protección, combinaciones o referencias adicionales.');
 		}
 	}
+}
+
+function assertNormalFormulaNodes(worksheet: Document): void {
+	for (const formula of descendants(worksheet, 'f')) {
+		if (formula.attributes.length !== 0 || !formula.textContent?.trim()) {
+			throw new Error('No se puede cambiar la estructura: una fórmula compartida, matricial o extendida no está admitida.');
+		}
+	}
+}
+
+async function rewriteWorkbookFormulaReferences(
+	files: Record<string, Uint8Array>, book: Document, rels: Document, workbook: XlsxWorkbook,
+	operation: XlsxStructureOperation, parser: FormulaParserService,
+): Promise<void> {
+	const sheets = descendants(book, 'sheet');
+	const targetSheet = workbook.sheets[operation.sheetIndex]?.name;
+	if (!targetSheet) {throw new Error('La hoja objetivo de las fórmulas ya no existe.');}
+	let formulaChanged = false;
+	for (let index = 0; index < sheets.length; index++) {
+		const sheetNode = sheets[index]!;
+		const sheetName = workbook.sheets[index]?.name;
+		const id = sheetNode.getAttribute('r:id') ?? '';
+		const relation = descendants(rels, 'Relationship').find(item => item.getAttribute('Id') === id);
+		const target = relation?.getAttribute('Target');
+		if (!sheetName || !target || relation?.getAttribute('TargetMode') === 'External') {throw new Error('No se pudo resolver una hoja para actualizar sus fórmulas.');}
+		const part = resolveTarget(target); const bytes = files[part];
+		if (!bytes) {throw new Error('Falta una hoja al actualizar sus fórmulas.');}
+		const document = parseXml(bytes, part);
+		let sheetChanged = false;
+		for (const formula of descendants(document, 'f')) {
+			const original = formula.textContent ?? '';
+			const result = await transformFormulaReferences(`=${original}`, {
+				kind: operation.kind.startsWith('insert') ? 'insert' : 'delete',
+				axis: operation.kind.endsWith('Rows') ? 'row' : 'column',
+				index: operation.index + 1, count: operation.count, formulaSheet: sheetName, targetSheet,
+			}, parser);
+			if (result.status === 'unsupported') {
+				const cell = formula.parentNode as Element | null;
+				throw new Error(`No se puede cambiar la estructura: fórmula${cell?.getAttribute('r') ? ` en ${cell.getAttribute('r')}` : ''}: ${result.reason}`);
+			}
+			if (result.status !== 'transformed') {continue;}
+			formula.textContent = result.formula.slice(1);
+			const cell = formula.parentNode as Element | null;
+			if (cell) {for (const cache of directChildren(cell, 'v')) {cell.removeChild(cache);}}
+			sheetChanged = true; formulaChanged = true;
+		}
+		if (sheetChanged) {files[part] = new TextEncoder().encode(new XMLSerializer().serializeToString(document));}
+	}
+	if (formulaChanged) {invalidateFormulaCalculation(files, book, rels);}
+}
+
+function invalidateFormulaCalculation(files: Record<string, Uint8Array>, workbook: Document, relationships: Document): void {
+	for (const relationship of descendants(relationships, 'Relationship')) {
+		if (!relationship.getAttribute('Type')?.endsWith('/calcChain')) {continue;}
+		const target = relationship.getAttribute('Target');
+		if (target) {delete files[resolveTarget(target)];}
+		relationship.parentNode?.removeChild(relationship);
+	}
+	const contentTypes = files['[Content_Types].xml'];
+	if (contentTypes) {
+		const document = parseXml(contentTypes, '[Content_Types].xml');
+		for (const override of descendants(document, 'Override')) {
+			if ((override.getAttribute('PartName') ?? '').toLowerCase() === '/xl/calcchain.xml') {override.parentNode?.removeChild(override);}
+		}
+		files['[Content_Types].xml'] = new TextEncoder().encode(new XMLSerializer().serializeToString(document));
+	}
+	let calc = descendants(workbook, 'calcPr')[0];
+	if (!calc) {
+		const root = workbook.documentElement;
+		if (!root) {throw new Error('El XLSX no tiene elemento workbook para marcar recálculo.');}
+		calc = workbook.createElementNS(root.namespaceURI, 'calcPr');
+		const sheets = descendants(workbook, 'sheets')[0];
+		const next = sheets?.nextSibling;
+		if (sheets && next) {root.insertBefore(calc, next);} else {root.appendChild(calc);}
+	}
+	calc.setAttribute('calcId', '0'); calc.setAttribute('fullCalcOnLoad', '1'); calc.setAttribute('forceFullCalc', '1');
+	files['xl/workbook.xml'] = new TextEncoder().encode(new XMLSerializer().serializeToString(workbook));
+	files['xl/_rels/workbook.xml.rels'] = new TextEncoder().encode(new XMLSerializer().serializeToString(relationships));
 }
 
 function rewriteRows(doc: Document, at: number, count: number, insert: boolean, columnCount: number): void {

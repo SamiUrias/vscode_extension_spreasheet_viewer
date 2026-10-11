@@ -54,7 +54,7 @@ suite('recovery document restoration', () => {
 		let recovered: SpreadsheetDocument | undefined;
 		try {
 			document = SpreadsheetDocument.fromBytes(uri, baseline);
-			document.applyXlsxStructure({ kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 });
+			await document.applyXlsxStructure({ kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 });
 			const working = document.serializeCopy();
 			assert.equal(document.xlsx?.sheets[0]?.rowCount, 3);
 			recovered = await SpreadsheetDocument.restoreRecovery(uri, { uri: uri.toString(), baselineBytes: baseline, workingBytes: working });

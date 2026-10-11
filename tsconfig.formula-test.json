@@ -11,7 +11,9 @@
 	},
 	"include": [
 		"src/protocol.ts",
+		"src/cell-reference.ts",
 		"src/formats/xlsx.ts",
+		"src/formats/xlsx-structure.ts",
 		"src/formula-reference.ts",
 		"src/formula-parser-node.mts",
 		"src/webview/formula-calculator.ts",

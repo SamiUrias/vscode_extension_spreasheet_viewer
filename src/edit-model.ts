@@ -1,6 +1,7 @@
 import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { parseXlsxBytes, serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredType, type XlsxWorkbook } from './formats/xlsx';
 import { applyXlsxStructureOperation, type XlsxStructureOperation } from './formats/xlsx-structure';
+import type { FormulaParserService } from './formula-reference';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 import { isCellCoveredByRange } from './cell-reference';
 
@@ -52,10 +53,10 @@ export class SpreadsheetEditSession {
 	get csvTable(): CsvTable | undefined {return this.csv;}
 	get xlsxWorkbook(): XlsxWorkbook | undefined {return this.xlsx;}
 
-	applyXlsxStructure(operation: XlsxStructureOperation): number {
+	async applyXlsxStructure(operation: XlsxStructureOperation, parser?: FormulaParserService): Promise<number> {
 		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La operación estructural solo está disponible para XLSX.');}
 		if (this.edits.size) {throw new Error('Guarda o deshaz las ediciones de celdas antes de cambiar la estructura XLSX.');}
-		const result = applyXlsxStructureOperation(this.xlsxBytes, operation);
+		const result = await applyXlsxStructureOperation(this.xlsxBytes, operation, parser);
 		const before: XlsxStructureState = { workbook: this.xlsx, bytes: result.before };
 		const after: XlsxStructureState = { workbook: parseXlsxBytes(result.after), bytes: result.after };
 		this.restoreXlsxStructure(after);

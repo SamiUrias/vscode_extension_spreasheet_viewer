@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SpreadsheetDocument } from './document';
+import { loadFormulaParserService } from './formula-parser-loader';
 import { CsvDelimiterAmbiguityError, type CsvParseOptions } from './formats/csv';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
@@ -642,7 +643,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					throw new Error('La operación cambió mientras se confirmaba; vuelve a intentarlo.');
 				}
 			}
-			const transactionId = document.applyXlsxStructure({ kind: message.kind, sheetIndex: message.sheetIndex, index: message.index, count: message.count });
+			const formulaParser = document.xlsx.sheets.some(sheet => sheet.cellTypes.some(row => row.includes('formula')))
+				? await loadFormulaParserService(this.extensionUri) : undefined;
+			if (message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)
+				|| document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('El archivo cambió mientras se preparaba la operación; guarda y vuelve a intentarlo.');}
+			const transactionId = await document.applyXlsxStructure({ kind: message.kind, sheetIndex: message.sheetIndex, index: message.index, count: message.count }, formulaParser);
 			const label = message.kind.startsWith('insert') ? 'Insertar estructura XLSX' : 'Eliminar estructura XLSX';
 			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
 			this.emitter.fire({ document, label, undo: () => {if (document.undo(transactionId)) {update();}}, redo: () => {if (document.redo(transactionId)) {update();}} });

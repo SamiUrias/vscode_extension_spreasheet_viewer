@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-18A están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18. V2-18B es la etapa siguiente. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-18B están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18 y V2-18B aún requiere abrir fixtures guardados en Excel o LibreOffice. La siguiente etapa es V2-19A. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -964,9 +964,14 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A y V2
 
 #### V2-18B — Estructura XLSX con fórmulas normales
 
-**Depende de:** V2-18A/V2-17B/V2-20A. **Archivos:** xlsx-structure/operations/tests. **Pasos:** ampliar profile únicamente a fórmula normal soportada, inventariando references de todas las hojas. Ajustar fórmulas, cache de las expresiones cambiadas y calcChain de modo coherente; fullCalcOnLoad; conservar fórmulas/cachés no tocadas cuando sea correcto. Metadata con referencias no tratadas sigue bloqueando operación.
+**Depende de:** V2-18A/V2-17B. **Archivos:** xlsx-structure/operations/tests. **Pasos:** ampliar profile únicamente a fórmula normal soportada, inventariando references de todas las hojas. Ajustar fórmulas, cache de las expresiones cambiadas y calcChain de modo coherente; fullCalcOnLoad; conservar fórmulas/cachés no tocadas cuando sea correcto. Metadata con referencias no tratadas sigue bloqueando operación. Las expresiones modificadas se validan con el parser cargado de forma diferida en el host.
 
-**Aceptación:** references entre hojas tras inserción/borrado, Excel/LibreOffice no repara, undo restaura expresiones y caches; shared/array/definedNames/table/external bloqueados explícitos. **Fuera:** afirmar paridad estructural con libros complejos; ampliaciones requieren tarjeta específica de preflight/writer/tests.
+**Aceptación:** pruebas automáticas confirman referencias locales/entre hojas tras insertar y borrar, invalidación de caché/calcChain y recarga correcta del XLSX por el parser de la extensión; undo restaura expresiones y cachés. La apertura sin reparación en Excel/LibreOffice queda pendiente de verificación manual. Shared/array/definedNames/table/external se bloquean explícitamente. **Fuera:** afirmar paridad estructural con libros complejos; ampliaciones requieren tarjeta específica de preflight/writer/tests.
+
+- [x] Permitir únicamente fórmulas normales y referencias A1 soportadas; rechazar fórmulas shared/array y metadata no transformada.
+- [x] Actualizar referencias locales y entre hojas antes de cambiar coordenadas de la hoja, borrar cachés y eliminar calcChain al cambiar fórmulas; activar recálculo al abrir.
+- [x] Conservar las cachés de expresiones que no cambian y probar integración de inserción, relaciones, contenido y reapertura con el parser XLSX.
+- [ ] Abrir un XLSX estructuralmente editado en Excel o LibreOffice para verificar que no solicite reparar el archivo; requiere prueba manual en Extension Host.
 
 #### V2-19A — Baseline de rendimiento y transporte
 
@@ -1112,7 +1117,7 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 >
 > Al cerrar, actualiza estado de **esa tarjeta** con archivos, evidencia/tests y pendientes; reporta qué acciones manuales la verifican. Todo botón añadido debe tener tooltip; toda nueva funcionalidad queda activada por defecto y se puede desactivar desde `settings.json`. Documenta las opciones en `CONFIGURATION.md` y la experiencia en `README.md` en el mismo cambio. Ejecuta los criterios de aceptación y, cuando la etapa quede verificada y la documentación esté actualizada, crea un commit. Si un check requerido está bloqueado por el entorno, describe el comando y error, deja el check pendiente y no marques la etapa como verificada. No declares v2 completa ni soporte de host/formato complejo antes de sus criterios. Si detectas una brecha nueva, agrégala a F/T y describe su efecto; no la implementes como refactor incidental.
 
-El trabajo implementado llega hasta **V2-16B2**; sigue con **V2-17A — Estructura XLSX segura en modelo** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
+El trabajo implementado llega hasta **V2-18B**; sigue con **V2-19A — Baseline de rendimiento y transporte** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
 

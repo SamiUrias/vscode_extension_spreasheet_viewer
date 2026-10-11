@@ -6,6 +6,7 @@ import type { RecoveryDraft, RecoveryEnvelopeV1 } from './recovery';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvRowOperation, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
 import { getXlsxStructureCapability, type XlsxStructureCapability, type XlsxStructureOperation } from './formats/xlsx-structure';
+import type { FormulaParserService } from './formula-reference';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
@@ -148,8 +149,8 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return transactionId;
 	}
 
-	applyXlsxStructure(operation: XlsxStructureOperation): number {
-		const transactionId = this.editSession.applyXlsxStructure(operation);
+	async applyXlsxStructure(operation: XlsxStructureOperation, parser?: FormulaParserService): Promise<number> {
+		const transactionId = await this.editSession.applyXlsxStructure(operation, parser);
 		this.xlsx = this.editSession.xlsxWorkbook;
 		this.revision++;
 		return transactionId;
