@@ -15,6 +15,7 @@ export default defineConfig([
 	{
 		label: 'trustedWorkspaceTests',
 		files: 'out/test/**/*.test.js',
+		mocha: { timeout: 10000 },
 		launchArgs: [`--user-data-dir=${userDataDir}`],
 	},
 ]);

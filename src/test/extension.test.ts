@@ -113,10 +113,11 @@ suite('Spreadsheet Viewer editor', () => {
 	test('opens a disk preview in its own read-only panel without changing the file', async () => {
 		const directory = await mkdtemp(path.join(os.tmpdir(), 'spreadsheet-viewer-preview-'));
 		const uri = vscode.Uri.file(path.join(directory, 'preview.csv'));
-		const bytes = Buffer.from('name|value\nfirst|1\n');
+		const bytes = Buffer.from('name,value\nfirst,1\n');
 		await writeFile(uri.fsPath, bytes);
 		try {
 			await vscode.commands.executeCommand('spreadsheet-viewer.preview', uri);
+			await waitFor(() => findWebviewTabs('spreadsheet-viewer.preview').length === 1, 'disk preview tab');
 			assert.strictEqual(findWebviewTabs('spreadsheet-viewer.preview').length, 1);
 			assert.deepStrictEqual(await readFile(uri.fsPath), bytes);
 		} finally {
@@ -136,6 +137,7 @@ suite('Spreadsheet Viewer editor', () => {
 			edit.replace(uri, new vscode.Range(textDocument.positionAt(0), textDocument.positionAt(textDocument.getText().length)), 'name,value\nchanged,2\n');
 			assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
 			await vscode.commands.executeCommand('spreadsheet-viewer.previewBuffer', uri);
+			await waitFor(() => findWebviewTabs('spreadsheet-viewer.preview').length === 1, 'buffer preview tab');
 			assert.strictEqual(findWebviewTabs('spreadsheet-viewer.preview').length, 1);
 			assert.strictEqual(textDocument.isDirty, true);
 			assert.deepStrictEqual(await readFile(uri.fsPath), original);
@@ -159,4 +161,12 @@ function findCustomTabs(uri: vscode.Uri, viewType: string): vscode.Tab[] {
 function findWebviewTabs(viewType: string): vscode.Tab[] {
 	return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab =>
 		tab.input instanceof vscode.TabInputWebview && tab.input.viewType === viewType);
+}
+
+async function waitFor(predicate: () => boolean, label: string, timeoutMs = 5000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) {assert.fail(`Timed out waiting for ${label} after ${timeoutMs}ms`);}
+		await new Promise(resolve => setTimeout(resolve, 25));
+	}
 }

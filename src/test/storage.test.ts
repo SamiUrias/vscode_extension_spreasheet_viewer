@@ -28,6 +28,7 @@ suite('Spreadsheet storage', () => {
 		const uri = vscode.Uri.parse('spreadsheet-viewer-ro-test:/book.csv');
 		provider.seed(uri, Buffer.from('a,b\n1,2\n'));
 		try {
+			await waitFor(() => vscode.workspace.fs.isWritableFileSystem(uri.scheme) !== undefined, 'read-only provider registration');
 			assert.strictEqual(vscode.workspace.fs.isWritableFileSystem(uri.scheme), false);
 			await assert.rejects(replaceFile(uri, Buffer.from('a,b\n1,3\n')), /no confirma permisos de escritura/);
 			assert.deepStrictEqual(provider.read(uri), Buffer.from('a,b\n1,2\n'));
@@ -42,6 +43,7 @@ suite('Spreadsheet storage', () => {
 		const updated = Buffer.from('a,b\n1,3\n');
 		provider.seed(uri, original);
 		try {
+			await waitFor(() => vscode.workspace.fs.isWritableFileSystem(uri.scheme) !== undefined, 'writable provider registration');
 			assert.strictEqual(vscode.workspace.fs.isWritableFileSystem(uri.scheme), true);
 			await replaceFile(uri, updated, original);
 			assert.deepStrictEqual(provider.read(uri), updated);
@@ -57,6 +59,7 @@ suite('Spreadsheet storage', () => {
 		const draft = Buffer.from('a,b\n1,3\n');
 		provider.seed(uri, original);
 		try {
+			await waitFor(() => vscode.workspace.fs.isWritableFileSystem(uri.scheme) !== undefined, 'rename-test provider registration');
 			assert.strictEqual(vscode.workspace.fs.isWritableFileSystem(uri.scheme), true);
 			await assert.rejects(replaceFile(uri, draft, original), /simulated rename failure/);
 			assert.deepStrictEqual(provider.read(uri), original);
@@ -79,6 +82,14 @@ suite('Spreadsheet storage', () => {
 		}
 	});
 });
+
+async function waitFor(predicate: () => boolean, label: string, timeoutMs = 5000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) {assert.fail(`Timed out waiting for ${label} after ${timeoutMs}ms`);}
+		await new Promise(resolve => setTimeout(resolve, 25));
+	}
+}
 
 class MemoryFileSystemProvider implements vscode.FileSystemProvider {
 	private readonly files = new Map<string, Uint8Array>();
