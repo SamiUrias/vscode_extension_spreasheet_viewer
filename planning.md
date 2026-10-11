@@ -801,6 +801,12 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 
 **Aceptación:** segunda celda inválida revierte todo lote; un undo revierte todo paste futuro; no-op no crea historial; edición durante save genera revisión siguiente; conflictos disco preservan journal. **Fuera:** UI de pegado, estructura ni fórmulas editables. **Checks:** tests transacciones y regresiones de formatos/storage.
 
+- [x] Agregar preflight de lote al journal, identidad de transacción para undo/redo y adaptación de la edición simple a una transacción 1×1.
+- [x] Exponer en el snapshot de hoja valores, tipos y kinds derivados del journal para no enviar metadata inicial desactualizada al webview.
+- [x] Añadir ruta host `editCells` con un único evento de undo, revisión, snapshot y guardado por lote; mantener fuera una interfaz de pegado.
+- [x] Verificar atomicidad, transacción única, no-op, identidad undo/redo, metadata XLSX y suites de clipboard/modelo/formatos (29 tests focalizados pasan).
+- [ ] Ejecutar pruebas completas de save lifecycle, conflicto y Extension Host; el runner general sigue bloqueado por Node 18.20.4 y su dependencia `/v`.
+
 #### V2-12B — Backup de draft y recuperación coherente
 
 **Depende de:** V2-12A/V2-00B. **Archivos:** storage/document/editor/protocol/tests. **Pasos:** envelope backup versionado del contrato, draft separado y baseline; Save solicita/recoge confirmación de draft antes de snapshot, con timeout, o conserva draft sin guardarlo según acción explícita; no salvar mediante dispose. Restauración reconoce legacy y conflicto con disco. Añadir modo save manual opcional manteniendo onCommit default; comprobar dirty VS Code.

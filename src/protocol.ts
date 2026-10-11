@@ -42,6 +42,11 @@ export interface EditCellMessage {
 	value: string;
 }
 
+export interface EditCellsMessage {
+	type: 'editCells'; documentId: string; revision: number; sheetIndex: number; sheetId: string;
+	edits: Array<{ row: number; column: number; value: string; targetType?: 'string' | 'number' | 'boolean' | 'date' }>;
+}
+
 export interface HistoryMessage {
 	type: 'history';
 	direction: 'undo' | 'redo';
@@ -69,7 +74,7 @@ export interface DraftStateMessage {
 	value: string;
 }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | HistoryMessage | DraftStateMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditCellsMessage | HistoryMessage | DraftStateMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';

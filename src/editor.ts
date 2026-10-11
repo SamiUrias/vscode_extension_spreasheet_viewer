@@ -180,6 +180,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				this.applyEdit(document, message);
 				return;
 			}
+			if (isEditCellsMessage(message)) {
+				this.applyEditBatch(document, message, message.edits.map(edit => ({ ...edit, sheetIndex: message.sheetIndex })));
+				return;
+			}
 			if (isDraftStateMessage(message)) {
 				if (message.documentId !== document.documentId || message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)) {return;}
 				if (message.dirty) {this.panelDrafts.set(panel, message);}
@@ -226,6 +230,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			return;
 		}
 		const sheet = workbook.sheets[sheetIndex];
+		const snapshot = document.editSession.getSheetSnapshot(sheetIndex);
 		const data: XlsxDataMessage = {
 			type: 'xlsxData',
 			fileFormat: document.ods ? 'ods' : 'xlsx',
@@ -238,14 +243,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			sheetNames: workbook.sheets.map(item => item.name),
 			activeSheetIndex: sheetIndex,
 			...(requestId === undefined ? {} : { requestId }),
-			rows: document.editSession.getRows(sheetIndex),
-			cellKinds: sheet.cellKinds,
-			cellTypes: sheet.cellTypes,
-			cellCapabilities: sheet.cellTypes.map((row, r) => row.map((storedType, c) => {
+			rows: snapshot.rows,
+			cellKinds: snapshot.cellKinds ?? sheet.cellKinds,
+			cellTypes: snapshot.cellTypes ?? sheet.cellTypes,
+			cellCapabilities: (snapshot.cellTypes ?? sheet.cellTypes).map(row => row.map(storedType => {
 				const editable = storedType !== 'formula' && storedType !== 'error' && storedType !== 'unsupported';
 				return { storedType, editable, ...(!editable ? { reason: `Tipo ${storedType} protegido en esta etapa.` } : {}) };
 			})),
-			formulaCaches: sheet.formulaCaches,
+			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
 			...(document.xlsx ? { workbookBase64: this.getFormulaSnapshot(document) } : {}),
 			rowCount: sheet.rowCount,
 			columnCount: sheet.columnCount,
@@ -448,17 +453,49 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (document.csv?.rowKinds[message.row] === 'comment') {throw new Error('Los registros de comentario CSV no se pueden editar como celdas.');}
 			const before = document.editSession.getCell(message.sheetIndex, message.row, message.column);
 			if (before.value === message.value && before.exists) {return;}
-			document.editCell(message.sheetIndex, message.row, message.column, message.value);
+			const transactionId = document.editCell(message.sheetIndex, message.row, message.column, message.value);
+			if (transactionId === undefined) {return;}
 			const event: vscode.CustomDocumentEditEvent<SpreadsheetDocument> = {
 				document,
 				label: `Editar ${columnName(message.column + 1)}${message.row + 1}`,
-				undo: () => { document.undo(); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document); },
-				redo: () => { document.redo(); this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document); },
+				undo: () => { if (document.undo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
+				redo: () => { if (document.redo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
 			};
 			this.emitter.fire(event);
 			this.postDocument(document);
 			this.postSaveState(document, { type: 'saveState', state: 'pending' });
 			if (scheduleSave) {this.scheduleSave(document);}
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
+			void vscode.window.showErrorMessage(`No se pudo aplicar la edición: ${messageText}`);
+		}
+	}
+
+	private applyEditBatch(
+		document: SpreadsheetDocument,
+		message: Pick<Extract<WebviewToExtensionMessage, { type: 'editCells' }>, 'documentId' | 'revision' | 'sheetIndex' | 'sheetId'>,
+		edits: Array<{ sheetIndex: number; row: number; column: number; value: string; targetType?: 'string' | 'number' | 'boolean' | 'date' }>,
+	): void {
+		if (document.isDisposed) {return;}
+		try {
+			if (message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {
+				throw new Error('La edición quedó desactualizada; se recargaron los datos actuales.');
+			}
+			if (document.csv && edits.some(edit => document.csv?.rowKinds[edit.row] === 'comment')) {throw new Error('Los registros de comentario CSV no se pueden editar como celdas.');}
+			const transactionId = document.editCells(edits);
+			if (transactionId === undefined) {return;}
+			const event: vscode.CustomDocumentEditEvent<SpreadsheetDocument> = {
+				document,
+				label: `Editar ${edits.length} celdas`,
+				undo: () => { if (document.undo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
+				redo: () => { if (document.redo(transactionId)) {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);} },
+			};
+			this.emitter.fire(event);
+			this.postDocument(document);
+			this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			this.scheduleSave(document);
 		} catch (error) {
 			const messageText = errorMessage(error);
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText });
@@ -926,6 +963,22 @@ function isEditCellMessage(message: unknown): message is Extract<WebviewToExtens
 	return typeof candidate.documentId === 'string' && Number.isInteger(candidate.revision) && typeof candidate.sheetId === 'string'
 		&& Number.isInteger(candidate.sheetIndex) && Number.isInteger(candidate.row)
 		&& Number.isInteger(candidate.column) && typeof candidate.value === 'string';
+}
+
+function isEditCellsMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'editCells' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'editCells') {return false;}
+	const candidate = message as Record<string, unknown>;
+	if (typeof candidate.documentId !== 'string' || !Number.isInteger(candidate.revision) || !Number.isInteger(candidate.sheetIndex)
+		|| typeof candidate.sheetId !== 'string' || !Array.isArray(candidate.edits) || candidate.edits.length > 500_000) {return false;}
+	let totalCharacters = 0;
+	return candidate.edits.every(item => {
+		if (typeof item !== 'object' || item === null) {return false;}
+		const edit = item as Record<string, unknown>;
+		if (!Number.isInteger(edit.row) || !Number.isInteger(edit.column) || typeof edit.value !== 'string'
+			|| (edit.targetType !== undefined && !['string', 'number', 'boolean', 'date'].includes(String(edit.targetType)))) {return false;}
+		totalCharacters += (edit.value as string).length;
+		return totalCharacters <= 50 * 1024 * 1024;
+	});
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {

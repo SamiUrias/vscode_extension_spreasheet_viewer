@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { SpreadsheetEditSession } from './edit-model';
+import { SpreadsheetEditSession, type CellEditInput } from './edit-model';
 import { MAX_CSV_BYTES, parseCsvBytes, type CsvParseOptions, type CsvTable } from './formats/csv';
 import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xlsx';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
@@ -63,17 +63,24 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 		return bytes;
 	}
 
-	editCell(sheetIndex: number, row: number, column: number, value: string): void {
-		this.editSession.editCell(sheetIndex, row, column, value);
-		this.revision++;
+	editCell(sheetIndex: number, row: number, column: number, value: string): number | undefined {
+		return this.editCells([{ sheetIndex, row, column, value }]);
 	}
 
-	undo(): void {
-		if (this.editSession.undo()) {this.revision++;}
+	editCells(edits: readonly CellEditInput[]): number | undefined {
+		const transactionId = this.editSession.editCells(edits);
+		if (transactionId !== undefined) {this.revision++;}
+		return transactionId;
 	}
 
-	redo(): void {
-		if (this.editSession.redo()) {this.revision++;}
+	undo(transactionId?: number): boolean {
+		if (this.editSession.undo(transactionId)) {this.revision++; return true;}
+		return false;
+	}
+
+	redo(transactionId?: number): boolean {
+		if (this.editSession.redo(transactionId)) {this.revision++; return true;}
+		return false;
 	}
 
 	replaceSavedBytes(bytes: Uint8Array, csvOptions?: CsvParseOptions): void {

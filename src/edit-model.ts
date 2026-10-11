@@ -17,11 +17,18 @@ interface CellEdit extends CellValue {
 	readonly column: number;
 }
 
+export interface CellEditInput {
+	readonly sheetIndex: number; readonly row: number; readonly column: number; readonly value: string; readonly targetType?: EditableCellType;
+}
+interface CellChange { readonly key: string; readonly before: CellEdit | undefined; readonly after: CellEdit | undefined; }
+interface EditTransaction { readonly id: number; readonly changes: readonly CellChange[]; }
+
 /** In-memory edit journal. Serialization always returns a new byte array. */
 export class SpreadsheetEditSession {
 	private readonly edits = new Map<string, CellEdit>();
-	private readonly undoStack: Array<{ key: string; before: CellEdit | undefined; after: CellEdit | undefined }> = [];
-	private readonly redoStack: Array<{ key: string; before: CellEdit | undefined; after: CellEdit | undefined }> = [];
+	private readonly undoStack: EditTransaction[] = [];
+	private readonly redoStack: EditTransaction[] = [];
+	private nextTransactionId = 1;
 
 	constructor(
 		private readonly csv?: CsvTable,
@@ -36,13 +43,27 @@ export class SpreadsheetEditSession {
 	}
 
 	getRows(sheetIndex: number): string[][] {
+		return this.getSheetSnapshot(sheetIndex).rows;
+	}
+
+	getSheetSnapshot(sheetIndex: number): { rows: string[][]; cellKinds?: string[][]; cellTypes?: XlsxStoredType[][]; formulaCaches?: Record<string, string> } {
 		const source = this.csv ? this.csv.rows : (this.xlsx ?? this.ods)?.sheets[sheetIndex]?.rows;
 		if (!source) {throw new Error('La hoja solicitada no existe.');}
 		const rows = source.map(row => [...row]);
+		const sheet = (this.xlsx ?? this.ods)?.sheets[sheetIndex];
+		const cellKinds = sheet?.cellKinds.map(row => [...row]);
+		const cellTypes = sheet?.cellTypes.map(row => [...row]);
 		for (const edit of this.edits.values()) {
-			if (edit.sheetIndex === sheetIndex && rows[edit.row]) {rows[edit.row][edit.column] = edit.value;}
+			if (edit.sheetIndex !== sheetIndex || !rows[edit.row]) {continue;}
+			rows[edit.row]![edit.column] = edit.value;
+			if (cellKinds && cellTypes) {
+				while (cellKinds[edit.row]!.length <= edit.column) {cellKinds[edit.row]!.push('missing');}
+				while (cellTypes[edit.row]!.length <= edit.column) {cellTypes[edit.row]!.push('missing');}
+				cellKinds[edit.row]![edit.column] = edit.value.length === 0 ? 'empty' : 'value';
+				cellTypes[edit.row]![edit.column] = edit.storedType as XlsxStoredType;
+			}
 		}
-		return rows;
+		return { rows, ...(cellKinds ? { cellKinds } : {}), ...(cellTypes ? { cellTypes } : {}), ...(sheet ? { formulaCaches: { ...sheet.formulaCaches } } : {}) };
 	}
 
 	getCell(sheetIndex: number, row: number, column: number): CellValue {
@@ -51,47 +72,55 @@ export class SpreadsheetEditSession {
 		return this.edits.get(key) ?? this.original(sheetIndex, row, column);
 	}
 
-	editCell(sheetIndex: number, row: number, column: number, value: string, targetType?: EditableCellType): void {
-		const before = this.getCell(sheetIndex, row, column);
-		if (before.storedType === 'formula' || before.storedType === 'error' || before.storedType === 'unsupported') {
-			throw new Error('Esta celda XLSX no se puede editar en esta etapa.');
-		}
-		if (this.csv && targetType !== undefined && targetType !== 'string') {
-			throw new Error('Las celdas CSV se conservan como texto.');
-		}
-		const type = targetType ?? before.type;
-		if (type !== before.type && targetType === undefined) {
-			throw new Error('El cambio de tipo requiere una elección explícita.');
-		}
-		validateValue(type, value);
-		const key = cellKey(sheetIndex, row, column);
-		// An explicit edit of an absent cell, including an empty string, materializes that cell.
-		const after: CellEdit = { sheetIndex, row, column, value, type, storedType: type, exists: true };
-		const original = this.original(sheetIndex, row, column);
-		const normalized = equivalent(after, original) ? undefined : after;
-		const prior = this.edits.get(key);
-		this.assign(key, normalized);
-		this.undoStack.push({ key, before: prior, after: normalized });
-		this.redoStack.length = 0;
+	editCell(sheetIndex: number, row: number, column: number, value: string, targetType?: EditableCellType): number | undefined {
+		return this.editCells([{ sheetIndex, row, column, value, ...(targetType ? { targetType } : {}) }]);
 	}
 
-	undo(): boolean {
-		const change = this.undoStack.pop();
-		if (!change) {
-			return false;
+	/** Preflights every cell first, then records one reversible journal transaction. */
+	editCells(inputs: readonly CellEditInput[]): number | undefined {
+		if (inputs.length === 0) {return undefined;}
+		const keys = new Set<string>();
+		const changes: CellChange[] = [];
+		for (const input of inputs) {
+			const { sheetIndex, row, column, value, targetType } = input;
+			const beforeValue = this.getCell(sheetIndex, row, column);
+			if (beforeValue.storedType === 'formula' || beforeValue.storedType === 'error' || beforeValue.storedType === 'unsupported') {
+				throw new Error('Esta celda XLSX no se puede editar en esta etapa.');
+			}
+			if (this.csv && targetType !== undefined && targetType !== 'string') {throw new Error('Las celdas CSV se conservan como texto.');}
+			const type = targetType ?? beforeValue.type;
+			validateValue(type, value);
+			const key = cellKey(sheetIndex, row, column);
+			if (keys.has(key)) {throw new Error('La transacción contiene una celda repetida.');}
+			keys.add(key);
+			const after: CellEdit = { sheetIndex, row, column, value, type, storedType: type, exists: true };
+			const normalized = equivalent(after, this.original(sheetIndex, row, column)) ? undefined : after;
+			const before = this.edits.get(key);
+			if (!sameEdit(before, normalized)) {changes.push({ key, before, after: normalized });}
 		}
-		this.assign(change.key, change.before);
-		this.redoStack.push(change);
+		if (changes.length === 0) {return undefined;}
+		for (const change of changes) {this.assign(change.key, change.after);}
+		const transaction = { id: this.nextTransactionId++, changes };
+		this.undoStack.push(transaction);
+		this.redoStack.length = 0;
+		return transaction.id;
+	}
+
+	undo(transactionId?: number): boolean {
+		if (transactionId !== undefined && this.undoStack[this.undoStack.length - 1]?.id !== transactionId) {return false;}
+		const transaction = this.undoStack.pop();
+		if (!transaction) {return false;}
+		for (const change of [...transaction.changes].reverse()) {this.assign(change.key, change.before);}
+		this.redoStack.push(transaction);
 		return true;
 	}
 
-	redo(): boolean {
-		const change = this.redoStack.pop();
-		if (!change) {
-			return false;
-		}
-		this.assign(change.key, change.after);
-		this.undoStack.push(change);
+	redo(transactionId?: number): boolean {
+		if (transactionId !== undefined && this.redoStack[this.redoStack.length - 1]?.id !== transactionId) {return false;}
+		const transaction = this.redoStack.pop();
+		if (!transaction) {return false;}
+		for (const change of transaction.changes) {this.assign(change.key, change.after);}
+		this.undoStack.push(transaction);
 		return true;
 	}
 
@@ -169,6 +198,12 @@ function validateValue(type: EditableCellType, value: string): void {
 
 function equivalent(left: CellValue, right: CellValue): boolean {
 	return left.value === right.value && left.type === right.type && left.exists === right.exists;
+}
+
+function sameEdit(left: CellEdit | undefined, right: CellEdit | undefined): boolean {
+	return left === right || Boolean(left && right && left.value === right.value && left.type === right.type
+		&& left.storedType === right.storedType && left.exists === right.exists
+		&& left.sheetIndex === right.sheetIndex && left.row === right.row && left.column === right.column);
 }
 
 function cellKey(sheet: number, row: number, column: number): string {
