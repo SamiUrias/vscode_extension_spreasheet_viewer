@@ -764,6 +764,7 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 **Estado:** implementada: autoajuste explícito primera/todas y doble clic por divisor, muestra determinista de hasta 200 filas y límites de 48–800 px; ajuste multilínea con altura visible hasta 600 px respetando altos manuales; hasta 50 filas y 256 columnas congeladas, persistidas por hoja. Solo altera la vista. Helpers de muestra/medición y migración de preferencias V1 tienen pruebas; falta revisión visual/teclado en Extension Host.
 
 - [x] Autoajustar primera/todas las columnas con muestra repartida, cota de caracteres y feedback; doble clic por divisor autoajusta una columna; tooltip explica el alcance y el modo desactivado.
+- [x] Dar ancho suficiente al selector de autoajuste para que se lean completas sus opciones.
 - [x] Envolver valores, medir filas visibles y respetar alturas manuales con máximo de 600 px.
 - [x] Congelar hasta 50 filas y 256 columnas visibles, actualizar scrollIntoView y persistir ajustes por hoja.
 - [ ] Verificar visualmente en tema claro/oscuro/alto contraste y probar redimensionamiento en Extension Host.

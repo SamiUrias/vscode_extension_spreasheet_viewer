@@ -100,6 +100,12 @@ main {
 	max-width: 7rem;
 }
 
+#auto-fit-mode {
+	width: 10rem;
+	min-width: 10rem;
+	max-width: 10rem;
+}
+
 #view-tools button {min-height: 24px;}
 
 #filter-chips {
