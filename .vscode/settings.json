@@ -25,5 +25,6 @@
     "spreadsheet-viewer.view.showResetButton": true,
     "spreadsheet-viewer.view.showClearSortButton": true,
     "spreadsheet-viewer.view.showCopyButtons": true,
+    "spreadsheet-viewer.view.showDisplayModeButton": true,
     "spreadsheet-viewer.edit.saveOnCommit": true
 }

@@ -1,6 +1,6 @@
 # Spreadsheet Viewer — guía de implementación del MVP y propuesta v2
 
-El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 está en curso: V2-11 y V2-12A tienen commits; V2-12B se está implementando. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
+El MVP y su seguimiento se conservan en las secciones 1–14. La **propuesta v2**, basada en el análisis de `wijmo/gc-excelviewer`, está en la sección 15. La V2 continúa hasta V2-25; el trabajo del workspace ya llega a V2-15B y V2-16A está en curso. Las fases posteriores a V2 se anotan en la sección 16 y quedan pendientes de detalle. La internacionalización español/inglés se considera después de cerrar la V2. Que una etapa esté implementada no significa que se haya completado su revisión manual en Extension Host: cada verificación abierta se conserva en su checklist.
 
 ## 1. Resumen del producto
 
@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-10 ya estaban implementadas; V2-11 y V2-12A están en commits; V2-12B está en implementación. Las verificaciones pendientes de Extension Host siguen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-15B están implementadas; V2-16A está en curso. Las verificaciones pendientes de Extension Host siguen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -562,7 +562,7 @@ No crear todos los archivos al inicio. Los nombres son destinos propuestos; reut
 
 ### 15.9. Tarjetas de trabajo para GPT Luna 6 (esfuerzo medio)
 
-Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V2-04A/B, V2-05 a V2-10 aún tienen verificaciones manuales o de Extension Host abiertas, indicadas en cada checklist. `npm test` no inicia con el Node 18.20.4 de este entorno porque una dependencia del runner usa la bandera de regex `/v`; `npm run test:save-lifecycle` requiere descargar VS Code y aquí falla por DNS. V2-11 en adelante sigue pendiente. Cada tarjeta indica una unidad de implementación; las subtarjetas A/B/C/D requieren solicitudes separadas. La existencia de una propuesta de arquitectura no es evidencia de que la dependencia ya esté implementada.
+Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A está en curso. Las etapas previas aún tienen verificaciones manuales o de Extension Host abiertas, indicadas en cada checklist. `npm test` no inicia con el Node 18.20.4 de este entorno porque una dependencia del runner usa la bandera de regex `/v`; `npm run test:save-lifecycle` requiere descargar VS Code y aquí falla por DNS. V2-16A en adelante sigue pendiente de cierre. Cada tarjeta indica una unidad de implementación; las subtarjetas A/B/C/D requieren solicitudes separadas. La existencia de una propuesta de arquitectura no es evidencia de que la dependencia ya esté implementada.
 
 **Orden recomendado de solicitudes (dependencias resueltas):** V2-00A → 00B → 01A → 01B → 02A → 02B → 03 → 04A → 04B → 05 → 06 → 07 → 08A → 08B → 09 → 10 → 11 → 12A → 12B → 13 → 14A → 14B → 15A → 15B → 16A → 16B → 17A → 17B → 18A → **20A → 20B → 18B** → 19A → 19B → 21 → 22A → 22B → 22C → 23A → 23B → 24A → 24B → 24C → 24D → 25. Cada número abreviado conserva prefijo `V2-`. 22B/22C y 24A–D son bloques ampliados; si no forman parte del release elegido, 25 debe documentarlos pendientes. 24E es registro de límites, no implementación del estándar completo. No seguir el número a ciegas: 18B requiere 20A.
 
@@ -881,13 +881,20 @@ Las tarjetas V2-00A a V2-10 tienen implementación en el workspace. Las etapas V
 - [x] Marcar celdas cubiertas como no editables y bloquear hojas protegidas tanto en capability webview como en el modelo y serializador.
 - [x] Distinguir `office:value-type="time"` como duración; conservar su lexema y rechazar edición que lo degradaría a fecha o texto.
 - [x] Probar metadata ODS, covered cells, protección y duración junto a regresiones XLSX: 35 pruebas focalizadas, tipos/lint y paquete de producción pasan.
-- [ ] La presentación visual de estos metadatos queda para V2-16; esta fase conserva los datos y habilita bloqueos seguros.
+- [x] La presentación visual de estos metadatos queda para V2-16; esta fase conserva los datos y habilita bloqueos seguros.
 
 #### V2-16A — Formatos de presentación
 
-**Depende de:** V2-15A/V2-01A. **Archivos:** presentation/webview/SSF dependency/tests. **Pasos:** toggle raw/book; formatear por numFmt/fecha/booleano en copia; SSF solo presentación; soportar date1904 y caso serial 60 sin conversiones locales silenciosas. Editor siempre raw; cache y cálculo con origen/estado explícito. Formato personalizado por columna CSV optativo y tipo explícito; no persistir a CSV. Añadir condiciones de fecha explícitas para valores date ISO XLSX/ODS y números XLSX con numFmt de fecha reconocido: comparar seriales/instantes con sistema 1900/1904 definido, límites calendario y timezone UTC, sin Date local ni inferencia de fechas CSV. Un filtro fecha se aplica después de elegir ese modo de comparación; formatos ambiguos o serial 60 mantienen representación especial y un resultado definido, no se normalizan a otra fecha silenciosamente.
+**Depende de:** V2-15A/V2-01A. **Archivos:** presentation/webview/SSF dependency/tests. **Pasos:** toggle raw/book, crudo por defecto y botón configurable; formatear numFmt numérico/fecha/booleano en una copia para XLSX; SSF solo presentación; soportar date1904 y caso serial 60. Editor y fórmulas permanecen raw; la copia “mostrada” usa la presentación activa. Valores con más de 15 dígitos significativos se dejan raw. Fechas ISO tipadas solo se presentan con formato fecha y zona explícita en timestamps; fechas inválidas/ambiguas quedan raw. No usar fecha local ni inferir fechas CSV/ODS. Formato personalizado por columna CSV optativo y tipos explícitos se difieren a una tarjeta posterior.
 
-**Aceptación:** 0.25→25% en vista libro y 0.25 en crudo/editor; fechas 1900/1904/serial60/time; números grandes fallback raw o advertencia de aproximación; fórmula fallida no se presenta como cache calculada; switch no dirty ni altera bytes. **Fuera:** escribir estilos/formatos y prometer full Excel number formats. **Checks:** presentación/fixtures y temas.
+**Aceptación:** 0.25→25% en vista libro y 0.25 en crudo/editor; fechas 1900/1904/serial60; booleanos TRUE/FALSE; números grandes fallback raw; fórmulas siempre muestran expresión; copia raw y edición preservan lexema; copia mostrada respeta modo; switch no dirty ni altera bytes. **Fuera:** escribir estilos/formatos, aplicar estilos visuales completos, formateo CSV/ODS y prometer full Excel number formats. **Checks:** presentación/fixtures y temas.
+
+- [x] Añadir SSF 0.11.3 (Apache-2.0) al bundle webview y agregar su licencia al paquete.
+- [x] Añadir toggle **Ver libro** con tooltip; visible por `spreadsheet-viewer.view.showDisplayModeButton` (booleano, default `true`) y actualizado en vistas abiertas.
+- [x] Presentar formatos numéricos, fechas de sistema 1900/1904 y booleanos en una matriz derivada; preservar números largos, fórmulas, celdas sin estilo y datos originales.
+- [x] Mantener edición/copia raw sin formato y hacer que **Copiar mostrado** use la presentación activa.
+- [x] Documentar configuración, alcance y licencia; 5 pruebas unitarias de presentación, tipos, lint y build de producción pasan.
+- [ ] `npm test` ejecuta pretest/build, pero el runner de Extension Host se detiene con Node 18.20.4 en `string-width`: regex `/v` no compatible. Reintentar en V2-25 con runtime apropiado.
 
 #### V2-16B — Libro visual, hojas y combinaciones
 
@@ -1063,7 +1070,7 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 >
 > Al cerrar, actualiza estado de **esa tarjeta** con archivos, evidencia/tests y pendientes; reporta qué acciones manuales la verifican. Todo botón añadido debe tener tooltip; toda nueva funcionalidad queda activada por defecto y se puede desactivar desde `settings.json`. Documenta las opciones en `CONFIGURATION.md` y la experiencia en `README.md` en el mismo cambio. Ejecuta los criterios de aceptación y, cuando la etapa quede verificada y la documentación esté actualizada, crea un commit. Si un check requerido está bloqueado por el entorno, describe el comando y error, deja el check pendiente y no marques la etapa como verificada. No declares v2 completa ni soporte de host/formato complejo antes de sus criterios. Si detectas una brecha nueva, agrégala a F/T y describe su efecto; no la implementes como refactor incidental.
 
-El trabajo implementado llega hasta **V2-10**; sigue con **V2-11 — Copia de rangos** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
+El trabajo implementado llega hasta **V2-15B**; sigue con **V2-16A — Formatos de presentación** y hay que continuar en orden hasta cerrar **V2-25**. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
 

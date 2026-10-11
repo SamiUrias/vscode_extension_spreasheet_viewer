@@ -74,6 +74,7 @@ Opening the editable view while the text buffer has unsaved changes asks whether
 - XLSX and ODS values are read from their stored XML values. For example, a date-formatted XLSX number is shown as its stored serial value, not converted to a formatted date.
 - XLSX formula expressions and cached values remain distinct. Formula calculation is for display only and does not replace the original formula or cache. Unsupported formulas show their stored cache and are identified as unsupported.
 - ODS formulas are shown with their stored cached value and are not recalculated.
+- XLSX opens in raw-value mode. **Ver libro** optionally applies supported Excel number formats (including percentages and dates) to the grid; editing and saving keep the original raw values. Values with more than 15 significant digits and formulas remain raw. This is a presentation feature, not full Excel formatting support.
 - The first CSV row can be displayed as a column heading; optional header capitalization changes only the visual label. CSV comment records can be hidden from the table while remaining in the file.
 - CSV, XLSX, and ODS files are limited to 10 MiB. XLSX/ODS archives also have limits for expanded size, number of parts, sheets, rows, columns, and populated cells. Files over a limit are rejected as a whole rather than shown as a partial editable table.
 
@@ -92,6 +93,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |
 | `spreadsheet-viewer.view.showCopyButtons` | `true` | Show or hide the three copy controls. `Ctrl+C`/`Cmd+C` in the grid also follows this setting. |
+| `spreadsheet-viewer.view.showDisplayModeButton` | `true` | Show or hide **Ver libro**, the XLSX raw/formatted display toggle. |
 | `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. |
 
 For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.

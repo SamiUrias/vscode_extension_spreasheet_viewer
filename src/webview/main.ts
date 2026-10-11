@@ -6,6 +6,7 @@ import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell, type CellRange } from './selection';
 import { isCellInVisibleRange } from '../range-selection';
 import { parseClipboardTsv, serializeVisibleSelection } from '../clipboard';
+import { presentXlsxCell, type CellPresentation } from './presentation';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
 
@@ -55,6 +56,9 @@ const clearSortButton = requiredElement<HTMLButtonElement>('#clear-sort');
 let showClearSortButton = clearSortButton.dataset.settingEnabled !== 'false';
 const copyActions = requiredElement<HTMLDivElement>('#copy-actions');
 let showCopyButtons = !copyActions.hidden;
+const displayModeButton = requiredElement<HTMLButtonElement>('#toggle-display-mode');
+const displayModeTooltip = requiredElement<HTMLSpanElement>('#display-mode-tooltip');
+let showDisplayModeButton = !displayModeButton.hidden;
 const csvRowActions = requiredElement<HTMLDivElement>('#csv-row-actions');
 let showCsvRowActions = !csvRowActions.hidden;
 const sortWarning = requiredElement<HTMLParagraphElement>('#sort-warning');
@@ -137,6 +141,7 @@ let cachedProjectionComments: boolean | undefined;
 let cachedProjectionFilters: ColumnFilter[] | undefined;
 let showComments = false;
 let viewMode: ViewMode = 'edit';
+let cellPresentation: CellPresentation = 'raw';
 let pendingViewRestore: RestoreViewStateMessage | undefined;
 let persistViewTimer: number | undefined;
 let applyingViewRestore = false;
@@ -179,6 +184,12 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'copyButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		showCopyButtons = event.data.visible;
 		copyActions.hidden = !showCopyButtons;
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'displayModeButtonVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showDisplayModeButton = event.data.visible;
+		updateDisplayModeControl();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
@@ -251,6 +262,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	const previousSheetIndex = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : undefined;
 	const previousRevision = snapshot?.revision;
 	if (snapshot && snapshot.documentId !== event.data.documentId) {
+		cellPresentation = 'raw';
 		showComments = false;
 		toggleCommentsButton.textContent = 'Mostrar comentarios';
 		columnFilters = [];
@@ -263,6 +275,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		startupDataTimer = undefined;
 	}
 	snapshot = event.data;
+	updateDisplayModeControl();
 	updateCsvRowActions();
 	const changedSheet = snapshot.type === 'xlsxData'
 		&& (previousSheetIndex !== snapshot.activeSheetIndex || snapshot.requestId !== undefined);
@@ -274,7 +287,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	formatNote.textContent = snapshot.type === 'xlsxData'
 		? snapshot.fileFormat === 'ods'
 			? `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos visuales de ODS; las fórmulas muestran su expresión y valor almacenado, sin recalcularse.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
-			: `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos de Excel; Formualizer calcula fórmulas solo para mostrarlas y no se pueden editar ni guardar sus resultados.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
+		: `Hoja: ${snapshot.sheetName}. La vista cruda conserva los valores almacenados; el modo libro puede aplicar formatos numéricos sin modificar el archivo. Las fórmulas muestran su expresión y los resultados calculados solo como información; no se guardan como valores.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
 		: '';
 	if (viewStateNotice) {formatNote.textContent = `${formatNote.textContent} ${viewStateNotice}`.trim(); viewStateNotice = '';}
 	if (snapshot.readonly) {
@@ -620,6 +633,12 @@ function clearSelectionContents(): void {
 }
 
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
+displayModeButton.addEventListener('click', () => {
+	cellPresentation = cellPresentation === 'raw' ? 'book' : 'raw';
+	updateDisplayModeControl();
+	gridRendererState.rowsViewport = undefined;
+	renderGrid();
+});
 requiredElement<HTMLButtonElement>('#copy-displayed').addEventListener('click', () => {void copySelection('displayed');});
 requiredElement<HTMLButtonElement>('#copy-headers').addEventListener('click', () => {void copySelection('headers');});
 requiredElement<HTMLButtonElement>('#insert-row').addEventListener('click', () => {
@@ -648,7 +667,9 @@ async function copySelection(mode: 'raw' | 'displayed' | 'headers'): Promise<voi
 	// Formula calculations are metadata only; raw copy preserves the formula expression.
 	const headers = mode === 'headers' ? Array.from({ length: snapshot.columnCount }, (_, column) => snapshot!.type === 'csvData'
 		? snapshot!.headerLabels?.[column] ?? columnName(column) : columnName(column)) : undefined;
-	const text = serializeVisibleSelection(snapshot.rows, projection.visibleRows, { anchor: start, focus: end }, snapshot.columnCount, headers);
+	const rows = mode === 'displayed' && snapshot.type === 'xlsxData' && cellPresentation === 'book'
+		? presentedRows(snapshot) : snapshot.rows;
+	const text = serializeVisibleSelection(rows, projection.visibleRows, { anchor: start, focus: end }, snapshot.columnCount, headers);
 	if (text === undefined) {return;}
 	if (text.length > 50 * 1024 * 1024) {
 		saveStatus.textContent = 'La selección supera el límite de 50 MiB y no se copió.';
@@ -713,10 +734,12 @@ gridScroll.addEventListener('wheel', event => {
 
 function renderGrid(): void {
 	if (editingCell && gridRoot.querySelector('.cell-inline-editor') === document.activeElement) {return;}
+	const renderedSnapshot = snapshot?.type === 'xlsxData' && cellPresentation === 'book'
+		? { ...snapshot, rows: presentedRows(snapshot) } : snapshot;
 	gridRendererState.rowsViewport = rowsViewport;
 	gridRendererState.renderedColumnCount = renderedColumnCount;
 	renderSpreadsheetGrid({
-		snapshot, state: gridRendererState, gridScroll, gridRoot,
+		snapshot: renderedSnapshot, state: gridRendererState, gridScroll, gridRoot,
 		defaultRowHeight, headingHeight, rowHeaderWidth, overscan,
 		freezeRows, freezeColumns, wrapCells,
 		consumeSuppressedCellClick: () => {const value = suppressNextCellClick; suppressNextCellClick = false; return value;},
@@ -769,6 +792,20 @@ function renderGrid(): void {
 	} else {gridScroll.removeAttribute('aria-activedescendant');}
 	if (wrapCells) {updateWrappedVisibleRowHeights();}
 	updateCsvRowActions();
+}
+
+function presentedRows(current: XlsxDataMessage): string[][] {
+	return current.rows.map((row, rowIndex) => row.map((value, columnIndex) =>
+		presentXlsxCell(current, rowIndex, columnIndex, value, 'book')));
+}
+
+function updateDisplayModeControl(): void {
+	const supported = snapshot?.type === 'xlsxData' && snapshot.fileFormat === 'xlsx';
+	displayModeButton.hidden = !showDisplayModeButton || !supported;
+	displayModeButton.textContent = cellPresentation === 'raw' ? 'Ver libro' : 'Ver valores crudos';
+	displayModeTooltip.textContent = cellPresentation === 'raw'
+		? 'Aplica los formatos numéricos de Excel a la cuadrícula sin modificar los valores guardados.'
+		: 'Muestra los valores almacenados sin formato; el archivo permanece intacto.';
 }
 function selectCell(row: number, column: number, extend = false): void {
 	if (!showComments && snapshot?.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
@@ -1828,6 +1865,15 @@ function isXlsxDataMessage(value: unknown): value is XlsxDataMessage {
 		&& candidate.formulaCaches !== null
 		&& (candidate.fileFormat === undefined || candidate.fileFormat === 'xlsx' || candidate.fileFormat === 'ods')
 		&& (candidate.fileFormat === 'ods' || typeof candidate.workbookBase64 === 'string')
+		&& (candidate.date1904 === undefined || typeof candidate.date1904 === 'boolean')
+		&& (candidate.cellStyleIndexes === undefined || Array.isArray(candidate.cellStyleIndexes)
+			&& candidate.cellStyleIndexes.length === candidate.rowCount
+			&& candidate.cellStyleIndexes.every(row => Array.isArray(row) && row.length === candidate.columnCount
+				&& row.every(index => index === undefined || index === null || Number.isInteger(index))))
+		&& (candidate.cellNumberFormats === undefined || Array.isArray(candidate.cellNumberFormats)
+			&& candidate.cellNumberFormats.every(item => typeof item === 'object' && item !== null
+				&& 'numberFormatId' in item && Number.isInteger(item.numberFormatId)
+				&& (!('formatCode' in item) || typeof item.formatCode === 'string')))
 		&& Array.isArray(candidate.warnings);
 }
 

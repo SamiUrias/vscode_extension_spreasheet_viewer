@@ -8,5 +8,6 @@ Spreadsheet Viewer bundles the following runtime dependencies. Their license tex
 | `fflate` | 0.8.3 | MIT | `resources/licenses/fflate-MIT.txt` |
 | `papaparse` | 5.7.0 | MIT | `resources/licenses/papaparse-MIT.txt` |
 | `formualizer` | 0.10.1 | MIT OR Apache-2.0 | `dist/FORMUALIZER-LICENSE-MIT` and `dist/FORMUALIZER-LICENSE-APACHE` |
+| `ssf` | 0.11.3 | Apache-2.0 | `resources/licenses/ssf-Apache-2.0.txt` |
 
 The production build bundles these runtime dependencies into the extension. Development and test dependencies are not shipped as runtime code in the VSIX.

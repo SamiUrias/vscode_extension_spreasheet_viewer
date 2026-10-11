@@ -30,6 +30,7 @@ export interface InvalidCellMessage {
 
 export interface CopyToClipboardMessage { type: 'copyToClipboard'; text: string; }
 export interface CopyButtonVisibilityMessage { type: 'copyButtonVisibility'; visible: boolean; }
+export interface DisplayModeButtonVisibilityMessage { type: 'displayModeButtonVisibility'; visible: boolean; }
 export interface CsvRowActionsVisibilityMessage { type: 'csvRowActionsVisibility'; visible: boolean; }
 export interface FocusCellMessage { type: 'focusCell'; row: number; column: number; }
 export interface CsvRowOperationMessage {
@@ -140,6 +141,9 @@ export interface XlsxDataMessage {
 	cellTypes: string[][];
 	cellCapabilities: CellCapability[][];
 	formulaCaches: Record<string, string>;
+	cellStyleIndexes?: Array<Array<number | undefined>>;
+	cellNumberFormats?: Array<{ numberFormatId: number; formatCode?: string }>;
+	date1904?: boolean;
 	workbookBase64?: string;
 	rowCount: number;
 	columnCount: number;
@@ -159,5 +163,5 @@ export interface CellCapability {
 export interface ResetViewButtonVisibilityMessage { type: 'resetViewButtonVisibility'; visible: boolean; }
 export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | CsvRowActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | CsvRowActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

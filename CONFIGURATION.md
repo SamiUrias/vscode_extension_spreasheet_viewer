@@ -17,13 +17,14 @@ Ejemplo de `.vscode/settings.json`:
   "spreadsheet-viewer.view.showResetButton": true,
   "spreadsheet-viewer.view.showClearSortButton": true,
   "spreadsheet-viewer.view.showCopyButtons": true,
+  "spreadsheet-viewer.view.showDisplayModeButton": true,
   "spreadsheet-viewer.edit.saveOnCommit": true
 }
 ```
 
 Los valores siguientes son los predeterminados. No hace falta escribirlos en `settings.json` salvo que quieras sobrescribirlos. Las propiedades no declaran un ámbito de recurso o lenguaje; se configuran en User o Workspace Settings, no como una opción distinta para cada archivo CSV.
 
-Para probar el comportamiento de la extensión en este repositorio, `.vscode/settings.json` deja habilitadas las nueve opciones disponibles: opciones CSV, restauración de vista, botones **Restablecer vista**, **Limpiar orden**, copia y acciones de filas, además del guardado al confirmar. `headerCase: "upper"` solo transforma la etiqueta visual; no cambia el archivo. Las opciones de autoajuste, multilínea, freeze y teclado de tabla de V2-09/V2-10 son controles de vista, no propiedades de `settings.json`.
+Para probar el comportamiento de la extensión en este repositorio, `.vscode/settings.json` deja habilitadas las opciones disponibles: opciones CSV, restauración de vista, botones **Restablecer vista**, **Limpiar orden**, copia, presentación cruda/libro y acciones de filas, además del guardado al confirmar. `headerCase: "upper"` solo transforma la etiqueta visual; no cambia el archivo. Las opciones de autoajuste, multilínea, freeze y teclado de tabla de V2-09/V2-10 son controles de vista, no propiedades de `settings.json`.
 
 ## Opciones disponibles
 
@@ -37,6 +38,7 @@ Para probar el comportamiento de la extensión en este repositorio, `.vscode/set
 | `spreadsheet-viewer.view.showResetButton` | Booleano: `true` o `false` | `true` | Muestra u oculta el botón **Restablecer vista** en el editor y las vistas previas. Con `false` el botón no aparece; la acción de restablecimiento sigue disponible como **Spreadsheet Viewer: Restablecer vista de hoja** en la paleta de comandos. El cambio se refleja en las vistas que ya están abiertas. |
 | `spreadsheet-viewer.view.showClearSortButton` | Booleano: `true` o `false` | `true` | Permite mostrar **Limpiar orden** cuando hay criterios de orden activos. Con `false` oculta el botón en el editor y las vistas previas; el orden se puede quitar haciendo clic en el encabezado o usando el comando **Restablecer vista**. El cambio se refleja en las vistas abiertas. |
 | `spreadsheet-viewer.view.showCopyButtons` | Booleano: `true` o `false` | `true` | Muestra u oculta los botones **Copiar**, **Copiar mostrado** y **Copiar con encabezados**. También habilita o deshabilita `Ctrl+C`/`Cmd+C` al tener el foco en la tabla. La preferencia se aplica a editor y vistas previas y se actualiza en paneles abiertos. |
+| `spreadsheet-viewer.view.showDisplayModeButton` | Booleano: `true` o `false` | `true` | Muestra u oculta **Ver libro** en archivos XLSX. Alterna el formato numérico visible y los valores crudos; no modifica la celda ni el archivo. También cambia lo que copia **Copiar mostrado**. La selección de modo es temporal para el panel y vuelve a crudo al abrir otro archivo. No aplica a CSV u ODS. |
 | `spreadsheet-viewer.edit.saveOnCommit` | Booleano: `true` o `false` | `true` | Con `true`, cada edición confirmada se guarda automáticamente. Con `false`, la extensión conserva los cambios como pendientes y espera el guardado de VS Code (`Ctrl+S`/`Cmd+S`). Los borradores sin confirmar se preguntan al guardar. |
 
 Ejemplo para desactivar los comentarios convencionales y la persistencia:

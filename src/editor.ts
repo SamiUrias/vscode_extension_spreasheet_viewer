@@ -64,6 +64,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						void panel.webview.postMessage({ type: 'copyButtonVisibility', visible });
 					}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showDisplayModeButton', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showDisplayModeButton', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'displayModeButtonVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.csv.showRowActions', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', document.uri).get<boolean>('showRowActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'csvRowActionsVisibility', visible });}
@@ -322,6 +326,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				return { storedType, editable, ...(!editable ? { reason } : {}) };
 			})),
 			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
+			...(document.xlsx ? {
+				cellStyleIndexes: document.xlsx.sheets[sheetIndex]?.cellStyleIndexes,
+				cellNumberFormats: document.xlsx.styles?.cellFormats.map(style => {
+					const custom = document.xlsx!.styles?.customNumberFormats.find(item => item.id === style.numberFormatId);
+					return { numberFormatId: style.numberFormatId, ...(custom ? { formatCode: custom.formatCode } : {}) };
+				}),
+				date1904: document.xlsx.date1904,
+			} : {}),
 			...(document.xlsx ? { workbookBase64: this.getFormulaSnapshot(document) } : {}),
 			rowCount: sheet.rowCount,
 			columnCount: sheet.columnCount,
@@ -999,6 +1011,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showResetButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showResetButton', true);
 		const showClearSortButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showClearSortButton', true);
 		const showCopyButtons = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showCopyButtons', true);
+		const showDisplayModeButton = vscode.workspace.getConfiguration('spreadsheet-viewer.view', uri).get<boolean>('showDisplayModeButton', true);
 		const showCsvRowActions = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<boolean>('showRowActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
@@ -1027,6 +1040,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">Copiar mostrado</button><span id="copy-displayed-tooltip" role="tooltip">Copia los valores tal como aparecen en la cuadrícula con la presentación actual.</span></span>
 						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
 					</div>
+					<span class="copy-control"><button id="toggle-display-mode" type="button"${showDisplayModeButton ? '' : ' hidden'} aria-describedby="display-mode-tooltip">Ver libro</button><span id="display-mode-tooltip" role="tooltip">Alterna entre valores crudos y su formato numérico de presentación. No modifica el archivo.</span></span>
 					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="Acciones de registros CSV">
 						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>
 						<span class="copy-control"><button id="append-row" type="button" aria-describedby="append-row-tooltip">Añadir fila</button><span id="append-row-tooltip" role="tooltip">Añade un registro vacío al final de los datos CSV. La operación se puede deshacer.</span></span>

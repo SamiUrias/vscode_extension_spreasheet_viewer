@@ -55,6 +55,10 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showCopyButtons', true);
 					void session.panel.webview.postMessage({ type: 'copyButtonVisibility', visible });
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.view.showDisplayModeButton', session.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('showDisplayModeButton', true);
+					void session.panel.webview.postMessage({ type: 'displayModeButtonVisibility', visible });
+				}
 				const visualChanged = event.affectsConfiguration('spreadsheet-viewer.csv.firstRowHeader', session.uri)
 					|| event.affectsConfiguration('spreadsheet-viewer.csv.headerCase', session.uri);
 				if (visualChanged) {this.postSnapshot(session);}
@@ -243,6 +247,14 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 					return { storedType, editable, ...(!editable ? { reason: `Tipo ${storedType} protegido en esta etapa.` } : {}) };
 				})),
 				formulaCaches: sheet.formulaCaches,
+				...(document.xlsx ? {
+					cellStyleIndexes: document.xlsx.sheets[index]?.cellStyleIndexes,
+					cellNumberFormats: document.xlsx.styles?.cellFormats.map(style => {
+						const custom = document.xlsx!.styles?.customNumberFormats.find(item => item.id === style.numberFormatId);
+						return { numberFormatId: style.numberFormatId, ...(custom ? { formatCode: custom.formatCode } : {}) };
+					}),
+					date1904: document.xlsx.date1904,
+				} : {}),
 				...(document.xlsx && session.bytes ? { workbookBase64: Buffer.from(session.bytes).toString('base64') } : {}),
 				rowCount: sheet.rowCount, columnCount: sheet.columnCount, warnings: workbook.warnings,
 				readonly: true, sourceMode: session.mode, sourceStatus,
