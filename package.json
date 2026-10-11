@@ -227,6 +227,11 @@
           "default": true,
           "description": "Muestra la acción para crear tablas nativas en rangos XLSX compatibles."
         },
+        "spreadsheet-viewer.xlsx.showSheetActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra acciones para añadir, renombrar o eliminar hojas en libros XLSX compatibles."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,
@@ -289,6 +294,7 @@
     "test:xlsm-format": "npm run compile-tests && node scripts/test-xlsm-format.js",
     "test:fill": "npm run compile-tests && node scripts/test-fill.js",
     "test:xlsx-tables": "npm run compile-tests && node scripts/test-xlsx-tables.js",
+    "test:xlsx-sheets": "npm run compile-tests && node scripts/test-xlsx-sheets.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",

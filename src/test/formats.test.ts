@@ -5,6 +5,7 @@ import { parseCsvBytes, serializeCsvEdits, serializeCsvRowOperation } from '../f
 import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { applyXlsxStructureOperation, getXlsxStructureCapability } from '../formats/xlsx-structure';
 import { applyXlsxTableOperation } from '../formats/xlsx-tables';
+import { applyXlsxSheetOperation } from '../formats/xlsx-sheets';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
 import type { FormulaParserService } from '../formula-reference';
@@ -416,6 +417,33 @@ suite('XLSX reader', () => {
 		assert.equal(parseXlsxBytes(session.serializeCopy()).sheets[0]?.metadata?.tables.length, 0);
 		assert.equal(session.redo(transaction), true);
 		assert.equal(parseXlsxBytes(session.serializeCopy()).sheets[0]?.metadata?.tables[0]?.name, 'UndoTable');
+	});
+
+	test('XLSX sheet operations rename, add, delete and undo in the reference-free profile', () => {
+		const original = createXlsxTableFixture();
+		const originalParts = unzipSync(original);
+		const renamed = applyXlsxSheetOperation(original, { kind: 'rename', sheetIndex: 0, name: 'Data' });
+		assert.equal(parseXlsxBytes(renamed.after).sheets[0]?.name, 'Data');
+		assert.deepStrictEqual(unzipSync(renamed.after)['xl/worksheets/sheet1.xml'], originalParts['xl/worksheets/sheet1.xml']);
+		const added = applyXlsxSheetOperation(renamed.after, { kind: 'add', name: 'Second' });
+		assert.deepStrictEqual(parseXlsxBytes(added.after).sheets.map(sheet => sheet.name), ['Data', 'Second']);
+		const addedParts = unzipSync(added.after);
+		assert.match(new TextDecoder().decode(addedParts['xl/worksheets/sheet2.xml']), /<sheetData\/>/);
+		assert.match(new TextDecoder().decode(addedParts['xl/workbook.xml']), /activeTab="1"/);
+		assert.deepStrictEqual(addedParts['xl/sharedStrings.xml'], originalParts['xl/sharedStrings.xml']);
+		const deleted = applyXlsxSheetOperation(added.after, { kind: 'delete', sheetIndex: 0 });
+		assert.deepStrictEqual(parseXlsxBytes(deleted.after).sheets.map(sheet => sheet.name), ['Second']);
+		assert.equal(unzipSync(deleted.after)['xl/worksheets/sheet1.xml'], undefined);
+		assert.throws(() => applyXlsxSheetOperation(deleted.after, { kind: 'delete', sheetIndex: 0 }), /al menos una hoja/);
+		assert.throws(() => applyXlsxSheetOperation(original, { kind: 'add', name: 'datos' }), /Ya existe/);
+		assert.throws(() => applyXlsxSheetOperation(original, { kind: 'rename', sheetIndex: 0, name: "Invalid/Name" }), /nombre de hoja/);
+		assert.throws(() => applyXlsxSheetOperation(original, { kind: 'add', name: 'a'.repeat(32) }), /nombre de hoja/);
+		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);
+		const transaction = session.applyXlsxSheet({ kind: 'add', name: 'UndoSheet' });
+		assert.equal(session.undo(transaction), true);
+		assert.deepStrictEqual(session.xlsxWorkbook?.sheets.map(sheet => sheet.name), ['Datos']);
+		assert.equal(session.redo(transaction), true);
+		assert.deepStrictEqual(session.xlsxWorkbook?.sheets.map(sheet => sheet.name), ['Datos', 'UndoSheet']);
 	});
 
 	test('XLSX rejects an invalid edit without changing the source value and preserves date-formatted raw numbers', () => {

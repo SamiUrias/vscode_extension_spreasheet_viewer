@@ -92,6 +92,11 @@ const sheetControl = requiredElement<HTMLDivElement>('#sheet-control');
 const sheetSelector = requiredElement<HTMLSelectElement>('#sheet-selector');
 const sheetTabs = requiredElement<HTMLDivElement>('#sheet-tabs');
 const sheetStateStatus = requiredElement<HTMLOutputElement>('#sheet-state-status');
+const sheetActions = requiredElement<HTMLDivElement>('#sheet-actions');
+const addSheetButton = requiredElement<HTMLButtonElement>('#add-xlsx-sheet');
+const renameSheetButton = requiredElement<HTMLButtonElement>('#rename-xlsx-sheet');
+const deleteSheetButton = requiredElement<HTMLButtonElement>('#delete-xlsx-sheet');
+let showSheetActions = sheetControl.dataset.actionsVisible === 'true';
 const cellReferenceInput = requiredElement<HTMLInputElement>('#cell-reference-input');
 const goToCellButton = requiredElement<HTMLButtonElement>('#go-to-cell');
 const searchInput = requiredElement<HTMLInputElement>('#search-input');
@@ -257,6 +262,13 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		&& event.data.type === 'tableActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
 		tableActionsControl.dataset.settingVisible = String(event.data.visible);
 		updateTableActionsControl();
+		return;
+	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'sheetActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showSheetActions = event.data.visible;
+		sheetControl.dataset.actionsVisible = String(event.data.visible);
+		updateSheetActions();
 		return;
 	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'focusCell'
@@ -433,7 +445,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		cellEditorGroup.hidden = false;
 	}
 	if (snapshot.type === 'xlsxData') {
-		sheetControl.hidden = snapshot.sheetNames.length < 2;
+		sheetControl.hidden = snapshot.sheetNames.length < 2 && !showSheetActions;
 		updateSheetOptions(snapshot.sheetNames, snapshot.activeSheetIndex, snapshot.sheetStates);
 		if (snapshot.requestId !== undefined) {
 			pendingSheetRequestId = undefined;
@@ -442,6 +454,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	} else {
 		sheetControl.hidden = true;
 	}
+	updateSheetActions();
 	if (selectedCell && (selectedCell.row >= snapshot.rowCount || selectedCell.column >= snapshot.columnCount)) {
 		selectedCell = undefined;
 	}
@@ -669,6 +682,7 @@ cellEditor.addEventListener('input', () => {
 	updateFormulaCompletions();
 	updateFormulaFillControls();
 	updateTableActionsControl();
+	updateSheetActions();
 });
 formulaEditMode.addEventListener('change', () => {
 	if (editorDirty) {formulaEditMode.checked = !formulaEditMode.checked; return;}
@@ -960,6 +974,25 @@ function updateTableActionsControl(): void {
 	tableActionsControl.hidden = !visible;
 	createXlsxTableButton.disabled = !visible || !selectionRange || editorDirty;
 }
+
+function updateSheetActions(): void {
+	const enabled = showSheetActions && snapshot?.type === 'xlsxData' && snapshot.readonly !== true;
+	sheetActions.hidden = !enabled;
+	sheetControl.hidden = snapshot?.type !== 'xlsxData' || snapshot.sheetNames.length < 2 && !showSheetActions;
+	addSheetButton.disabled = !enabled || editorDirty;
+	renameSheetButton.disabled = !enabled || editorDirty || !snapshot || snapshot.type !== 'xlsxData';
+	deleteSheetButton.disabled = !enabled || editorDirty || snapshot?.type !== 'xlsxData' || snapshot.sheetNames.length < 2;
+}
+
+function requestSheetOperation(kind: 'add' | 'rename' | 'delete'): void {
+	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.readonly || editorDirty) {showFillMessage('Guarda o descarta los cambios y selecciona un libro XLSX editable.'); return;}
+	vscodeApi.postMessage({ type: 'xlsxSheetOperation', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetId: snapshot.sheetId, sheetIndex: snapshot.activeSheetIndex, kind });
+}
+
+addSheetButton.addEventListener('click', () => requestSheetOperation('add'));
+renameSheetButton.addEventListener('click', () => requestSheetOperation('rename'));
+deleteSheetButton.addEventListener('click', () => requestSheetOperation('delete'));
 
 requiredElement<HTMLButtonElement>('#copy-raw').addEventListener('click', () => {void copySelection('raw');});
 displayModeButton.addEventListener('click', () => {

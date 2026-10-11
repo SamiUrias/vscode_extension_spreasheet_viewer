@@ -10,6 +10,7 @@
 - **Edit and save cells:** edit values in place or in the cell editor and save changes to the original file.
 - **Fill relative formulas:** copy normal XLSX formulas down or right with adjusted A1 references, review the generated formulas, and apply or undo the full range as one operation.
 - **Create native XLSX tables:** turn a safe rectangular range into a named Excel table with filters and a built-in style; the operation preserves cell values and can be undone.
+- **Manage simple XLSX sheets:** add, rename, or delete sheets in reference-free workbooks, with undo and validation before changing the package.
 - **Manage CSV records:** insert or append an empty row, or delete selected rows with confirmation. These actions can be undone and are configurable in Settings.
 - **Fill selected ranges:** repeat a value pattern or extend an explicitly chosen numeric series, review a preview, and undo the single resulting operation. Formulas and filtered/sorted views are excluded.
 - **Choose when changes are written:** automatic saving after confirming an edit is on by default; it can be disabled to save with `Ctrl+S` (`Cmd+S` on macOS).
@@ -116,6 +117,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.xlsx.showFormulaAssistance` | `true` | Show tested function name completions and explicit cell-reference insertion while editing an XLSX formula. |
 | `spreadsheet-viewer.xlsx.showFormulaFillActions` | `true` | Show or hide the XLSX relative formula fill actions. |
 | `spreadsheet-viewer.xlsx.showTableActions` | `true` | Show or hide creation of native XLSX tables for compatible ranges. |
+| `spreadsheet-viewer.xlsx.showSheetActions` | `true` | Show or hide add, rename, and delete actions for compatible XLSX workbooks. |
 | `spreadsheet-viewer.view.showWorkbookAppearance` | `true` | Apply basic workbook cell styles and merged-cell layout; set to `false` to use plain cells. |
 | `spreadsheet-viewer.edit.saveOnCommit` | `true` | Save each confirmed edit automatically; set to `false` to save with `Ctrl+S`/`Cmd+S`. |
 

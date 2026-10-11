@@ -96,6 +96,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showTableActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'tableActionsVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showSheetActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showSheetActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'sheetActionsVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });}
@@ -276,6 +280,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isCreateXlsxTableMessage(message)) {
 				void this.createXlsxTable(document, panel, message);
+				return;
+			}
+			if (isXlsxSheetOperationMessage(message)) {
+				void this.applyXlsxSheetOperation(document, panel, message);
 				return;
 			}
 			if (isDraftStateMessage(message)) {
@@ -782,6 +790,67 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const messageText = errorMessage(error);
 			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
 			void vscode.window.showErrorMessage(`No se pudo crear la tabla XLSX: ${messageText}`);
+		}
+	}
+
+	private async applyXlsxSheetOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'xlsxSheetOperation' }>): Promise<void> {
+		try {
+			if (document.isReadOnly || !document.xlsx || message.documentId !== document.documentId || message.revision !== document.revision
+				|| message.sheetId !== document.sheetId(message.sheetIndex)) {throw new Error('La selección de hoja quedó desactualizada o no es editable.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showSheetActions', true)) {return;}
+			if (document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('Guarda o deshaz los cambios pendientes antes de cambiar hojas.');}
+			let name: string | undefined;
+			if (message.kind === 'add' || message.kind === 'rename') {
+				name = await vscode.window.showInputBox({
+					prompt: message.kind === 'add' ? 'Nombre de la hoja nueva (1–31 caracteres).' : 'Nuevo nombre de la hoja seleccionada (1–31 caracteres).',
+					value: message.kind === 'rename' ? document.xlsx.sheets[message.sheetIndex]?.name : 'Hoja nueva',
+					validateInput: value => value.length > 0 && value.length <= 31 && !Array.from('[]:*?/\\\\').some(character => value.includes(character)) && !value.startsWith("'") && !value.endsWith("'")
+						? undefined : 'Usa entre 1 y 31 caracteres; no uses []:*?/\\ ni apóstrofos al inicio o al final.',
+				});
+				if (!name) {return;}
+			} else {
+				const answer = await vscode.window.showWarningMessage(`¿Eliminar la hoja «${document.xlsx.sheets[message.sheetIndex]?.name ?? ''}»?`, { modal: true }, 'Eliminar');
+				if (answer !== 'Eliminar') {return;}
+			}
+			if (message.revision !== document.revision || document.isDisposed || document.hasUnsavedChanges || this.hasPendingDraft(document)) {
+				throw new Error('El libro cambió mientras se confirmaba; vuelve a iniciar la operación.');
+			}
+			const oldActive = this.activeSheets.get(panel) ?? 0;
+			const transactionId = document.applyXlsxSheet(message.kind === 'add' ? { kind: 'add', name: name! }
+				: message.kind === 'rename' ? { kind: 'rename', sheetIndex: message.sheetIndex, name: name! }
+				: { kind: 'delete', sheetIndex: message.sheetIndex });
+			for (const targetPanel of this.panels.get(document.uri.toString()) ?? []) {
+				const current = this.activeSheets.get(targetPanel) ?? 0;
+				this.activeSheets.set(targetPanel, message.kind === 'add' && targetPanel === panel ? document.xlsx!.sheets.length - 1
+					: message.kind === 'delete' ? current === message.sheetIndex ? Math.min(message.sheetIndex, document.xlsx!.sheets.length - 1)
+						: current > message.sheetIndex ? current - 1 : current
+					: current);
+			}
+			if (message.kind === 'add') {this.activeSheets.set(panel, document.xlsx.sheets.length - 1);}
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({ document, label: message.kind === 'add' ? `Añadir hoja ${name}` : message.kind === 'rename' ? `Renombrar hoja ${name}` : 'Eliminar hoja XLSX', undo: () => {if (document.undo(transactionId)) {this.restoreSheetIndexAfterHistory(document, message, oldActive, panel); update();}}, redo: () => {if (document.redo(transactionId)) {this.restoreSheetIndexAfterHistory(document, message, oldActive, panel, true); update();}} });
+			this.postDocument(document);
+			this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			if (this.saveOnCommit(document)) {this.scheduleSave(document);}
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
+			void vscode.window.showErrorMessage(`No se pudo gestionar la hoja XLSX: ${messageText}`);
+		}
+	}
+
+	private restoreSheetIndexAfterHistory(document: SpreadsheetDocument, message: Extract<WebviewToExtensionMessage, { type: 'xlsxSheetOperation' }>, oldActive: number, panel: vscode.WebviewPanel, redo = false): void {
+		const count = document.xlsx?.sheets.length ?? 1;
+		for (const targetPanel of this.panels.get(document.uri.toString()) ?? []) {
+			const current = this.activeSheets.get(targetPanel) ?? 0;
+			let next = current;
+			if (message.kind === 'add') {next = targetPanel === panel && redo ? count - 1 : Math.min(current, count - 1);}
+			else if (message.kind === 'delete') {
+				if (targetPanel === panel) {next = Math.min(oldActive, count - 1);}
+				else if (redo) {next = current > message.sheetIndex ? current - 1 : Math.min(current, count - 1);}
+				else {next = current >= message.sheetIndex ? Math.min(current + 1, count - 1) : current;}
+			}
+			this.activeSheets.set(targetPanel, next);
 		}
 	}
 
@@ -1351,6 +1420,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showFormulaAssistance = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaAssistance', true);
 		const showFormulaFillActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaFillActions', true);
 		const showTableActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showTableActions', true);
+		const showSheetActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showSheetActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
@@ -1416,9 +1486,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				<p id="sort-warning" role="status" aria-live="polite"></p>
 		</header>
 		<nav id="navigation-bar" aria-label="Navegación de hoja y celda">
-			<div id="sheet-control" class="navigation-group" hidden>
+			<div id="sheet-control" class="navigation-group" data-actions-visible="${showSheetActions}" hidden>
 				<div id="sheet-tabs" role="tablist" aria-label="Hojas del libro"></div>
 				<label class="sheet-selector-fallback"><span class="control-label">Ir a hoja</span><select id="sheet-selector" aria-label="Hoja activa"></select></label>
+				<div id="sheet-actions"${showSheetActions ? '' : ' hidden'}><span class="copy-control"><button id="add-xlsx-sheet" type="button" aria-describedby="add-xlsx-sheet-tooltip">Añadir hoja</button><span id="add-xlsx-sheet-tooltip" role="tooltip">Añade una hoja vacía al libro con un nombre válido y único.</span></span><span class="copy-control"><button id="rename-xlsx-sheet" type="button" aria-describedby="rename-xlsx-sheet-tooltip">Renombrar hoja</button><span id="rename-xlsx-sheet-tooltip" role="tooltip">Cambia el nombre de la hoja seleccionada si el libro cumple el perfil seguro.</span></span><span class="copy-control"><button id="delete-xlsx-sheet" type="button" aria-describedby="delete-xlsx-sheet-tooltip">Eliminar hoja</button><span id="delete-xlsx-sheet-tooltip" role="tooltip">Elimina la hoja seleccionada después de confirmarlo; el libro conserva una hoja visible.</span></span></div>
 				<output id="sheet-state-status" aria-live="polite"></output>
 			</div>
 			<div id="cell-navigation" class="navigation-group">
@@ -1627,6 +1698,13 @@ function isCreateXlsxTableMessage(message: unknown): message is Extract<WebviewT
 		&& Number.isInteger(value.startRow) && Number(value.startRow) >= 0 && Number.isInteger(value.startColumn) && Number(value.startColumn) >= 0
 		&& Number.isInteger(value.endRow) && Number(value.endRow) >= Number(value.startRow)
 		&& Number.isInteger(value.endColumn) && Number(value.endColumn) >= Number(value.startColumn);
+}
+
+function isXlsxSheetOperationMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'xlsxSheetOperation' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'xlsxSheetOperation') {return false;}
+	const value = message as Record<string, unknown>;
+	return typeof value.documentId === 'string' && Number.isInteger(value.revision) && typeof value.sheetId === 'string'
+		&& Number.isInteger(value.sheetIndex) && Number(value.sheetIndex) >= 0 && ['add', 'rename', 'delete'].includes(String(value.kind));
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {
