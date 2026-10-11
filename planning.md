@@ -336,7 +336,7 @@ Checklist para resolver y ampliar la cobertura en trabajo posterior:
 
 ## 15. V2 — Análisis completo de la referencia y especificación para Luna
 
-**Estado:** la V2 está en progreso. V2-00A a V2-17B están implementadas con pruebas focalizadas; V2-16 y V2-17 tienen verificaciones visuales/Extension Host pendientes por Node 18. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
+**Estado:** la V2 está en progreso. V2-00A a V2-18A están implementadas con pruebas focalizadas; V2-16/17 mantienen verificaciones visuales/Extension Host pendientes por Node 18. V2-18B es la etapa siguiente. Las verificaciones pendientes se mantienen indicadas en cada checklist. **Revisión:** 2026-10-11 (America/Guatemala). Esta sección reemplaza la primera propuesta v2, que era una revisión parcial. Las secciones 1–14 conservan el MVP y su historial; los cambios de alcance aquí descritos se aplican únicamente al implementar la etapa v2 correspondiente. No actualizar `package.json.version` solo por llamar v2 a este roadmap.
 
 ### 15.1. Qué se revisó y qué significa “todo el plugin”
 
@@ -955,6 +955,12 @@ Las tarjetas V2-00A a V2-15B tienen implementación en el workspace; V2-16A y V2
 **Depende de:** V2-01B/V2-15A. **Archivos:** formula-reference, tipos y tests puros. **Pasos:** usar Parser/Tokenizer de Formualizer en entorno soportado para obtener AST/spans; transformador definido para referencia A1/simple/rango, sheet quoted, absolutos y coordenadas. Diferenciar copy offset de structural offset. Preservar strings/case/espacios fuera de spans y rechazar sintaxis sin spans suficientes. Aplicar parches solo en spans de referencias, de mayor a menor offset; no regenerar AST completo, porque valores numéricos de AST pueden perder lexemas. Comprobar spans dentro de la expresión original y volver a parsear resultado. Para Node, compilar servicio perezoso ESM `dist/formula-parser-node.mjs` con Webpack `target: [node,node18]`, `experiments: {asyncWebAssembly:true,outputModule:true}`, regla `.wasm` y output module, siguiendo la prueba temporal y `scripts/test-formulas.js`; cargar desde extensionUri por import dinámico, sin hacer que esbuild Node procese WASM. Inyectar interfaz `FormulaParserService` al transformador; backend Web se conecta en V2-22B. Cota de expresión 32 KiB; normalizar errores string. Tests puros del transformador usan datos AST controlados más tests reales del servicio bundleado. No crear worker Node hasta medir bloqueo; transporte no pertenece al transformador.
 
 **Aceptación:** batería insert/delete/copy con $/mixed/rangos/otras hojas; `"B2"` intacto; referencias eliminadas #REF!; unsupported enum claro, sin silencios. **Fuera:** modificar XLSX todavía, nombres/tables/external/3D ni AST de todas las sintaxis. **Checks:** unit de transformaciones y test-formulas pertinente.
+
+- [x] Obtener referencias A1, rangos y spans del Parser/Tokenizer Formualizer; comprobar token, coordenadas y offsets antes de editar texto.
+- [x] Transformar insert/delete por hoja objetivo y copy por offsets, respetar referencias absolutas, actualizar rangos y usar `#REF!` al eliminar destinos; strings y texto ajeno quedan idénticos.
+- [x] Rechazar hojas 3D, referencias externas, sintaxis fuera de A1, spans ambiguos, coordenadas fuera de límites y fórmulas de más de 32 KiB con resultado `unsupported` y motivo.
+- [x] Crear servicio ESM/WASM de Node separado y lazy-loading por URI de extensión; el empaquetado comparte el WASM con Webview para no duplicar el recurso de 9.26 MiB.
+- [x] Probar transformaciones con Parser/Tokenizer real y el bundle Node ESM; también pasan test-formulas (2,968 fórmulas), tipos, lint y 41 pruebas focalizadas.
 
 #### V2-18B — Estructura XLSX con fórmulas normales
 

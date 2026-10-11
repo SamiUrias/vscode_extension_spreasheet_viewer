@@ -3,11 +3,14 @@ const path = require('node:path');
 const webpack = require('webpack');
 
 const root = path.resolve(__dirname, '..');
+const referenceTest = process.argv.includes('--reference');
+const entry = referenceTest ? './src/test/formula-reference.test.ts' : './src/test/formula-calculator.test.ts';
+const filename = referenceTest ? 'formula-reference.test.mjs' : 'formula-calculator.test.mjs';
 const config = {
 	mode: 'production',
 	context: root,
 	target: ['node', 'node18'],
-	entry: './src/test/formula-calculator.test.ts',
+	entry,
 	experiments: { asyncWebAssembly: true, outputModule: true },
 	module: {
 		rules: [
@@ -29,7 +32,7 @@ const config = {
 	resolve: { extensions: ['.ts', '.js'] },
 	output: {
 		path: path.join(root, 'out', 'formula-tests'),
-		filename: 'formula-calculator.test.mjs',
+		filename,
 		module: true,
 		chunkFormat: 'module',
 	},

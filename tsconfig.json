@@ -20,6 +20,7 @@
     },
     "exclude": [
         "src/webview/**",
-        "src/test/formula-calculator.test.ts"
+        "src/test/formula-calculator.test.ts",
+        "src/test/formula-reference.test.ts"
     ]
 }

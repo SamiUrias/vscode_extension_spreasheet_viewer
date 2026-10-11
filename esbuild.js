@@ -59,11 +59,59 @@ async function main() {
 			minify: production,
 			outfile: 'dist/webview.css',
 		}),
-		buildWebview(),
 	]);
+	await buildWebview();
+	await buildFormulaParserNode();
 	fs.mkdirSync('dist', { recursive: true });
 	fs.copyFileSync('node_modules/formualizer/LICENSE-MIT', 'dist/FORMUALIZER-LICENSE-MIT');
 	fs.copyFileSync('node_modules/formualizer/LICENSE-APACHE', 'dist/FORMUALIZER-LICENSE-APACHE');
+}
+
+function buildFormulaParserNode() {
+	const compiler = webpack({
+		mode: production ? 'production' : 'development',
+		context: path.resolve('.'),
+		entry: './src/formula-parser-node.mts',
+		target: ['node', 'node18'],
+		experiments: { asyncWebAssembly: true, outputModule: true },
+		module: {
+			rules: [
+				{
+					test: /\.[cm]?tsx?$/,
+					exclude: /node_modules/,
+					use: { loader: 'ts-loader', options: { configFile: 'tsconfig.formula-test.json', transpileOnly: true, compilerOptions: { noEmit: false } } },
+				},
+				{ test: /\.wasm$/, type: 'webassembly/async' },
+			],
+		},
+		resolve: { extensions: ['.mts', '.ts', '.js'] },
+		output: {
+			path: path.resolve('dist'), filename: 'formula-parser-node.mjs', module: true, chunkFormat: 'module', library: { type: 'module' },
+			webassemblyModuleFilename: 'formualizer.wasm',
+		},
+		optimization: { minimize: production },
+		devtool: production ? false : 'source-map',
+	});
+	if (watch) {
+		compiler.watch({}, (error, stats) => {reportWebpackBuild(error, stats); if (!error && !stats?.hasErrors()) {pruneUnusedFormulaParserAssets(stats);}});
+		return Promise.resolve();
+	}
+	return new Promise((resolve, reject) => {
+		compiler.run((error, stats) => {
+			if (error) {reject(error); return;}
+			if (stats?.hasErrors()) {reject(new Error(stats.toString({ all: false, errors: true, warnings: true }))); return;}
+			reportWebpackBuild(undefined, stats);
+			pruneUnusedFormulaParserAssets(stats);
+			compiler.close(closeError => closeError ? reject(closeError) : resolve());
+		});
+	});
+}
+
+function pruneUnusedFormulaParserAssets(stats) {
+	const emitted = new Set(stats.compilation.getAssets().map(asset => asset.name));
+	for (const file of fs.readdirSync('dist')) {
+		if (/^formula-parser-node-.+\.wasm$/.test(file) && !emitted.has(file)) {fs.unlinkSync(path.join('dist', file));}
+	}
 }
 
 function buildWebview() {
@@ -95,7 +143,7 @@ function buildWebview() {
 				path: path.resolve('dist'),
 				filename: 'webview.js',
 				chunkFilename: '[name].[contenthash].js',
-				webassemblyModuleFilename: 'formualizer-[hash].wasm',
+			webassemblyModuleFilename: 'formualizer.wasm',
 			},
 			optimization: { minimize: production, splitChunks: false, runtimeChunk: false },
 			devtool: production ? false : 'source-map',

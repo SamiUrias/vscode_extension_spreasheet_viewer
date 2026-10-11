@@ -12,7 +12,10 @@
 	"include": [
 		"src/protocol.ts",
 		"src/formats/xlsx.ts",
+		"src/formula-reference.ts",
+		"src/formula-parser-node.mts",
 		"src/webview/formula-calculator.ts",
-		"src/test/formula-calculator.test.ts"
+		"src/test/formula-calculator.test.ts",
+		"src/test/formula-reference.test.ts"
 	]
 }
