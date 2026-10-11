@@ -232,6 +232,11 @@
           "default": true,
           "description": "Muestra acciones para añadir, renombrar o eliminar hojas en libros XLSX compatibles."
         },
+        "spreadsheet-viewer.xlsx.showStyleActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Muestra acciones para aplicar formato simple, combinar celdas y guardar paneles fijos en XLSX compatibles."
+        },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,
@@ -301,6 +306,7 @@
     "test:xlsx-tables": "npm run compile-tests && node scripts/test-xlsx-tables.js",
     "test:xlsx-sheets": "npm run compile-tests && node scripts/test-xlsx-sheets.js",
     "test:move-range": "npm run compile-tests && node scripts/test-move-range.js",
+    "test:xlsx-styles": "npm run compile-tests && node scripts/test-xlsx-styles.js",
     "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",

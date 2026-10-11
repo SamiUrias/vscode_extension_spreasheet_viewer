@@ -105,6 +105,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showSheetActions', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'sheetActionsVisibility', visible });}
 				}
+				if (event.affectsConfiguration('spreadsheet-viewer.xlsx.showStyleActions', document.uri)) {
+					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showStyleActions', true);
+					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'xlsxStyleActionsVisibility', visible });}
+				}
 				if (event.affectsConfiguration('spreadsheet-viewer.view.showWorkbookAppearance', document.uri)) {
 					const visible = vscode.workspace.getConfiguration('spreadsheet-viewer.view', document.uri).get<boolean>('showWorkbookAppearance', true);
 					for (const panel of this.panels.get(document.uri.toString()) ?? []) {void panel.webview.postMessage({ type: 'workbookAppearanceVisibility', visible });}
@@ -293,6 +297,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isMoveCellsMessage(message)) {
 				void this.moveCells(document, panel, message);
+				return;
+			}
+			if (isXlsxStyleOperationMessage(message)) {
+				this.applyXlsxStyleOperation(document, panel, message);
 				return;
 			}
 			if (isDraftStateMessage(message)) {
@@ -898,6 +906,27 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		}
 	}
 
+	private applyXlsxStyleOperation(document: SpreadsheetDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToExtensionMessage, { type: 'xlsxStyleOperation' }>): void {
+		try {
+			if (document.isReadOnly || !document.xlsx || document.isXlsm || message.documentId !== document.documentId
+				|| message.revision !== document.revision || message.sheetId !== document.sheetId(message.sheetIndex)
+				|| message.operation.sheetIndex !== message.sheetIndex) {throw new Error('El libro o la selección no son editables.');}
+			if (!vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', document.uri).get<boolean>('showStyleActions', true)) {return;}
+			if (document.hasUnsavedChanges || this.hasPendingDraft(document)) {throw new Error('Guarda o deshaz los cambios pendientes antes de cambiar formato XLSX.');}
+			const transactionId = document.applyXlsxStyle(message.operation);
+			const labels: Record<string, string> = { format: 'Cambiar estilo XLSX', alignment: 'Cambiar alineación XLSX', numberFormat: 'Cambiar formato numérico XLSX', merge: 'Combinar celdas XLSX', unmerge: 'Separar celdas XLSX', freeze: 'Guardar paneles fijos XLSX' };
+			const update = () => {this.postDocument(document); this.postSaveState(document, { type: 'saveState', state: 'pending' }); this.scheduleSave(document);};
+			this.emitter.fire({ document, label: labels[message.operation.kind] ?? 'Cambiar formato XLSX', undo: () => {if (document.undo(transactionId)) {update();}}, redo: () => {if (document.redo(transactionId)) {update();}} });
+			this.postDocument(document);
+			this.postSaveState(document, { type: 'saveState', state: 'pending' });
+			if (this.saveOnCommit(document)) {this.scheduleSave(document);}
+		} catch (error) {
+			const messageText = errorMessage(error);
+			this.postSaveState(document, { type: 'saveState', state: 'error', message: messageText }, panel);
+			void vscode.window.showErrorMessage(`No se pudo cambiar el formato XLSX: ${messageText}`);
+		}
+	}
+
 	private restoreSheetIndexAfterHistory(document: SpreadsheetDocument, message: Extract<WebviewToExtensionMessage, { type: 'xlsxSheetOperation' }>, oldActive: number, panel: vscode.WebviewPanel, redo = false): void {
 		const count = document.xlsx?.sheets.length ?? 1;
 		for (const targetPanel of this.panels.get(document.uri.toString()) ?? []) {
@@ -1481,6 +1510,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const showFormulaFillActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showFormulaFillActions', true);
 		const showTableActions = vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showTableActions', true);
 		const showSheetActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showSheetActions', true);
+		const showStyleActions = !modeLabel && vscode.workspace.getConfiguration('spreadsheet-viewer.xlsx', uri).get<boolean>('showStyleActions', true);
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
 		const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'));
 		const formulaWorkerUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formula-worker.js'));
@@ -1511,6 +1541,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
 					</div>
 					<div id="move-actions" data-setting-visible="${showMoveActions}"${showMoveActions ? '' : ' hidden'} aria-label="Mover celdas"><span class="copy-control"><button id="cut-range" type="button" aria-describedby="cut-range-tooltip">Cortar rango</button><span id="cut-range-tooltip" role="tooltip">Marca el rango seleccionado para moverlo dentro de esta hoja; copiar al portapapeles nunca borra el origen.</span></span><span class="copy-control"><button id="move-range" type="button" aria-describedby="move-range-tooltip" hidden>Pegar movimiento</button><span id="move-range-tooltip" role="tooltip">Mueve el rango marcado a la celda seleccionada después de confirmar; puedes deshacerlo.</span></span><output id="move-status" aria-live="polite"></output></div>
+					<div id="xlsx-style-actions" data-setting-visible="${showStyleActions}"${showStyleActions ? '' : ' hidden'} aria-label="Formato XLSX"><span class="copy-control"><button id="toggle-xlsx-style" type="button" aria-describedby="toggle-xlsx-style-tooltip" aria-expanded="false">Formato XLSX</button><span id="toggle-xlsx-style-tooltip" role="tooltip">Abre las acciones para aplicar estilos simples, combinar celdas o guardar los paneles fijos en el libro.</span></span><div id="xlsx-style-controls" hidden><span class="copy-control"><button id="xlsx-style-bold" type="button" aria-describedby="xlsx-style-bold-tooltip">Negrita</button><span id="xlsx-style-bold-tooltip" role="tooltip">Activa o quita negrita en todas las celdas seleccionadas; conserva sus demás estilos y valores.</span></span><span class="copy-control"><button id="xlsx-style-italic" type="button" aria-describedby="xlsx-style-italic-tooltip">Cursiva</button><span id="xlsx-style-italic-tooltip" role="tooltip">Activa o quita cursiva en todas las celdas seleccionadas; conserva sus demás estilos y valores.</span></span><span class="copy-control"><button id="xlsx-style-wrap" type="button" aria-describedby="xlsx-style-wrap-tooltip">Ajustar texto</button><span id="xlsx-style-wrap-tooltip" role="tooltip">Activa o quita el ajuste de texto en las celdas seleccionadas.</span></span><span class="copy-control"><button id="xlsx-style-left" type="button" aria-describedby="xlsx-style-left-tooltip">Izquierda</button><span id="xlsx-style-left-tooltip" role="tooltip">Alinea horizontalmente las celdas seleccionadas a la izquierda.</span></span><span class="copy-control"><button id="xlsx-style-center" type="button" aria-describedby="xlsx-style-center-tooltip">Centrar</button><span id="xlsx-style-center-tooltip" role="tooltip">Centra horizontalmente las celdas seleccionadas.</span></span><span class="copy-control"><button id="xlsx-style-right" type="button" aria-describedby="xlsx-style-right-tooltip">Derecha</button><span id="xlsx-style-right-tooltip" role="tooltip">Alinea horizontalmente las celdas seleccionadas a la derecha.</span></span><label><span class="control-label">Formato numérico</span><select id="xlsx-number-format" aria-label="Formato numérico"><option>General</option><option>0</option><option>0.00</option><option>#,##0</option><option>#,##0.00</option><option>0%</option><option>0.00%</option><option>mm-dd-yy</option></select></label><span class="copy-control"><button id="xlsx-style-apply-number" type="button" aria-describedby="xlsx-style-apply-number-tooltip">Aplicar formato</button><span id="xlsx-style-apply-number-tooltip" role="tooltip">Aplica al rango el formato numérico de la lista. Solo se ofrecen formatos incorporados de Excel.</span></span><span class="copy-control"><button id="xlsx-style-merge" type="button" aria-describedby="xlsx-style-merge-tooltip">Combinar</button><span id="xlsx-style-merge-tooltip" role="tooltip">Combina el rango rectangular seleccionado si las celdas cubiertas están vacías.</span></span><span class="copy-control"><button id="xlsx-style-unmerge" type="button" aria-describedby="xlsx-style-unmerge-tooltip">Separar</button><span id="xlsx-style-unmerge-tooltip" role="tooltip">Separa exactamente la combinación seleccionada; no inventa ni modifica valores.</span></span><span class="copy-control"><button id="xlsx-style-freeze" type="button" aria-describedby="xlsx-style-freeze-tooltip">Guardar paneles fijos</button><span id="xlsx-style-freeze-tooltip" role="tooltip">Guarda en el XLSX las filas y columnas que ahora están fijadas en la vista del editor.</span></span></div><output id="xlsx-style-status" aria-live="polite"></output></div>
 					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">Rellenar rango</button><span id="fill-range-tooltip" role="tooltip">Repite los valores o extiende una serie numérica en el rango seleccionado. Muestra una vista previa antes de aplicar; se puede deshacer.</span></span>
 					<div id="formula-fill-actions" data-setting-visible="${showFormulaFillActions}"${showFormulaFillActions ? '' : ' hidden'}><span class="copy-control"><button id="fill-formulas-down" type="button" aria-describedby="fill-formulas-down-tooltip">Rellenar fórmulas abajo</button><span id="fill-formulas-down-tooltip" role="tooltip">Copia las fórmulas de la primera fila seleccionada hacia abajo y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span><span class="copy-control"><button id="fill-formulas-right" type="button" aria-describedby="fill-formulas-right-tooltip">Rellenar fórmulas derecha</button><span id="fill-formulas-right-tooltip" role="tooltip">Copia las fórmulas de la primera columna seleccionada hacia la derecha y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span></div>
 					<span id="table-actions-control" data-setting-visible="${showTableActions}"${showTableActions ? '' : ' hidden'} class="copy-control"><button id="create-xlsx-table" type="button" aria-describedby="create-xlsx-table-tooltip">Crear tabla XLSX</button><span id="create-xlsx-table-tooltip" role="tooltip">Crea una tabla nativa de Excel en el rango seleccionado si sus encabezados y el libro pasan la validación. No cambia los valores.</span></span>
@@ -1778,6 +1809,20 @@ function isMoveCellsMessage(message: unknown): message is Extract<WebviewToExten
 			&& Number.isSafeInteger(source.height) && Number(source.height) > 0 && Number.isSafeInteger(source.width) && Number(source.width) > 0)
 		&& Boolean(destination && Number.isSafeInteger(destination.row) && Number(destination.row) >= 0
 			&& Number.isSafeInteger(destination.column) && Number(destination.column) >= 0);
+}
+
+function isXlsxStyleOperationMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'xlsxStyleOperation' }> {
+	if (typeof message !== 'object' || message === null || !('type' in message) || message.type !== 'xlsxStyleOperation') {return false;}
+	const value = message as Record<string, unknown>, operation = value.operation as Record<string, unknown> | undefined;
+	if (typeof value.documentId !== 'string' || !Number.isSafeInteger(value.revision) || typeof value.sheetId !== 'string'
+		|| !Number.isSafeInteger(value.sheetIndex) || Number(value.sheetIndex) < 0 || !operation || operation.sheetIndex !== value.sheetIndex) {return false;}
+	if (operation.kind === 'freeze') {return Number.isSafeInteger(operation.rows) && Number(operation.rows) >= 0 && Number.isSafeInteger(operation.columns) && Number(operation.columns) >= 0;}
+	if (!['format', 'alignment', 'numberFormat', 'merge', 'unmerge'].includes(String(operation.kind))) {return false;}
+	if (![operation.startRow, operation.startColumn, operation.endRow, operation.endColumn].every(Number.isSafeInteger)) {return false;}
+	if (operation.kind === 'format') {return ['bold', 'italic', 'wrapText'].includes(String(operation.property)) && (operation.value === undefined || typeof operation.value === 'boolean');}
+	if (operation.kind === 'alignment') {return ['general', 'left', 'center', 'right'].includes(String(operation.value));}
+	if (operation.kind === 'numberFormat') {return ['General', '0', '0.00', '#,##0', '#,##0.00', '0%', '0.00%', 'mm-dd-yy'].includes(String(operation.value));}
+	return operation.kind === 'merge' || operation.kind === 'unmerge';
 }
 
 function isHistoryMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'history' }> {

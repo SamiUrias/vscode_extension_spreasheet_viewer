@@ -1,4 +1,5 @@
 import type { ViewMode, ViewStateV1 } from './view-state';
+import type { XlsxStyleOperation } from './formats/xlsx-styles';
 
 export interface FormulaEvaluation {
 	readonly status: 'calculated' | 'unsupported' | 'error';
@@ -72,6 +73,10 @@ export interface MoveCellsMessage {
 	source: { row: number; column: number; height: number; width: number };
 	destination: { row: number; column: number };
 }
+export interface XlsxStyleOperationMessage {
+	type: 'xlsxStyleOperation'; documentId: string; revision: number; sheetId: string; sheetIndex: number;
+	operation: XlsxStyleOperation;
+}
 export interface RecoveredDraft { sheetIndex: number; row: number; column: number; value: string; formula?: boolean; }
 export interface RestoreCellDraftMessage { type: 'restoreCellDraft'; draft: RecoveredDraft; }
 export interface DiscardCellDraftMessage { type: 'discardCellDraft'; }
@@ -128,7 +133,7 @@ export interface DraftStateMessage {
 export interface DraftCaptureResultMessage { type: 'draftCaptureResult'; requestId: number; draft?: RecoveredDraft; }
 export interface CaptureDraftMessage { type: 'captureDraft'; requestId: number; }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | CreateXlsxTableMessage | XlsxSheetOperationMessage | MoveCellsMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | CreateXlsxTableMessage | XlsxSheetOperationMessage | MoveCellsMessage | XlsxStyleOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';

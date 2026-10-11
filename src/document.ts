@@ -8,6 +8,7 @@ import { MAX_XLSX_BYTES, parseXlsxBytes, type XlsxWorkbook } from './formats/xls
 import { getXlsxStructureCapability, type XlsxStructureCapability, type XlsxStructureOperation } from './formats/xlsx-structure';
 import type { XlsxTableOperation } from './formats/xlsx-tables';
 import type { XlsxSheetOperation } from './formats/xlsx-sheets';
+import type { XlsxStyleOperation } from './formats/xlsx-styles';
 import type { FormulaParserService } from './formula-reference';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 import { isWritableFileSystem } from './filesystem-capability';
@@ -195,6 +196,14 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 
 	applyXlsxSheet(operation: XlsxSheetOperation): number {
 		const transactionId = this.editSession.applyXlsxSheet(operation);
+		this.xlsx = this.editSession.xlsxWorkbook;
+		this.xlsxStructureCapability = getXlsxStructureCapability(this.editSession.serializeCopy());
+		this.revision++;
+		return transactionId;
+	}
+
+	applyXlsxStyle(operation: XlsxStyleOperation): number {
+		const transactionId = this.editSession.applyXlsxStyle(operation);
 		this.xlsx = this.editSession.xlsxWorkbook;
 		this.xlsxStructureCapability = getXlsxStructureCapability(this.editSession.serializeCopy());
 		this.revision++;

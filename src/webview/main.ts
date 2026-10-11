@@ -104,6 +104,14 @@ const addSheetButton = requiredElement<HTMLButtonElement>('#add-xlsx-sheet');
 const renameSheetButton = requiredElement<HTMLButtonElement>('#rename-xlsx-sheet');
 const deleteSheetButton = requiredElement<HTMLButtonElement>('#delete-xlsx-sheet');
 let showSheetActions = sheetControl.dataset.actionsVisible === 'true';
+const xlsxStyleActions = requiredElement<HTMLDivElement>('#xlsx-style-actions');
+const toggleXlsxStyleButton = requiredElement<HTMLButtonElement>('#toggle-xlsx-style');
+const xlsxStyleControls = requiredElement<HTMLDivElement>('#xlsx-style-controls');
+const xlsxStyleStatus = requiredElement<HTMLOutputElement>('#xlsx-style-status');
+const xlsxNumberFormat = requiredElement<HTMLSelectElement>('#xlsx-number-format');
+let showXlsxStyleActions = xlsxStyleActions.dataset.settingVisible === 'true';
+const xlsxStyleButtons = ['#xlsx-style-bold', '#xlsx-style-italic', '#xlsx-style-wrap', '#xlsx-style-left', '#xlsx-style-center', '#xlsx-style-right', '#xlsx-style-apply-number', '#xlsx-style-merge', '#xlsx-style-unmerge', '#xlsx-style-freeze']
+	.map(selector => requiredElement<HTMLButtonElement>(selector));
 const cellReferenceInput = requiredElement<HTMLInputElement>('#cell-reference-input');
 const goToCellButton = requiredElement<HTMLButtonElement>('#go-to-cell');
 const searchInput = requiredElement<HTMLInputElement>('#search-input');
@@ -291,6 +299,13 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		updateSheetActions();
 		return;
 	}
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
+		&& event.data.type === 'xlsxStyleActionsVisibility' && 'visible' in event.data && typeof event.data.visible === 'boolean') {
+		showXlsxStyleActions = event.data.visible;
+		xlsxStyleActions.dataset.settingVisible = String(event.data.visible);
+		updateXlsxStyleActions();
+		return;
+	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'focusCell'
 		&& 'row' in event.data && Number.isInteger(event.data.row) && 'column' in event.data && Number.isInteger(event.data.column)) {
 		const position = event.data as { row: number; column: number };
@@ -475,6 +490,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		sheetControl.hidden = true;
 	}
 	updateSheetActions();
+	updateXlsxStyleActions();
 	if (pendingMoveCut && !moveAwaitingToken && (pendingMoveCut.documentId !== snapshot.documentId || pendingMoveCut.revision !== snapshot.revision
 		|| pendingMoveCut.sheetId !== snapshot.sheetId)) {clearPendingMoveCut('El documento cambió; se canceló el corte pendiente.');}
 	updateMoveActions();
@@ -1010,6 +1026,59 @@ function updateMoveActions(): void {
 		|| pendingMoveCut.revision !== snapshot?.revision || pendingMoveCut.sheetId !== snapshot?.sheetId;
 }
 
+function updateXlsxStyleActions(): void {
+	const editable = showXlsxStyleActions && snapshot?.type === 'xlsxData' && snapshot.fileFormat === 'xlsx' && snapshot.readonly !== true;
+	xlsxStyleActions.hidden = !editable;
+	const hasProjection = sortCriteria.length > 0 || columnFilters.length > 0 || Boolean(searchInput.value);
+	const range = selectedRectangle();
+	const rangeReady = Boolean(editable && range && range.height * range.width <= 100_000 && !editorDirty && !inlineEditorDirty && !hasProjection);
+	toggleXlsxStyleButton.disabled = !editable || Boolean(editorDirty || inlineEditorDirty);
+	for (const button of xlsxStyleButtons) {button.disabled = !rangeReady;}
+	const freezeButton = xlsxStyleButtons[xlsxStyleButtons.length - 1]!;
+	freezeButton.disabled = !editable || Boolean(editorDirty || inlineEditorDirty || hasProjection || !snapshot || freezeRows > snapshot.rowCount || freezeColumns > snapshot.columnCount);
+	if (editable && hasProjection) {xlsxStyleStatus.textContent = 'Quita orden, filtros y búsqueda antes de guardar formato o paneles en el XLSX.';}
+	else if (editable && !range) {xlsxStyleStatus.textContent = 'Selecciona una celda o rango para aplicar formato.';}
+	else if (!editable) {xlsxStyleStatus.textContent = '';}
+}
+
+type XlsxStyleOperationRequest = Extract<WebviewToExtensionMessage, { type: 'xlsxStyleOperation' }>['operation'];
+function sendXlsxStyleOperation(operation: XlsxStyleOperationRequest): void {
+	if (!snapshot || snapshot.type !== 'xlsxData' || snapshot.fileFormat !== 'xlsx' || snapshot.readonly || !showXlsxStyleActions || editorDirty || inlineEditorDirty) {return;}
+	if (sortCriteria.length || columnFilters.length || searchInput.value) {updateXlsxStyleActions(); return;}
+	vscodeApi.postMessage({ type: 'xlsxStyleOperation', documentId: snapshot.documentId, revision: snapshot.revision,
+		sheetId: snapshot.sheetId, sheetIndex: snapshot.activeSheetIndex, operation });
+}
+
+function sendSelectedStyle(kind: 'format' | 'alignment' | 'numberFormat' | 'merge' | 'unmerge', property?: 'bold' | 'italic' | 'wrapText', value?: string): void {
+	if (!snapshot || snapshot.type !== 'xlsxData') {return;}
+	const rectangle = selectedRectangle();
+	if (!rectangle) {return;}
+	const range = { sheetIndex: snapshot.activeSheetIndex, startRow: rectangle.row, startColumn: rectangle.column,
+		endRow: rectangle.row + rectangle.height - 1, endColumn: rectangle.column + rectangle.width - 1 };
+	if (kind === 'format') {sendXlsxStyleOperation({ kind, ...range, property: property!, ...(value === undefined ? {} : { value: value === 'true' }) });}
+	else if (kind === 'alignment') {sendXlsxStyleOperation({ kind, ...range, value: value as 'general' | 'left' | 'center' | 'right' });}
+	else if (kind === 'numberFormat') {sendXlsxStyleOperation({ kind, ...range, value: value as 'General' | '0' | '0.00' | '#,##0' | '#,##0.00' | '0%' | '0.00%' | 'mm-dd-yy' });}
+	else {sendXlsxStyleOperation({ kind, ...range });}
+}
+
+toggleXlsxStyleButton.addEventListener('click', () => {
+	xlsxStyleControls.hidden = !xlsxStyleControls.hidden;
+	toggleXlsxStyleButton.setAttribute('aria-expanded', String(!xlsxStyleControls.hidden));
+});
+requiredElement<HTMLButtonElement>('#xlsx-style-bold').addEventListener('click', () => sendSelectedStyle('format', 'bold'));
+requiredElement<HTMLButtonElement>('#xlsx-style-italic').addEventListener('click', () => sendSelectedStyle('format', 'italic'));
+requiredElement<HTMLButtonElement>('#xlsx-style-wrap').addEventListener('click', () => sendSelectedStyle('format', 'wrapText'));
+requiredElement<HTMLButtonElement>('#xlsx-style-left').addEventListener('click', () => sendSelectedStyle('alignment', undefined, 'left'));
+requiredElement<HTMLButtonElement>('#xlsx-style-center').addEventListener('click', () => sendSelectedStyle('alignment', undefined, 'center'));
+requiredElement<HTMLButtonElement>('#xlsx-style-right').addEventListener('click', () => sendSelectedStyle('alignment', undefined, 'right'));
+requiredElement<HTMLButtonElement>('#xlsx-style-apply-number').addEventListener('click', () => sendSelectedStyle('numberFormat', undefined, xlsxNumberFormat.value));
+requiredElement<HTMLButtonElement>('#xlsx-style-merge').addEventListener('click', () => sendSelectedStyle('merge'));
+requiredElement<HTMLButtonElement>('#xlsx-style-unmerge').addEventListener('click', () => sendSelectedStyle('unmerge'));
+requiredElement<HTMLButtonElement>('#xlsx-style-freeze').addEventListener('click', () => {
+	if (!snapshot || snapshot.type !== 'xlsxData') {return;}
+	sendXlsxStyleOperation({ kind: 'freeze', sheetIndex: snapshot.activeSheetIndex, rows: freezeRows, columns: freezeColumns });
+});
+
 function selectedRectangle(): { row: number; column: number; height: number; width: number } | undefined {
 	if (!selectedCell) {return undefined;}
 	const firstRow = selectionRange ? Math.min(selectionRange.anchor.row, selectionRange.focus.row) : selectedCell.row;
@@ -1495,6 +1564,7 @@ function sendDraftState(
 		...(formulaEditMode.checked ? { formula: true } : {}),
 	});
 	updateMoveActions();
+	updateXlsxStyleActions();
 }
 
 function isRecoveredDraft(value: unknown): value is { sheetIndex: number; row: number; column: number; value: string; formula?: boolean } {

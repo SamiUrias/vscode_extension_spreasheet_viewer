@@ -3,6 +3,7 @@ import { parseXlsxBytes, serializeXlsxEdits, type XlsxCellEdit, type XlsxStoredT
 import { applyXlsxStructureOperation, type XlsxStructureOperation } from './formats/xlsx-structure';
 import { applyXlsxTableOperation, type XlsxTableOperation } from './formats/xlsx-tables';
 import { applyXlsxSheetOperation, type XlsxSheetOperation } from './formats/xlsx-sheets';
+import { applyXlsxStyleOperation, type XlsxStyleOperation } from './formats/xlsx-styles';
 import { validateFormulaExpression, type FormulaParserService } from './formula-reference';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 import { isCellCoveredByRange } from './cell-reference';
@@ -86,6 +87,19 @@ export class SpreadsheetEditSession {
 		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La gestión de hojas solo está disponible para XLSX.');}
 		if (this.edits.size) {throw new Error('Guarda o deshaz los cambios pendientes antes de cambiar las hojas XLSX.');}
 		const result = applyXlsxSheetOperation(this.xlsxBytes, operation);
+		const before: XlsxStructureState = { workbook: this.xlsx, bytes: result.before };
+		const after: XlsxStructureState = { workbook: parseXlsxBytes(result.after), bytes: result.after };
+		this.restoreXlsxStructure(after);
+		const id = this.nextTransactionId++;
+		this.undoStack.push({ id, structureBefore: before, structureAfter: after });
+		this.redoStack.length = 0;
+		return id;
+	}
+
+	applyXlsxStyle(operation: XlsxStyleOperation): number {
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error('Los formatos XLSX solo están disponibles para libros XLSX.');}
+		if (this.edits.size) {throw new Error('Guarda o deshaz los cambios pendientes antes de cambiar formato XLSX.');}
+		const result = applyXlsxStyleOperation(this.xlsxBytes, operation);
 		const before: XlsxStructureState = { workbook: this.xlsx, bytes: result.before };
 		const after: XlsxStructureState = { workbook: parseXlsxBytes(result.after), bytes: result.after };
 		this.restoreXlsxStructure(after);

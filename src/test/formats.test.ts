@@ -6,6 +6,7 @@ import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
 import { applyXlsxStructureOperation, getXlsxStructureCapability } from '../formats/xlsx-structure';
 import { applyXlsxTableOperation } from '../formats/xlsx-tables';
 import { applyXlsxSheetOperation } from '../formats/xlsx-sheets';
+import { applyXlsxStyleOperation } from '../formats/xlsx-styles';
 import { createMoveRangeEdits } from '../move-range';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
@@ -158,6 +159,51 @@ function encodeUtf16(text: string, littleEndian: boolean): Buffer {
 }
 
 suite('XLSX reader', () => {
+	test('XLSX style, merge and freeze operations preserve values and support undo', () => {
+		const original = createStyledXlsxFixture();
+		const originalParts = unzipSync(original);
+		const bold = applyXlsxStyleOperation(original, { kind: 'format', sheetIndex: 0, startRow: 1, startColumn: 0, endRow: 1, endColumn: 2, property: 'bold' });
+		const boldWorkbook = parseXlsxBytes(bold.after);
+		const boldStyle = boldWorkbook.sheets[0]?.cellStyleIndexes?.[1]?.[0] ?? 0;
+		assert.equal(boldWorkbook.styles?.cellVisualStyles[boldStyle]?.bold, true);
+		assert.equal(boldWorkbook.styles?.cellFormats[boldStyle]?.numberFormatId, 10, 'bold preserves the number format');
+		assert.equal(boldWorkbook.styles?.fontCount, 2, 'shared bold styles reuse one new font across the range');
+		assert.deepStrictEqual(unzipSync(bold.after)['xl/sharedStrings.xml'], originalParts['xl/sharedStrings.xml']);
+		const unbold = applyXlsxStyleOperation(bold.after, { kind: 'format', sheetIndex: 0, startRow: 1, startColumn: 0, endRow: 1, endColumn: 2, property: 'bold' });
+		assert.equal(parseXlsxBytes(unbold.after).styles?.fontCount, 2, 'toggling off does not append duplicate fonts');
+		const wrapped = applyXlsxStyleOperation(bold.after, { kind: 'format', sheetIndex: 0, startRow: 1, startColumn: 0, endRow: 1, endColumn: 1, property: 'wrapText', value: true });
+		const wrapWorkbook = parseXlsxBytes(wrapped.after);
+		assert.equal(wrapWorkbook.styles?.cellVisualStyles[wrapWorkbook.sheets[0]?.cellStyleIndexes?.[1]?.[0] ?? 0]?.wrapText, true);
+		const formulaParts = unzipSync(original);
+		formulaParts['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(formulaParts['xl/worksheets/sheet1.xml']!).replace('<c r="C3"><v>20</v></c>', '<c r="C3"><f>A2+1</f><v>2</v></c>'));
+		const formulaWrapped = applyXlsxStyleOperation(zipSync(formulaParts), { kind: 'format', sheetIndex: 0, startRow: 2, startColumn: 2, endRow: 2, endColumn: 2, property: 'wrapText', value: true });
+		const formulaAfter = parseXlsxBytes(formulaWrapped.after);
+		assert.equal(formulaAfter.sheets[0]?.cellTypes[2]?.[2], 'formula');
+		assert.equal(formulaAfter.sheets[0]?.formulaCaches['C3'], '2');
+		const merged = applyXlsxStyleOperation(original, { kind: 'merge', sheetIndex: 0, startRow: 3, startColumn: 3, endRow: 3, endColumn: 4 });
+		assert.deepStrictEqual(parseXlsxBytes(merged.after).sheets[0]?.metadata?.mergedRanges, ['D4:E4']);
+		const unmerged = applyXlsxStyleOperation(merged.after, { kind: 'unmerge', sheetIndex: 0, startRow: 3, startColumn: 3, endRow: 3, endColumn: 4 });
+		assert.equal(parseXlsxBytes(unmerged.after).sheets[0]?.metadata?.mergedRanges.length, 0);
+		assert.throws(() => applyXlsxStyleOperation(original, { kind: 'merge', sheetIndex: 0, startRow: 1, startColumn: 0, endRow: 1, endColumn: 1 }), /celdas vacías/);
+		const frozen = applyXlsxStyleOperation(original, { kind: 'freeze', sheetIndex: 0, rows: 2, columns: 1 });
+		assert.deepStrictEqual(parseXlsxBytes(frozen.after).sheets[0]?.metadata?.frozenPane, { xSplit: 1, ySplit: 2, topLeftCell: 'B3', state: 'frozen' });
+		const selectedParts = unzipSync(original);
+		selectedParts['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(selectedParts['xl/worksheets/sheet1.xml']!).replace('<sheetData>', '<sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><sheetData>'));
+		const frozenWithSelection = applyXlsxStyleOperation(zipSync(selectedParts), { kind: 'freeze', sheetIndex: 0, rows: 2, columns: 1 });
+		const selectedWorksheet = new TextDecoder().decode(unzipSync(frozenWithSelection.after)['xl/worksheets/sheet1.xml']!);
+		assert.match(selectedWorksheet, /<pane[^>]*activePane="topLeft"/);
+		assert.match(selectedWorksheet, /<selection[^>]*activeCell="A1"[^>]*sqref="A1"/);
+		const unfrozen = applyXlsxStyleOperation(frozen.after, { kind: 'freeze', sheetIndex: 0, rows: 0, columns: 0 });
+		assert.equal(parseXlsxBytes(unfrozen.after).sheets[0]?.metadata?.frozenPane, undefined);
+		const session = new SpreadsheetEditSession(undefined, parseXlsxBytes(original), original);
+		const transaction = session.applyXlsxStyle({ kind: 'format', sheetIndex: 0, startRow: 1, startColumn: 0, endRow: 1, endColumn: 0, property: 'italic' });
+		assert.equal(session.undo(transaction), true);
+		assert.equal(parseXlsxBytes(session.serializeCopy()).styles?.cellVisualStyles[0]?.italic, undefined);
+		assert.equal(session.redo(transaction), true);
+		const italicStyle = parseXlsxBytes(session.serializeCopy()).sheets[0]?.cellStyleIndexes?.[1]?.[0] ?? 0;
+		assert.equal(parseXlsxBytes(session.serializeCopy()).styles?.cellVisualStyles[italicStyle]?.italic, true);
+	});
+
 	test('value move preflights rectangular ranges and handles overlap from a captured source', () => {
 		const source = [[{ value: '1', type: 'number' as const }, { value: '2', type: 'number' as const }], [{ value: '3', type: 'number' as const }, { value: '4', type: 'number' as const }]];
 		assert.deepStrictEqual(createMoveRangeEdits(source, { row: 0, column: 0 }, { row: 1, column: 1 }, 2, 2, 4, 4), [
@@ -643,6 +689,15 @@ function createXlsxTableFixture(): Uint8Array {
 	return zipSync(entries);
 }
 
-function xml(value: string): Uint8Array {
+function createStyledXlsxFixture(): Uint8Array {
+	const files = unzipSync(createXlsxTableFixture());
+	files['xl/styles.xml'] = xml('<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
+	files['xl/_rels/workbook.xml.rels'] = xml(new TextDecoder().decode(files['xl/_rels/workbook.xml.rels']!).replace('</Relationships>', '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'));
+	files['[Content_Types].xml'] = xml(new TextDecoder().decode(files['[Content_Types].xml']!).replace('</Types>', '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'));
+	files['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(files['xl/worksheets/sheet1.xml']!).replace('<c r="A2"><v>1</v></c>', '<c r="A2" s="1"><v>1</v></c>'));
+	return zipSync(files);
+}
+
+function xml(value: string): Uint8Array<ArrayBuffer> {
 	return new TextEncoder().encode(value);
 }
