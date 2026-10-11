@@ -27,6 +27,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - La configuración de la extensión y el significado de sus valores están documentados en `CONFIGURATION.md`.
 - La versión mínima requerida de VS Code es 1.140, acorde con los tipos y APIs usados al compilar.
 - Se incluye la licencia MIT para el proyecto.
+- Se incluyen los avisos y textos de licencia de las dependencias empaquetadas.
 
 ### Corregido
 

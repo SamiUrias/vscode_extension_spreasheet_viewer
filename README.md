@@ -97,4 +97,4 @@ This is a personal project provided **as is**, without a promise of support, mai
 
 ## License
 
-Spreadsheet Viewer is licensed under the MIT License (see `LICENSE`). Third-party components retain their own licenses, included with the packaged extension where applicable.
+Spreadsheet Viewer is licensed under the MIT License (see `LICENSE`). Bundled dependencies retain their own licenses; see `THIRD-PARTY-NOTICES.md` and the included license texts.
