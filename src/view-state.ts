@@ -10,6 +10,7 @@ export interface SheetViewState {
 	schema: string;
 	query: string;
 	selection?: { row: number; column: number };
+	selectionRange?: { anchor: { row: number; column: number }; focus: { row: number; column: number } };
 	scroll: { top: number; left: number };
 	sort: ViewSortCriterion[];
 	filters: ColumnFilter[];
@@ -17,6 +18,9 @@ export interface SheetViewState {
 	rowHeights: Record<string, number>;
 	showComments: boolean;
 	searchAllRows: boolean;
+	wrapCells: boolean;
+	freezeRows: number;
+	freezeColumns: number;
 }
 
 export function createHeaderSignature(values: readonly string[]): string {
@@ -148,12 +152,22 @@ function validateSheetState(value: Record<string, unknown>): SheetViewState | un
 		|| !isFiniteBetween(value.scroll.top, 0, 1_000_000_000) || !isFiniteBetween(value.scroll.left, 0, 1_000_000_000)
 		|| !Array.isArray(value.sort) || value.sort.length > 256 || !isPlainObject(value.columnWidths)
 		|| !isPlainObject(value.rowHeights) || typeof value.showComments !== 'boolean'
-		|| (value.searchAllRows !== undefined && typeof value.searchAllRows !== 'boolean')) {return undefined;}
+		|| (value.searchAllRows !== undefined && typeof value.searchAllRows !== 'boolean')
+		|| (value.wrapCells !== undefined && typeof value.wrapCells !== 'boolean')
+		|| (value.freezeRows !== undefined && !isIntegerBetween(value.freezeRows, 0, 51))
+		|| (value.freezeColumns !== undefined && !isIntegerBetween(value.freezeColumns, 0, 257))) {return undefined;}
 	let selection: SheetViewState['selection'];
 	if (value.selection !== undefined) {
 		if (!isPlainObject(value.selection) || !isIntegerBetween(value.selection.row, 0, 50_000)
 			|| !isIntegerBetween(value.selection.column, 0, 256)) {return undefined;}
 		selection = { row: value.selection.row, column: value.selection.column };
+	}
+	let selectionRange: SheetViewState['selectionRange'];
+	if (value.selectionRange !== undefined) {
+		if (!isPlainObject(value.selectionRange) || !isPlainObject(value.selectionRange.anchor) || !isPlainObject(value.selectionRange.focus)
+			|| !isIntegerBetween(value.selectionRange.anchor.row, 0, 50_000) || !isIntegerBetween(value.selectionRange.anchor.column, 0, 256)
+			|| !isIntegerBetween(value.selectionRange.focus.row, 0, 50_000) || !isIntegerBetween(value.selectionRange.focus.column, 0, 256)) {return undefined;}
+		selectionRange = { anchor: { row: value.selectionRange.anchor.row, column: value.selectionRange.anchor.column }, focus: { row: value.selectionRange.focus.row, column: value.selectionRange.focus.column } };
 	}
 	const sort: ViewSortCriterion[] = [];
 	for (const criterion of value.sort) {
@@ -167,8 +181,10 @@ function validateSheetState(value: Record<string, unknown>): SheetViewState | un
 	const columnWidths = validateSizeMap(value.columnWidths, 256, 48, 800);
 	const rowHeights = validateSizeMap(value.rowHeights, 50_000, 20, 600);
 	if (!columnWidths || !rowHeights) {return undefined;}
-	return { schema: value.schema, query: value.query, selection, scroll: { top: value.scroll.top, left: value.scroll.left }, sort,
-		filters, columnWidths, rowHeights, showComments: value.showComments, searchAllRows: value.searchAllRows === true };
+	return { schema: value.schema, query: value.query, selection, selectionRange, scroll: { top: value.scroll.top, left: value.scroll.left }, sort,
+		filters, columnWidths, rowHeights, showComments: value.showComments, searchAllRows: value.searchAllRows === true,
+		wrapCells: value.wrapCells === true, freezeRows: value.freezeRows === undefined ? 0 : value.freezeRows as number,
+		freezeColumns: value.freezeColumns === undefined ? 0 : value.freezeColumns as number };
 }
 
 function validateSizeMap(value: Record<string, unknown>, maximumEntries: number, minimum: number, maximum: number): Record<string, number> | undefined {

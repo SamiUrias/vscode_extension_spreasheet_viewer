@@ -18,6 +18,14 @@ Los filtros solo cambian las filas visibles, nunca el archivo. Las celdas vacía
 
 El planning llama **V2-07** a la etapa de ordenar, **V2-08A** al motor que evalúa filtros y **V2-08B** a los controles de filtro y su integración con búsqueda y navegación.
 
+## Ajustar y navegar la tabla
+
+En la barra sobre la tabla, elige **Primera columna** o **Todas las columnas** y pulsa **Autoajustar**. También puedes hacer doble clic en el divisor de una columna. La extensión mide el encabezado y una muestra determinista de hasta 200 filas distribuidas entre las filas visibles, con un límite de 2 millones de caracteres por acción; limita el ancho a 48–800 px y lo indica en el estado de vista. Los cambios son visuales y se guardan por hoja. El selector **Ajustar texto** envuelve el contenido y adapta la altura de las filas visibles hasta 600 px. Una altura que ajustes manualmente se conserva mientras el ajuste automático está activo.
+
+**Filas fijas** y **Columnas fijas** mantienen visibles las primeras N filas y columnas de la proyección al desplazarte (hasta 50 filas y 256 columnas). Por ejemplo, fija 1 fila y 2 columnas para mantener arriba la primera fila visible y a la izquierda las columnas A y B. Los ajustes son independientes del archivo y persisten por hoja. La selección y el desplazamiento tienen en cuenta el espacio ocupado por esas filas/columnas.
+
+Haz clic y arrastra para seleccionar un rango; `Shift` + clic o `Shift` + flechas extiende la selección. `Ctrl+A` (`Cmd+A` en macOS) selecciona la tabla visible. Usa flechas, `Home`/`End`, `PageUp`/`PageDown`, `Tab`/`Shift+Tab` y `Enter`/`Shift+Enter` para navegar. `F2` o escribir inicia la edición en línea. `Enter` o `Tab` en el editor en línea confirma y avanza; `Shift+Enter` inserta un salto de línea y `Escape` cancela. La selección rectangular sigue el orden visible y omite filas filtradas; al cambiar el orden o filtros se reduce a una celda. El portapapeles todavía no forma parte de estas etapas.
+
 ## Fidelidad y límites conocidos
 
 - Los valores se muestran sin formatos visuales ni conversiones inferidas. CSV conserva valores como texto; XLSX y ODS muestran los valores almacenados en XML, incluyendo seriales numéricos de fechas y decimales tal como están escritos. En ODS los valores se leen de `content.xml`; los estilos no se aplican a la tabla.
@@ -57,5 +65,7 @@ Requisitos: Node.js compatible con la versión de VS Code usada por el proyecto 
 - `npm run package`: ejecuta las mismas comprobaciones y genera los bundles minificados de producción en `dist/`.
 - `npm test`: compila y ejecuta pruebas en Extension Host; requiere un runtime de Node compatible con las herramientas de prueba instaladas.
 - Para probar la interfaz en VS Code, abre el proyecto, ejecuta **Run Extension** con F5 y prueba el menú contextual del Explorer. Mueve la pestaña a otro grupo y sigue el checklist de verificación manual en `planning.md`.
+
+En el entorno de desarrollo actual, `npm test` todavía requiere verificación con un runtime más nuevo: Node 18.20.4 no reconoce la bandera `/v` de una dependencia usada por el lanzador de VS Code. `npm run test:save-lifecycle` también requiere acceso a la red si el runtime de VS Code debe descargarse.
 
 El paquete VSIX todavía debe generarse y comprobarse con `vsce package` en un entorno donde esté disponible `@vscode/vsce`.

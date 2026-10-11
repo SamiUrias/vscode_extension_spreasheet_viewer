@@ -1,9 +1,10 @@
 import type { CsvDataMessage, FormulaEvaluation, ReloadStateMessage, RestoreViewStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
 import { resolveCellReference } from '../cell-reference';
 import { findSearchMatches } from '../search';
-import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, type RowLayout } from './grid-layout';
+import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, wrappedTextHeight, type RowLayout } from './grid-layout';
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
-import { selectGridCell } from './selection';
+import { selectGridCell, type CellRange } from './selection';
+import { isCellInVisibleRange } from '../range-selection';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
 
@@ -56,6 +57,11 @@ const projectionCount = requiredElement<HTMLOutputElement>('#projection-count');
 const filterStatus = requiredElement<HTMLOutputElement>('#filter-status');
 const filterPopover = requiredElement<HTMLElement>('#filter-popover');
 const resetViewButton = requiredElement<HTMLButtonElement>('#reset-view');
+const autoFitMode = requiredElement<HTMLSelectElement>('#auto-fit-mode');
+const autoFitButton = requiredElement<HTMLButtonElement>('#auto-fit-columns');
+const wrapCellsInput = requiredElement<HTMLInputElement>('#wrap-cells');
+const freezeRowsInput = requiredElement<HTMLInputElement>('#freeze-rows');
+const freezeColumnsInput = requiredElement<HTMLInputElement>('#freeze-columns');
 const sheetControl = requiredElement<HTMLLabelElement>('#sheet-control');
 const sheetSelector = requiredElement<HTMLSelectElement>('#sheet-selector');
 const cellReferenceInput = requiredElement<HTMLInputElement>('#cell-reference-input');
@@ -87,7 +93,12 @@ let startupDataTimer: number | undefined;
 let startupDataAttempts = 0;
 const columnWidthsBySheet = new Map<number, number[]>();
 const rowLayoutsBySheet = new Map<number, RowLayout>();
+const manualRowHeightsBySheet = new Map<number, Set<number>>();
 let selectedCell: { row: number; column: number } | undefined;
+let selectionRange: CellRange | undefined;
+let wrapCells = false;
+let freezeRows = 0;
+let freezeColumns = 0;
 let renderScheduled = false;
 let rowsViewport: HTMLDivElement | undefined;
 let renderedColumnCount = 0;
@@ -126,6 +137,10 @@ let applyingViewRestore = false;
 const viewSheets: Record<string, SheetViewState> = {};
 let restoreScrollAfterSelection: { top: number; left: number } | undefined;
 let viewStateNotice = '';
+let wrappedLayoutUpdateScheduled = false;
+let autoFitTextBudget = 2_000_000;
+let dragRangeAnchor: { row: number; column: number } | undefined;
+let suppressNextCellClick = false;
 
 gridScroll.tabIndex = 0;
 gridScroll.setAttribute('role', 'grid');
@@ -321,6 +336,7 @@ reloadFileButton.addEventListener('click', () => {
 
 toggleCommentsButton.addEventListener('click', () => {
 	showComments = !showComments;
+	selectionRange = undefined;
 	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
 	cachedProjection = undefined;
 	renderGrid();
@@ -331,6 +347,7 @@ toggleCommentsButton.addEventListener('click', () => {
 clearSortButton.addEventListener('click', () => {
 	if (!snapshot || sortCriteria.length === 0) {return;}
 	sortCriteria = [];
+	selectionRange = undefined;
 	cachedProjection = undefined;
 	vscodeApi.postMessage({ type: 'setSort', documentId: snapshot.documentId, sheetId: snapshot.sheetId, criteria: sortCriteria });
 	schedulePersistViewState();
@@ -338,6 +355,20 @@ clearSortButton.addEventListener('click', () => {
 	renderGrid();
 });
 resetViewButton.addEventListener('click', () => {if (snapshot) {resetCurrentView(snapshot);}});
+autoFitButton.addEventListener('click', autoFitColumns);
+wrapCellsInput.addEventListener('change', () => {
+	wrapCells = wrapCellsInput.checked;
+	if (!wrapCells && snapshot) {
+		const sheet = snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
+		const manual = manualRowHeightsBySheet.get(sheet) ?? new Set<number>();
+		const layout = getActiveRowLayout();
+		for (let row = 0; row < layout.heights.length; row++) {if (!manual.has(row)) {layout.heights[row] = defaultRowHeight;}}
+		rebuildRowOffsets(layout);
+	}
+	renderGrid(); schedulePersistViewState();
+});
+freezeRowsInput.addEventListener('change', () => updateFreezeCount('rows'));
+freezeColumnsInput.addEventListener('change', () => updateFreezeCount('columns'));
 
 sheetSelector.addEventListener('change', () => {
 	if (snapshot?.type !== 'xlsxData') {
@@ -430,28 +461,87 @@ gridScroll.addEventListener('keydown', event => {
 	if (event.target !== gridScroll || !snapshot || !selectedCell) {
 		return;
 	}
-	let row = selectedCell.row;
+	if (event.isComposing) {return;}
+	const rows = getRowProjection().visibleRows;
+	const currentVisibleRow = getRowProjection().sourceToVisible.get(selectedCell.row) ?? 0;
+	let visibleRow = currentVisibleRow;
 	let column = selectedCell.column;
+	let extend = event.shiftKey;
+	const pageStep = Math.max(1, Math.floor(gridScroll.clientHeight / defaultRowHeight) - 1);
+	if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+		event.preventDefault();
+		if (rows.length) {
+			selectionRange = { anchor: { row: rows[0]!, column: 0 }, focus: { row: rows[rows.length - 1]!, column: snapshot.columnCount - 1 } };
+			selectCell(rows[rows.length - 1]!, snapshot.columnCount - 1, true);
+		}
+		return;
+	}
+	if (event.key === 'F2') {event.preventDefault(); beginInlineEdit(selectedCell.row, selectedCell.column); return;}
+	const plainText = !event.ctrlKey && !event.metaKey && !event.altKey && Array.from(event.key).length === 1;
+	if (plainText && canEditCell(selectedCell.row, selectedCell.column)) {event.preventDefault(); beginInlineEdit(selectedCell.row, selectedCell.column, event.key); return;}
 	switch (event.key) {
-		case 'ArrowUp': row--; break;
-		case 'ArrowDown': row++; break;
+		case 'ArrowUp': visibleRow--; break;
+		case 'ArrowDown': visibleRow++; break;
 		case 'ArrowLeft': column--; break;
 		case 'ArrowRight': column++; break;
-		default: {
-			const startsText = !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing
-				&& Array.from(event.key).length === 1;
-			if (!startsText || !canEditCell(row, column)) {return;}
-			event.preventDefault();
-			beginInlineEdit(row, column, event.key);
-			return;
+		case 'Home': if (event.ctrlKey || event.metaKey) {visibleRow = 0;} column = 0; break;
+		case 'End': if (event.ctrlKey || event.metaKey) {visibleRow = rows.length - 1;} column = snapshot.columnCount - 1; break;
+		case 'PageUp': visibleRow -= pageStep; break;
+		case 'PageDown': visibleRow += pageStep; break;
+		case 'Enter': visibleRow += event.shiftKey ? -1 : 1; extend = false; break;
+		case 'Tab': {
+			const delta = event.shiftKey ? -1 : 1;
+			const nextFlat = currentVisibleRow * snapshot.columnCount + selectedCell.column + delta;
+			if (nextFlat < 0 || nextFlat >= rows.length * snapshot.columnCount) {return;}
+			const flat = nextFlat;
+			visibleRow = Math.floor(flat / snapshot.columnCount);
+			column = flat % snapshot.columnCount;
+			extend = false; break;
 		}
+		default: return;
 	}
+	if (!rows.length) {return;}
 	event.preventDefault();
-	selectCell(
-		Math.max(0, Math.min(snapshot.rowCount - 1, row)),
-		Math.max(0, Math.min(snapshot.columnCount - 1, column)),
-	);
+	visibleRow = Math.max(0, Math.min(rows.length - 1, visibleRow));
+	column = Math.max(0, Math.min(snapshot.columnCount - 1, column));
+	selectCell(rows[visibleRow]!, column, extend);
 });
+
+let dragPointer: { x: number; y: number } | undefined;
+let dragFrame: number | undefined;
+gridRoot.addEventListener('pointerdown', event => {
+	if (event.button !== 0 || !(event.target instanceof Element)) {return;}
+	const cell = event.target.closest<HTMLElement>('.grid-cell[data-source-row][data-column]');
+	if (!cell || !snapshot) {return;}
+	const row = Number(cell.dataset.sourceRow); const column = Number(cell.dataset.column);
+	selectCell(row, column, event.shiftKey);
+	dragRangeAnchor = selectionRange?.anchor ?? { row, column };
+	dragPointer = { x: event.clientX, y: event.clientY };
+	suppressNextCellClick = true;
+	gridScroll.focus({ preventScroll: true });
+	if (dragFrame === undefined) {dragFrame = window.requestAnimationFrame(dragSelectionFrame);}
+});
+window.addEventListener('pointermove', event => {if (dragRangeAnchor) {dragPointer = { x: event.clientX, y: event.clientY };}});
+window.addEventListener('pointerup', () => {
+	dragRangeAnchor = undefined; dragPointer = undefined;
+	if (dragFrame !== undefined) {window.cancelAnimationFrame(dragFrame); dragFrame = undefined;}
+	window.setTimeout(() => {suppressNextCellClick = false;}, 0);
+});
+function dragSelectionFrame(): void {
+	if (!dragRangeAnchor || !dragPointer) {dragFrame = undefined; return;}
+	const rect = gridScroll.getBoundingClientRect();
+	const edge = 24;
+	if (dragPointer.y < rect.top + edge) {gridScroll.scrollTop -= 10;}
+	else if (dragPointer.y > rect.bottom - edge) {gridScroll.scrollTop += 10;}
+	if (dragPointer.x < rect.left + edge) {gridScroll.scrollLeft -= 10;}
+	else if (dragPointer.x > rect.right - edge) {gridScroll.scrollLeft += 10;}
+	const target = document.elementFromPoint(dragPointer.x, dragPointer.y)?.closest<HTMLElement>('.grid-cell[data-source-row][data-column]');
+	if (target) {
+		const row = Number(target.dataset.sourceRow); const column = Number(target.dataset.column);
+		if (selectionRange?.focus.row !== row || selectionRange?.focus.column !== column) {selectCell(row, column, true);}
+	}
+	dragFrame = window.requestAnimationFrame(dragSelectionFrame);
+}
 
 gridScroll.addEventListener('wheel', event => {
 	if (event.shiftKey && event.deltaY !== 0) {
@@ -467,13 +557,25 @@ function renderGrid(): void {
 	renderSpreadsheetGrid({
 		snapshot, state: gridRendererState, gridScroll, gridRoot,
 		defaultRowHeight, headingHeight, rowHeaderWidth, overscan,
+		freezeRows, freezeColumns, wrapCells,
+		consumeSuppressedCellClick: () => {const value = suppressNextCellClick; suppressNextCellClick = false; return value;},
+		autoFitColumn,
 		getActiveColumnWidths, gridTemplateColumns: widths => gridTemplateColumns(widths, rowHeaderWidth),
 		startColumnResize, resizeColumnWithKeyboard, updateGridColumnSizing, getActiveRowLayout,
-		findRowAtOffset, startRowResize, resizeRowWithKeyboard, columnName, isSelected, isFormula,
+		findRowAtOffset, startRowResize, resizeRowWithKeyboard, columnName, isSelected,
+		isActiveCell: (row, column) => selectedCell?.row === row && selectedCell.column === column, isFormula,
 		getFormulaCache, getFormulaResult, isEditing, isActiveSearchMatch, inlineEditValue,
 		setInlineEditValue: value => {inlineEditValue = value;},
 		sendDraftState, setInlineEditorDirty: value => {inlineEditorDirty = value;},
 		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit,
+		navigateAfterInlineEdit: (rowDelta, columnDelta) => {
+			if (!snapshot || !selectedCell) {return;}
+			const projection = getRowProjection();
+			const index = projection.sourceToVisible.get(selectedCell.row) ?? 0;
+			const total = projection.visibleRows.length * snapshot.columnCount;
+			const position = Math.max(0, Math.min(total - 1, (index + rowDelta) * snapshot.columnCount + selectedCell.column + columnDelta));
+			selectCell(projection.visibleRows[Math.floor(position / snapshot.columnCount)]!, position % snapshot.columnCount);
+		},
 		projection: getRowProjection(),
 		openFilter: openColumnFilter,
 		isFiltered: column => columnFilters.some(filter => filter.column === column),
@@ -487,6 +589,7 @@ function renderGrid(): void {
 			sortCriteria = cycleSort(sortCriteria, column, { shift: event.shiftKey, remove: event.ctrlKey || event.metaKey });
 		}
 		if (snapshot) {vscodeApi.postMessage({ type: 'setSort', documentId: snapshot.documentId, sheetId: snapshot.sheetId, criteria: sortCriteria });}
+		selectionRange = undefined;
 		cachedProjection = undefined;
 		schedulePersistViewState();
 			gridRendererState.rowsViewport = undefined;
@@ -500,12 +603,19 @@ function renderGrid(): void {
 	});
 	rowsViewport = gridRendererState.rowsViewport;
 	renderedColumnCount = gridRendererState.renderedColumnCount;
+	if (selectedCell && gridRoot.querySelector(`#cell-${selectedCell.row}-${selectedCell.column}`)) {
+		gridScroll.setAttribute('aria-activedescendant', `cell-${selectedCell.row}-${selectedCell.column}`);
+	} else {gridScroll.removeAttribute('aria-activedescendant');}
+	if (wrapCells) {updateWrappedVisibleRowHeights();}
 }
-function selectCell(row: number, column: number): void {
+function selectCell(row: number, column: number, extend = false): void {
 	if (!showComments && snapshot?.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
 		showComments = true;
+		selectionRange = undefined;
 		toggleCommentsButton.textContent = 'Ocultar comentarios';
 	}
+	if (extend && selectedCell) {selectionRange = { anchor: selectionRange?.anchor ?? { ...selectedCell }, focus: { row, column } };}
+	else if (!selectedCell || selectedCell.row !== row || selectedCell.column !== column) {selectionRange = undefined;}
 	selectGridCell({
 		snapshot, selectedCell, setSelectedCell: position => {selectedCell = position;}, commitSelectedEdit,
 		columnName, getFormulaResult, getFormulaCache, cellReference, cellReferenceInput, cellState, cellValue,
@@ -741,21 +851,23 @@ function ensureSelectionVisible(row: number, column: number): void {
 	for (const sourceRow of projection.visibleRows) {visibleOffsets.push(visibleOffsets[visibleOffsets.length - 1]! + (rowLayout.heights[sourceRow] ?? defaultRowHeight));}
 	const cellTop = headingHeight + (visibleOffsets[visibleRow] ?? 0);
 	const cellBottom = headingHeight + (visibleOffsets[visibleRow + 1] ?? ((visibleOffsets[visibleRow] ?? 0) + defaultRowHeight));
-	const visibleTop = gridScroll.scrollTop + headingHeight;
+	const frozenHeight = projection.visibleRows.slice(0, freezeRows).reduce((sum, sourceRow) => sum + (rowLayout.heights[sourceRow] ?? defaultRowHeight), 0);
+	const visibleTop = gridScroll.scrollTop + headingHeight + frozenHeight;
 	const visibleBottom = gridScroll.scrollTop + gridScroll.clientHeight;
-	if (cellTop < visibleTop) {
-		gridScroll.scrollTop = cellTop - headingHeight;
-	} else if (cellBottom > visibleBottom) {
+	if (visibleRow >= freezeRows && cellTop < visibleTop) {
+		gridScroll.scrollTop = cellTop - headingHeight - frozenHeight;
+	} else if (visibleRow >= freezeRows && cellBottom > visibleBottom) {
 		gridScroll.scrollTop = cellBottom - gridScroll.clientHeight;
 	}
 	const widths = getActiveColumnWidths();
 	const cellLeft = rowHeaderWidth + widths.slice(0, column).reduce((total, width) => total + width, 0);
 	const selectedColumnWidth = widths[column] ?? columnWidth;
-	const visibleLeft = gridScroll.scrollLeft + rowHeaderWidth;
+	const frozenWidth = widths.slice(0, freezeColumns).reduce((total, width) => total + width, 0);
+	const visibleLeft = gridScroll.scrollLeft + rowHeaderWidth + frozenWidth;
 	const visibleRight = gridScroll.scrollLeft + gridScroll.clientWidth;
-	if (cellLeft < visibleLeft) {
-		gridScroll.scrollLeft = cellLeft - rowHeaderWidth;
-	} else if (cellLeft + selectedColumnWidth > visibleRight) {
+	if (column >= freezeColumns && cellLeft < visibleLeft) {
+		gridScroll.scrollLeft = cellLeft - rowHeaderWidth - frozenWidth;
+	} else if (column >= freezeColumns && cellLeft + selectedColumnWidth > visibleRight) {
 		gridScroll.scrollLeft = cellLeft + selectedColumnWidth - gridScroll.clientWidth;
 	}
 }
@@ -836,6 +948,7 @@ function applyColumnFilter(column: number, candidate: ColumnFilter | undefined):
 	const validated = validateColumnFilters(proposed, snapshot.columnCount);
 	if (!validated) {filterStatus.textContent = 'El filtro excede los límites o contiene una condición no válida.'; if (popupColumn !== undefined) {popupMessage = filterStatus.textContent; renderFilterPopup();} return;}
 	columnFilters = validated;
+	selectionRange = undefined;
 	cachedProjection = undefined;
 	invalidateSearch();
 	pendingHiddenCell = undefined;
@@ -1068,6 +1181,7 @@ function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage, chang
 	const columnWidths = Array.from({ length: columnCount }, (_, column) => Number(sheetState.columnWidths[String(column)]) || columnWidth);
 	columnWidthsBySheet.set(sheetIndex, columnWidths);
 	const rowLayout = { heights: Array.from({ length: rowCount }, (_, row) => Number(sheetState.rowHeights[String(row)]) || defaultRowHeight), offsets: [] as number[] };
+	const manualHeights = new Set(Object.keys(sheetState.rowHeights).map(Number));
 	const selection = sheetState.selection && rowCount && columnCount
 		? { row: Math.min(sheetState.selection.row, rowCount - 1), column: Math.min(sheetState.selection.column, columnCount - 1) }
 		: undefined;
@@ -1081,8 +1195,16 @@ function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage, chang
 	}
 	searchInput.value = sheetState.query;
 	showComments = sheetState.showComments;
+	selectionRange = sheetState.selectionRange;
+	wrapCells = sheetState.wrapCells;
+	freezeRows = Math.min(sheetState.freezeRows, rowCount, 50);
+	freezeColumns = Math.min(sheetState.freezeColumns, columnCount);
+	wrapCellsInput.checked = wrapCells;
+	freezeRowsInput.value = String(freezeRows);
+	freezeColumnsInput.value = String(freezeColumns);
 	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
 	rowLayoutsBySheet.set(sheetIndex, rowLayout);
+	manualRowHeightsBySheet.set(sheetIndex, manualHeights);
 	rebuildRowOffsets(rowLayout);
 	selectedCell = selection;
 	restoreScrollAfterSelection = sheetState.scroll;
@@ -1101,6 +1223,9 @@ function resetCurrentView(current: CsvDataMessage | XlsxDataMessage): void {
 	searchAllRows = false;
 	searchAllRowsInput.checked = false;
 	showComments = false;
+	wrapCells = false; wrapCellsInput.checked = false;
+	freezeRows = 0; freezeColumns = 0; freezeRowsInput.value = '0'; freezeColumnsInput.value = '0';
+	selectionRange = undefined;
 	cachedProjection = undefined;
 	filterStatus.textContent = '';
 	resetSheetView(current);
@@ -1127,8 +1252,12 @@ function resetSheetView(current: CsvDataMessage | XlsxDataMessage): void {
 	searchAllRows = false;
 	searchAllRowsInput.checked = false;
 	showComments = false;
+	wrapCells = false; wrapCellsInput.checked = false;
+	freezeRows = 0; freezeColumns = 0; freezeRowsInput.value = '0'; freezeColumnsInput.value = '0';
+	selectionRange = undefined;
 	cachedProjection = undefined;
 	gridRendererState.rowsViewport = undefined;
+	manualRowHeightsBySheet.delete(sheetIndex);
 	toggleCommentsButton.textContent = 'Mostrar comentarios';
 	gridScroll.scrollTop = 0;
 	gridScroll.scrollLeft = 0;
@@ -1150,13 +1279,16 @@ function flushViewState(activeSheetOverride?: string): void {
 	const columnWidthOverrides: Record<string, number> = {};
 	widths.forEach((width, index) => {if (width !== columnWidth) {columnWidthOverrides[String(index)] = width;}});
 	const rowHeightOverrides: Record<string, number> = {};
-	layout.heights.forEach((height, index) => {if (height !== defaultRowHeight) {rowHeightOverrides[String(index)] = height;}});
+	const manualHeights = manualRowHeightsBySheet.get(sheetIndex) ?? new Set<number>();
+	layout.heights.forEach((height, index) => {if (manualHeights.has(index)) {rowHeightOverrides[String(index)] = height;}});
 	viewSheets[sheetId] = {
 		schema: sheetSchema(snapshot), query: searchInput.value.slice(0, 2048),
 		searchAllRows,
 		...(selectedCell ? { selection: { ...selectedCell } } : {}),
+		...(selectionRange ? { selectionRange: structuredClone(selectionRange) } : {}),
 		scroll: { top: Math.max(0, gridScroll.scrollTop), left: Math.max(0, gridScroll.scrollLeft) },
 		sort: [...sortCriteria], filters: columnFilters, columnWidths: columnWidthOverrides, rowHeights: rowHeightOverrides, showComments,
+		wrapCells, freezeRows, freezeColumns,
 	};
 	const sheets = Object.fromEntries(Object.entries(viewSheets).slice(-256));
 	void vscodeApi.postMessage({ type: 'persistViewState', mode: viewMode, state: {
@@ -1192,10 +1324,109 @@ function updateGridColumnSizing(): void {
 	const totalWidth = rowHeaderWidth + widths.reduce((total, width) => total + width, 0);
 	const headerRow = gridRoot.querySelector<HTMLDivElement>('.grid-header');
 	if (headerRow) {headerRow.style.gridTemplateColumns = template;}
+	gridRoot.querySelectorAll<HTMLElement>('.column-header.frozen-column, .grid-cell.frozen-column').forEach(element => {
+		const column = Number(element.dataset.column ?? element.closest('.column-header')?.getAttribute('data-column-index'));
+		if (Number.isInteger(column)) {element.style.left = `${rowHeaderWidth + widths.slice(0, column).reduce((total, width) => total + width, 0)}px`;}
+	});
 	for (const row of rowsViewport.children) {
 		(row as HTMLDivElement).style.gridTemplateColumns = template;
 	}
 	rowsViewport.style.width = `${totalWidth}px`;
+}
+
+function autoFitColumns(): void {
+	if (!snapshot || autoFitMode.value === 'none') {filterStatus.textContent = 'Elige primera columna o todas para autoajustar.'; return;}
+	const widths = getActiveColumnWidths();
+	const columns = autoFitMode.value === 'first' ? 1 : snapshot.columnCount;
+	autoFitTextBudget = 2_000_000;
+	for (let column = 0; column < columns; column++) {widths[column] = measureColumnWidth(column);}
+	filterStatus.textContent = getRowProjection().visibleRows.length > 200
+		? 'Anchos medidos con una muestra distribuida de hasta 200 filas.' : 'Columnas autoajustadas.';
+	updateGridColumnSizing();
+	gridRendererState.renderedColumnCount = 0;
+	renderGrid();
+	schedulePersistViewState();
+}
+
+function autoFitColumn(column: number): void {
+	if (!snapshot || column < 0 || column >= snapshot.columnCount) {return;}
+	const widths = getActiveColumnWidths();
+	autoFitTextBudget = 2_000_000;
+	widths[column] = measureColumnWidth(column);
+	filterStatus.textContent = `Columna ${columnName(column)} autoajustada con una muestra distribuida de hasta 200 filas.`;
+	updateGridColumnSizing();
+	gridRendererState.renderedColumnCount = 0;
+	renderGrid();
+	schedulePersistViewState();
+}
+
+function measureColumnWidth(column: number): number {
+	if (!snapshot) {return columnWidth;}
+	const ctx = document.createElement('canvas').getContext('2d');
+	if (!ctx) {return columnWidth;}
+	ctx.font = getComputedStyle(gridRoot).font;
+	const rows = sampleEvenly(getRowProjection().visibleRows, 200);
+	let maxWidth = ctx.measureText(columnName(column)).width;
+	const header = snapshot.type === 'csvData' ? snapshot.headerLabels?.[column] : undefined;
+	if (header) {maxWidth = Math.max(maxWidth, ctx.measureText(header).width);}
+	for (const row of rows) {
+		if (maxWidth >= maximumColumnWidth - 28 || autoFitTextBudget <= 0) {break;}
+		const text = (snapshot.rows[row]?.[column] ?? '').slice(0, Math.min(4_096, autoFitTextBudget));
+		autoFitTextBudget -= text.length;
+		for (const line of text.split(/\r\n|\r|\n/)) {maxWidth = Math.max(maxWidth, ctx.measureText(line).width);}
+	}
+	return Math.max(minimumColumnWidth, Math.min(maximumColumnWidth, Math.ceil(maxWidth + 28)));
+}
+
+function updateFreezeCount(kind: 'rows' | 'columns'): void {
+	const input = kind === 'rows' ? freezeRowsInput : freezeColumnsInput;
+	const maximum = kind === 'rows' ? 50 : 256;
+	const value = Number(input.value);
+	const normalized = Number.isFinite(value) ? Math.max(0, Math.min(maximum, Math.floor(value))) : 0;
+	input.value = String(normalized);
+	if (kind === 'rows') {freezeRows = normalized;} else {freezeColumns = normalized;}
+	gridRendererState.renderedColumnCount = 0;
+	renderGrid();
+	schedulePersistViewState();
+}
+
+function updateWrappedVisibleRowHeights(): void {
+	if (!snapshot || !rowsViewport) {return;}
+	const sheet = snapshot.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
+	const layout = getActiveRowLayout();
+	let manual = manualRowHeightsBySheet.get(sheet);
+	if (!manual) {manual = new Set<number>(); manualRowHeightsBySheet.set(sheet, manual);}
+	const widths = getActiveColumnWidths();
+	const canvas = document.createElement('canvas');
+	const ctx = canvas.getContext('2d');
+	if (!ctx) {return;}
+	const style = getComputedStyle(gridRoot);
+	ctx.font = style.font;
+	const lineHeight = Number.parseFloat(style.lineHeight) || 18;
+	let changed = false;
+	const projection = getRowProjection();
+	for (const element of rowsViewport.querySelectorAll<HTMLDivElement>(':scope > .grid-row')) {
+		const sourceRow = Number(element.dataset.sourceRow);
+		const visibleIndex = Number(element.dataset.visibleIndex);
+		if (!Number.isInteger(sourceRow) || manual.has(sourceRow)) {continue;}
+		const height = wrappedTextHeight(snapshot.rows[sourceRow] ?? [], widths, value => ctx.measureText(value).width,
+			lineHeight, defaultRowHeight, maximumRowHeight);
+		if (layout.heights[sourceRow] !== height) {layout.heights[sourceRow] = height; changed = true;}
+		element.style.height = `${height}px`;
+	}
+	if (!changed) {return;}
+	rebuildRowOffsets(layout);
+	const offsets = [0];
+	for (const sourceRow of projection.visibleRows) {offsets.push(offsets[offsets.length - 1]! + (layout.heights[sourceRow] ?? defaultRowHeight));}
+	rowsViewport.style.height = `${offsets[projection.visibleRows.length] ?? 0}px`;
+	for (const element of rowsViewport.querySelectorAll<HTMLDivElement>(':scope > .grid-row')) {
+		const visibleIndex = Number(element.dataset.visibleIndex);
+		element.style.top = `${offsets[visibleIndex] ?? 0}px`;
+	}
+	if (!wrappedLayoutUpdateScheduled) {
+		wrappedLayoutUpdateScheduled = true;
+		window.requestAnimationFrame(() => {wrappedLayoutUpdateScheduled = false; renderGrid();});
+	}
 }
 
 function startColumnResize(event: PointerEvent, column: number, handle: HTMLSpanElement): void {
@@ -1216,6 +1447,7 @@ function startColumnResize(event: PointerEvent, column: number, handle: HTMLSpan
 		handle.removeEventListener('pointermove', onMove);
 		handle.removeEventListener('pointerup', finish);
 		handle.removeEventListener('pointercancel', finish);
+		renderGrid();
 		schedulePersistViewState();
 	};
 	handle.addEventListener('pointermove', onMove);
@@ -1232,6 +1464,7 @@ function resizeColumnWithKeyboard(event: KeyboardEvent, column: number): void {
 	const direction = event.key === 'ArrowRight' ? 1 : -1;
 	widths[column] = Math.max(minimumColumnWidth, Math.min(maximumColumnWidth, (widths[column] ?? columnWidth) + direction * amount));
 	updateGridColumnSizing();
+	renderGrid();
 	schedulePersistViewState();
 }
 
@@ -1260,6 +1493,9 @@ function startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElemen
 	const layout = getActiveRowLayout();
 	const startY = event.clientY;
 	const startHeight = layout.heights[row] ?? defaultRowHeight;
+	const sheet = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
+	const manual = manualRowHeightsBySheet.get(sheet) ?? new Set<number>();
+	manual.add(row); manualRowHeightsBySheet.set(sheet, manual);
 	handle.setPointerCapture(event.pointerId);
 	const onMove = (moveEvent: PointerEvent): void => {
 		if (moveEvent.pointerId !== event.pointerId) {return;}
@@ -1272,6 +1508,7 @@ function startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElemen
 		handle.removeEventListener('pointermove', onMove);
 		handle.removeEventListener('pointerup', finish);
 		handle.removeEventListener('pointercancel', finish);
+			renderGrid();
 		schedulePersistViewState();
 	};
 	handle.addEventListener('pointermove', onMove);
@@ -1281,12 +1518,16 @@ function startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElemen
 
 function updateGridRowSizing(layout: { heights: number[]; offsets: number[] }): void {
 	if (!snapshot || !rowsViewport) {return;}
-	rowsViewport.style.height = `${layout.offsets[snapshot.rowCount] ?? 0}px`;
+	const projection = getRowProjection();
+	const offsets = [0];
+	for (const sourceRow of projection.visibleRows) {offsets.push(offsets[offsets.length - 1]! + (layout.heights[sourceRow] ?? defaultRowHeight));}
+	rowsViewport.style.height = `${offsets[projection.visibleRows.length] ?? 0}px`;
 	for (const element of rowsViewport.children) {
 		const row = element as HTMLDivElement;
-		const index = Number(row.dataset.rowIndex);
-		row.style.top = `${layout.offsets[index] ?? 0}px`;
-		row.style.height = `${layout.heights[index] ?? defaultRowHeight}px`;
+		const sourceRow = Number(row.dataset.sourceRow);
+		const visibleIndex = Number(row.dataset.visibleIndex);
+		row.style.top = `${offsets[visibleIndex] ?? 0}px`;
+		row.style.height = `${layout.heights[sourceRow] ?? defaultRowHeight}px`;
 	}
 }
 
@@ -1295,16 +1536,21 @@ function resizeRowWithKeyboard(event: KeyboardEvent, row: number): void {
 	event.preventDefault();
 	event.stopPropagation();
 	const layout = getActiveRowLayout();
+	const sheet = snapshot?.type === 'xlsxData' ? snapshot.activeSheetIndex : 0;
+	const manual = manualRowHeightsBySheet.get(sheet) ?? new Set<number>();
+	manual.add(row); manualRowHeightsBySheet.set(sheet, manual);
 	const amount = event.shiftKey ? 32 : 8;
 	const direction = event.key === 'ArrowDown' ? 1 : -1;
 	layout.heights[row] = Math.max(minimumRowHeight, Math.min(maximumRowHeight, (layout.heights[row] ?? defaultRowHeight) + direction * amount));
 	rebuildRowOffsets(layout);
 	updateGridRowSizing(layout);
+	renderGrid();
 	schedulePersistViewState();
 }
 
 function isSelected(row: number, column: number): boolean {
-	return selectedCell?.row === row && selectedCell.column === column;
+	return selectedCell?.row === row && selectedCell.column === column
+		|| isCellInVisibleRange({ row, column }, selectionRange, getRowProjection().sourceToVisible);
 }
 
 function columnName(index: number): string {

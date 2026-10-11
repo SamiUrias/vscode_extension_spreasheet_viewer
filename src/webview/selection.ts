@@ -1,6 +1,8 @@
 import type { CsvDataMessage, FormulaEvaluation, XlsxDataMessage } from '../protocol';
 
-export interface CellPosition { row: number; column: number; }
+import type { CellPosition, CellRange } from '../range-selection';
+export type { CellPosition, CellRange } from '../range-selection';
+
 export interface CellSelectionContext {
 	snapshot: CsvDataMessage | XlsxDataMessage | undefined;
 	selectedCell: CellPosition | undefined;

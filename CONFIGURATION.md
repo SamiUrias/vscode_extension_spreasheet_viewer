@@ -20,6 +20,8 @@ Ejemplo de `.vscode/settings.json`:
 
 Los valores siguientes son los predeterminados. No hace falta escribirlos en `settings.json` salvo que quieras sobrescribirlos. Las propiedades no declaran un ámbito de recurso o lenguaje; se configuran en User o Workspace Settings, no como una opción distinta para cada archivo CSV.
 
+Para probar el comportamiento de la extensión en este repositorio, `.vscode/settings.json` activa las cinco opciones disponibles: prefijo de comentarios `#`, primera fila como encabezado, encabezado en mayúsculas, restauración de vista y botón **Restablecer vista**. `headerCase: "upper"` solo transforma la etiqueta visual; no cambia el archivo. Las opciones de autoajuste, multilínea, freeze y teclado de tabla de V2-09/V2-10 son controles de vista, no propiedades de `settings.json`.
+
 ## Opciones disponibles
 
 | Propiedad | Tipo y valores admitidos | Predeterminado | Efecto |

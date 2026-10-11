@@ -13,6 +13,12 @@ suite('Persistent view state', () => {
 		assert.strictEqual(restored.state?.sheets['sheet:0']?.query, 'Guatemala');
 		assert.deepStrictEqual(restored.state?.sheets['sheet:0']?.filters, makeState(state.uri).sheets['sheet:0']!.filters);
 		assert.strictEqual(restored.state?.sheets['sheet:0']?.searchAllRows, true);
+		assert.strictEqual(restored.state?.sheets['sheet:0']?.wrapCells, true);
+		assert.strictEqual(restored.state?.sheets['sheet:0']?.freezeRows, 2);
+		assert.strictEqual(restored.state?.sheets['sheet:0']?.freezeColumns, 1);
+		assert.deepStrictEqual(restored.state?.sheets['sheet:0']?.selectionRange, {
+			anchor: { row: 53, column: 1 }, focus: { row: 54, column: 2 },
+		});
 	});
 
 	test('keeps edit and preview preferences separate for the same URI', () => {
@@ -31,6 +37,12 @@ suite('Persistent view state', () => {
 		const corrupt = makeState('file:///bad.csv') as unknown as Record<string, unknown>;
 		corrupt.sheets = { bad: { query: 'x', scroll: { top: -1, left: 0 } } };
 		assert.strictEqual(validateViewState(corrupt, 'file:///bad.csv', 'edit'), undefined);
+		const excessiveFreeze = makeState('file:///bad-freeze.csv') as unknown as Record<string, any>;
+		excessiveFreeze.sheets['sheet:0'].freezeColumns = 257;
+		assert.strictEqual(validateViewState(excessiveFreeze, 'file:///bad-freeze.csv', 'edit'), undefined);
+		const excessiveRows = makeState('file:///bad-freeze-rows.csv') as unknown as Record<string, any>;
+		excessiveRows.sheets['sheet:0'].freezeRows = 51;
+		assert.strictEqual(validateViewState(excessiveRows, 'file:///bad-freeze-rows.csv', 'edit'), undefined);
 		const large = makeState('file:///large.csv');
 		large.sheets['sheet:0']!.query = 'x'.repeat(MAX_VIEW_STATE_BYTES);
 		assert.strictEqual(validateViewState(large, large.uri, large.mode), undefined);
@@ -40,9 +52,13 @@ suite('Persistent view state', () => {
 		const oldState = makeState('file:///old.csv');
 		const oldSheet = oldState.sheets['sheet:0']! as unknown as Record<string, unknown>;
 		delete oldSheet.filters; delete oldSheet.searchAllRows;
+		delete oldSheet.selectionRange; delete oldSheet.wrapCells; delete oldSheet.freezeRows; delete oldSheet.freezeColumns;
 		const migrated = validateViewState(oldState, oldState.uri, oldState.mode);
 		assert.deepStrictEqual(migrated?.sheets['sheet:0']?.filters, []);
 		assert.strictEqual(migrated?.sheets['sheet:0']?.searchAllRows, false);
+		assert.strictEqual(migrated?.sheets['sheet:0']?.wrapCells, false);
+		assert.strictEqual(migrated?.sheets['sheet:0']?.freezeRows, 0);
+		assert.strictEqual(migrated?.sheets['sheet:0']?.freezeColumns, 0);
 	});
 
 	test('keeps the most recently used 100 file/mode records', () => {
@@ -76,6 +92,8 @@ function makeState(uri: string): ViewStateV1 {
 			schema: 'columns:3', query: 'Guatemala', selection: { row: 53, column: 1 }, scroll: { top: 1200, left: 64 },
 			sort: [{ column: 1, direction: 'asc', mode: 'text' }], filters: [{ column: 2, kind: 'conditions', join: 'and', conditions: [{ operator: 'startsWith', mode: 'text', value: 'America' }] }],
 			columnWidths: { '1': 220 }, rowHeights: { '53': 34 }, showComments: false, searchAllRows: true,
+			selectionRange: { anchor: { row: 53, column: 1 }, focus: { row: 54, column: 2 } },
+			wrapCells: true, freezeRows: 2, freezeColumns: 1,
 		} },
 	};
 }

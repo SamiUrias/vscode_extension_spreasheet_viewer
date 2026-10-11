@@ -15,5 +15,11 @@
         "dist": true // set this to false to include "dist" folder in search results
     },
     // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-    "js/ts.tsc.autoDetect": "off"
+    "js/ts.tsc.autoDetect": "off",
+    // Spreadsheet Viewer: activar todas las preferencias disponibles para probar la extensión.
+    "spreadsheet-viewer.csv.commentPrefix": "#",
+    "spreadsheet-viewer.csv.firstRowHeader": true,
+    "spreadsheet-viewer.csv.headerCase": "upper",
+    "spreadsheet-viewer.view.restoreState": true,
+    "spreadsheet-viewer.view.showResetButton": true
 }

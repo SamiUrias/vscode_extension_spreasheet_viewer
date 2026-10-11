@@ -758,11 +758,25 @@ Las tarjetas V2-00A, V2-00B, V2-01A, V2-01B, V2-02A, V2-02B y V2-03 están **imp
 
 **Aceptación:** multilinea legible, tamaños límites/manuales no sobrescritos; filtro/sort mantiene altura de fila original; teclado resize funciona; headers congelados no cubren selección; ancho estrecho/claro/oscuro/alto contraste; no dirty. **Fuera:** escribir alturas/anchos/merges al archivo. **Checks:** layout tests y manual UI; medir coste de autoajuste.
 
+**Estado:** implementada: autoajuste explícito primera/todas y doble clic por divisor, muestra determinista de hasta 200 filas y límites de 48–800 px; ajuste multilínea con altura visible hasta 600 px respetando altos manuales; hasta 50 filas y 256 columnas congeladas, persistidas por hoja. Solo altera la vista. Helpers de muestra/medición y migración de preferencias V1 tienen pruebas; falta revisión visual/teclado en Extension Host.
+
+- [x] Autoajustar primera/todas las columnas con muestra repartida, cota de caracteres y feedback; doble clic por divisor autoajusta una columna.
+- [x] Envolver valores, medir filas visibles y respetar alturas manuales con máximo de 600 px.
+- [x] Congelar hasta 50 filas y 256 columnas visibles, actualizar scrollIntoView y persistir ajustes por hoja.
+- [ ] Verificar visualmente en tema claro/oscuro/alto contraste y probar redimensionamiento en Extension Host.
+
 #### V2-10 — Rangos y teclado de tabla
 
 **Depende de:** V2-09. **Archivos:** selection/grid/main/styles/tests. **Pasos:** range selection 15.7; flechas/Shift/Home/End/PageUp/PageDown/Tab/Shift+Tab/Enter y F2 para editar; Ctrl/Cmd+A solo tabla; navegación por filas visibles, viewport y freeze. Arrastre con autoscroll acotado; aria-activedescendant a celda activa montada, sin tabIndex en miles de celdas. Tabs de hojas y popup quedan navegables sin atrapar foco.
 
 **Aceptación:** rango cruza viewport y filtros sin seleccionar ocultas; collapse al cambiar proyección; Enter/Tab confirma una vez y avanza; Escape cancela; textarea conserva Shift+Enter y atajos propios; IME composition no confirma al presionar Enter de composición. **Fuera:** clipboard ni batch mutación. **Checks:** selection tests y manual IME/lector de pantalla.
+
+**Estado:** implementada: selección rectangular por arrastre o Shift, Ctrl/Cmd+A visible, navegación por filas proyectadas, ARIA active descendant, Tab/Enter, F2, edición en línea y autoscroll acotado. Pruebas puras cubren rangos visibles y estado persistido; falta verificación manual de IME, accesibilidad y bordes de teclado en Extension Host.
+
+- [x] Seleccionar rangos con arrastre/Shift, cruzar viewport sin incluir filas filtradas y contraer al cambiar proyección.
+- [x] Añadir navegación por flechas, Home/End, PageUp/PageDown, Tab/Shift+Tab, Enter/Shift+Enter, Ctrl/Cmd+A y F2.
+- [x] Añadir aria-activedescendant, foco de tabla, autoscroll acotado y manejo de Enter de composición IME.
+- [ ] Probar IME, lector de pantalla, límites Tab y foco de popups/selector en Extension Host.
 
 #### V2-11 — Copia de rangos
 

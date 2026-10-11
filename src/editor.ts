@@ -783,6 +783,17 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			<div id="filter-chips" aria-label="Filtros activos"></div>
 			<output id="projection-count" aria-live="polite"></output>
 			<output id="filter-status" aria-live="polite"></output>
+			<div id="view-tools" aria-label="Ajustes de vista">
+				<label>Autoajuste
+					<select id="auto-fit-mode" aria-label="Columnas para autoajustar">
+						<option value="none">Desactivado</option><option value="first">Primera columna</option><option value="all" selected>Todas las columnas</option>
+					</select>
+				</label>
+				<button id="auto-fit-columns" type="button">Autoajustar</button>
+				<label><input id="wrap-cells" type="checkbox"> Ajustar texto</label>
+				<label>Filas fijas <input id="freeze-rows" type="number" min="0" max="50" value="0" aria-label="Cantidad de filas fijas"></label>
+				<label>Columnas fijas <input id="freeze-columns" type="number" min="0" max="256" value="0" aria-label="Cantidad de columnas fijas"></label>
+			</div>
 		</div>
 		<section id="filter-popover" role="dialog" aria-label="Filtrar columna" hidden></section>
 		<section id="selection" aria-live="polite">

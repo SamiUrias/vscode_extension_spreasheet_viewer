@@ -15,15 +15,19 @@ export interface GridRenderContext {
 	findRowAtOffset(offsets: readonly number[], offset: number): number;
 	startRowResize(event: PointerEvent, row: number, handle: HTMLSpanElement): void;
 	resizeRowWithKeyboard(event: KeyboardEvent, row: number): void;
-	columnName(index: number): string; isSelected(row: number, column: number): boolean;
+	columnName(index: number): string; isSelected(row: number, column: number): boolean; isActiveCell(row: number, column: number): boolean;
 	isFormula(row: number, column: number): boolean; getFormulaCache(row: number, column: number): string;
 	getFormulaResult(row: number, column: number): FormulaEvaluation | undefined;
 	isEditing(row: number, column: number): boolean; isActiveSearchMatch(row: number, column: number): boolean;
 	inlineEditValue: string; setInlineEditValue(value: string): void; sendDraftState(dirty: boolean, value?: string): void;
 	setInlineEditorDirty(value: boolean): void; commitInlineEdit(): void; cancelInlineEdit(): void;
-	selectCell(row: number, column: number): void; beginInlineEdit(row: number, column: number): void;
+	navigateAfterInlineEdit(rowDelta: number, columnDelta: number): void;
+	selectCell(row: number, column: number, extend?: boolean): void; beginInlineEdit(row: number, column: number): void;
 	projection: RowProjection; sortHeader(column: number, event: MouseEvent): void; sortLabel(column: number): string;
 	openFilter(column: number, button: HTMLButtonElement): void; isFiltered(column: number): boolean;
+	freezeRows: number; freezeColumns: number; wrapCells: boolean;
+	consumeSuppressedCellClick(): boolean;
+	autoFitColumn(column: number): void;
 }
 
 export function renderSpreadsheetGrid(context: GridRenderContext): void {
@@ -32,7 +36,8 @@ export function renderSpreadsheetGrid(context: GridRenderContext): void {
 		updateGridColumnSizing, getActiveRowLayout, findRowAtOffset, startRowResize,
 		resizeRowWithKeyboard, columnName, isSelected, isFormula, getFormulaCache, getFormulaResult,
 		isEditing, isActiveSearchMatch, inlineEditValue, setInlineEditValue, sendDraftState, setInlineEditorDirty,
-		commitInlineEdit, cancelInlineEdit, selectCell, beginInlineEdit, projection, sortHeader, sortLabel, openFilter, isFiltered } = context;
+		commitInlineEdit, cancelInlineEdit, navigateAfterInlineEdit, selectCell, beginInlineEdit, projection, sortHeader, sortLabel, openFilter, isFiltered,
+		freezeRows, freezeColumns, wrapCells, consumeSuppressedCellClick, autoFitColumn } = context;
 	let { rowsViewport, renderedColumnCount } = state;
 
 	if (!snapshot || snapshot.rowCount === 0 || snapshot.columnCount === 0) {
@@ -50,6 +55,7 @@ export function renderSpreadsheetGrid(context: GridRenderContext): void {
 	gridScroll.setAttribute('aria-colcount', String(snapshot.columnCount + 1));
 	const widths = getActiveColumnWidths();
 const templateColumns = gridTemplateColumns(widths);
+	gridRoot.classList.toggle('wrap-cells', wrapCells);
 	if (!rowsViewport || renderedColumnCount !== snapshot.columnCount) {
 		const headerRow = document.createElement('div');
 		headerRow.className = 'grid-row grid-header';
@@ -63,6 +69,7 @@ const templateColumns = gridTemplateColumns(widths);
 		for (let column = 0; column < snapshot.columnCount; column++) {
 			const heading = document.createElement('div');
 			heading.className = 'column-header';
+			heading.dataset.columnIndex = String(column);
 			heading.setAttribute('role', 'columnheader');
 			const ordinal = document.createElement('span');
 			ordinal.className = 'column-ordinal';
@@ -94,16 +101,25 @@ const templateColumns = gridTemplateColumns(widths);
 			resizeHandle.setAttribute('aria-label', `Redimensionar columna ${columnName(column)}`);
 			resizeHandle.tabIndex = 0;
 			resizeHandle.addEventListener('pointerdown', event => startColumnResize(event, column, resizeHandle));
+			resizeHandle.addEventListener('dblclick', event => {event.preventDefault(); event.stopPropagation(); autoFitColumn(column);});
 			resizeHandle.addEventListener('keydown', event => resizeColumnWithKeyboard(event, column));
 			heading.append(resizeHandle);
+			if (column < freezeColumns) {
+				heading.classList.add('frozen-column');
+				heading.style.left = `${rowHeaderWidth + widths.slice(0, column).reduce((total, width) => total + width, 0)}px`;
+			}
 			headerRow.append(heading);
 		}
 		rowsViewport = document.createElement('div');
 		rowsViewport.className = 'rows-viewport';
+		const frozenRowsLayer = document.createElement('div');
+		frozenRowsLayer.className = 'frozen-rows-layer';
+		frozenRowsLayer.setAttribute('aria-hidden', 'true');
+		frozenRowsLayer.dataset.frozenRows = 'true';
 		rowsViewport.style.width = `${rowHeaderWidth + widths.reduce((total, width) => total + width, 0)}px`;
 		gridRoot.style.width = 'max-content';
 		gridRoot.style.minWidth = '100%';
-		gridRoot.replaceChildren(headerRow, rowsViewport);
+		gridRoot.replaceChildren(headerRow, frozenRowsLayer, rowsViewport);
 		renderedColumnCount = snapshot.columnCount;
 	}
 	updateGridColumnSizing();
@@ -120,6 +136,8 @@ const templateColumns = gridTemplateColumns(widths);
 	const endVisibleRow = Math.min(visibleRowCount, lastViewportRow + overscan + 1);
 	rowsViewport.style.height = `${projectedOffsets[visibleRowCount] ?? 0}px`;
 	rowsViewport.replaceChildren();
+	const frozenRowsLayer = gridRoot.querySelector<HTMLDivElement>('[data-frozen-rows="true"]');
+	if (frozenRowsLayer) {frozenRowsLayer.replaceChildren();}
 	if (visibleRowCount === 0) {
 		rowsViewport.style.height = 'auto';
 		const empty = document.createElement('p');
@@ -128,7 +146,10 @@ const templateColumns = gridTemplateColumns(widths);
 		rowsViewport.append(empty);
 		return;
 	}
-	for (let rowIndex = firstVisibleRow; rowIndex < endVisibleRow; rowIndex++) {
+	const rowsToRender = new Set<number>();
+	for (let rowIndex = 0; rowIndex < Math.min(freezeRows, visibleRowCount); rowIndex++) {rowsToRender.add(rowIndex);}
+	for (let rowIndex = firstVisibleRow; rowIndex < endVisibleRow; rowIndex++) {rowsToRender.add(rowIndex);}
+	for (const rowIndex of [...rowsToRender].sort((a, b) => a - b)) {
 		const sourceRow = projection.visibleRows[rowIndex]!;
 		const row = document.createElement('div');
 		row.className = 'grid-row';
@@ -136,6 +157,8 @@ const templateColumns = gridTemplateColumns(widths);
 		row.style.top = `${projectedOffsets[rowIndex] ?? 0}px`;
 		row.style.height = `${projectedHeights[rowIndex] ?? defaultRowHeight}px`;
 		row.dataset.rowIndex = String(rowIndex);
+		row.dataset.visibleIndex = String(rowIndex);
+		row.dataset.sourceRow = String(sourceRow);
 		row.setAttribute('role', 'row');
 		row.setAttribute('aria-rowindex', String(rowIndex + 2));
 		const rowHeader = document.createElement('div');
@@ -165,6 +188,9 @@ const templateColumns = gridTemplateColumns(widths);
 			valueCell.textContent = value;
 			valueCell.title = value;
 			valueCell.setAttribute('role', 'gridcell');
+			valueCell.id = `cell-${sourceRow}-${column}`;
+			valueCell.dataset.sourceRow = String(sourceRow);
+			valueCell.dataset.column = String(column);
 			valueCell.setAttribute('aria-selected', String(isSelected(sourceRow, column)));
 			if (!present) {
 				valueCell.classList.add('missing-cell');
@@ -195,29 +221,58 @@ const templateColumns = gridTemplateColumns(widths);
 					if (event.key === 'Escape') {
 						event.preventDefault();
 						cancelInlineEdit();
-					} else if (event.key === 'Enter' && !event.shiftKey) {
+					} else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 						event.preventDefault();
 						commitInlineEdit();
 						gridScroll.focus({ preventScroll: true });
+						navigateAfterInlineEdit(1, 0);
+					} else if (event.key === 'Tab' && !event.isComposing) {
+						event.preventDefault();
+						const delta = event.shiftKey ? -1 : 1;
+						commitInlineEdit();
+						gridScroll.focus({ preventScroll: true });
+						navigateAfterInlineEdit(0, delta);
 					}
 				});
 				inlineEditor.addEventListener('click', event => event.stopPropagation());
 				valueCell.append(inlineEditor);
 			}
 			if (isSelected(sourceRow, column)) {
-				valueCell.classList.add('selected-cell');
+				valueCell.classList.add(context.isActiveCell(sourceRow, column) ? 'selected-cell' : 'range-selected');
 			}
 			if (isActiveSearchMatch(sourceRow, column)) {
 				valueCell.classList.add('active-search-match');
 			}
-			valueCell.addEventListener('click', () => {
+			if (column < freezeColumns) {
+				valueCell.classList.add('frozen-column');
+				valueCell.style.left = `${rowHeaderWidth + widths.slice(0, column).reduce((total, width) => total + width, 0)}px`;
+			}
+			valueCell.addEventListener('click', event => {
+				if (consumeSuppressedCellClick()) {return;}
 				gridScroll.focus({ preventScroll: true });
-				selectCell(sourceRow, column);
+				selectCell(sourceRow, column, event.shiftKey);
 			});
 			valueCell.addEventListener('dblclick', () => beginInlineEdit(sourceRow, column));
 			row.append(valueCell);
 		}
 		rowsViewport.append(row);
+		if (rowIndex < freezeRows && frozenRowsLayer) {
+			const frozenCopy = row.cloneNode(true) as HTMLDivElement;
+			frozenCopy.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+			frozenCopy.style.position = 'relative';
+			frozenCopy.style.top = 'auto';
+			frozenCopy.style.left = 'auto';
+			frozenCopy.querySelector('.cell-inline-editor')?.remove();
+			frozenCopy.querySelectorAll('.row-resize-handle').forEach(handle => handle.remove());
+			frozenRowsLayer.append(frozenCopy);
+		}
+	}
+	if (frozenRowsLayer) {
+		const frozenHeight = projectedHeights.slice(0, freezeRows).reduce((sum, height) => sum + height, 0);
+		frozenRowsLayer.style.height = `${frozenHeight}px`;
+		frozenRowsLayer.style.marginBottom = `${-frozenHeight}px`;
+		frozenRowsLayer.style.width = `${rowHeaderWidth + widths.reduce((total, width) => total + width, 0)}px`;
+		frozenRowsLayer.style.gridTemplateColumns = templateColumns;
 	}
 	state.rowsViewport = rowsViewport;
 	state.renderedColumnCount = renderedColumnCount;
