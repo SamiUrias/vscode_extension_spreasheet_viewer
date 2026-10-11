@@ -904,8 +904,8 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir toggle **Ver libro** con tooltip; visible por `spreadsheet-viewer.view.showDisplayModeButton` (booleano, default `true`) y actualizado en vistas abiertas.
 - [x] Presentar formatos numéricos, fechas de sistema 1900/1904 y booleanos en una matriz derivada; preservar números largos, fórmulas, celdas sin estilo y datos originales.
 - [x] Mantener edición/copia raw sin formato y hacer que **Copiar mostrado** use la presentación activa.
-- [x] Documentar configuración, alcance y licencia; 5 pruebas unitarias de presentación, tipos, lint y build de producción pasan.
-- [ ] `npm test` ejecuta pretest/build, pero el runner de Extension Host se detiene con Node 18.20.4 en `string-width`: regex `/v` no compatible. Reintentar en V2-25 con runtime apropiado.
+- [x] Documentar configuración, alcance y licencia; añadir `npm run test:presentation` para las cinco pruebas unitarias de presentación y tipos/lint/build.
+- [ ] La interacción del toggle y copiado en Extension Host sigue pendiente: VS Code no se descarga por `ENOTFOUND update.code.visualstudio.com`; reintentar en V2-25 cuando el runtime esté disponible.
 
 #### V2-16B — Libro visual, hojas y combinaciones
 
