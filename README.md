@@ -6,6 +6,8 @@ El comando también aparece en la paleta **Spreadsheet Viewer: Abrir en Spreadsh
 
 Para una vista de solo lectura usa **Spreadsheet Viewer: Vista previa de hoja** (lee desde disco), **Vista previa del buffer CSV/TSV/TAB** (sigue los cambios de texto sin guardar) o **Vista previa como CSV…** para interpretar explícitamente un archivo de texto con extensión arbitraria como CSV. Abrir el editor editable cuando existe un buffer textual modificado pide guardar, descartar o cancelar primero.
 
+Las opciones de VS Code, sus valores y su efecto están documentados en [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Fidelidad y límites conocidos
 
 - Los valores se muestran sin formatos visuales ni conversiones inferidas. CSV conserva valores como texto; XLSX y ODS muestran los valores almacenados en XML, incluyendo seriales numéricos de fechas y decimales tal como están escritos. En ODS los valores se leen de `content.xml`; los estilos no se aplican a la tabla.

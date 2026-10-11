@@ -492,11 +492,13 @@ Búsqueda por defecto en filas visibles y valores crudos; opción “Toda la hoj
 
 #### Preferencias y configuración
 
+**Regla de documentación:** toda propiedad nueva o modificada bajo `contributes.configuration` debe documentarse en `CONFIGURATION.md` en el mismo cambio, incluyendo tipo, valores admitidos, default, alcance y efecto en runtime. Revisar también usos, reacción a cambios de configuración y pruebas; retirar o migrar la documentación si se elimina una propiedad.
+
 `ViewStateV1`: versión 1, URI completa, modo, firma de esquema, hoja activa y mapa por sheetId. Cada hoja guarda consulta/ámbito, selección fuente, scroll/anchor, sort/filter, anchos y alturas **solo modificados**, freeze y presentación. Debounce 250 ms; flush al cerrar/cambiar de hoja. Propuesta de cotas: 256 KiB por archivo, 100 archivos con LRU por workspace; purgar preferencias viejas, nunca backups. Persistir en workspaceState; `getState/setState` guarda solo contexto efímero del panel. No incluir libros, matrices, cache de cálculo ni drafts en preferencias.
 
 Firma tabular: formato/dialecto, cantidad de columnas, encabezado identificado y hash de su texto si está activo. Firma de hojas: sheetId/nombre/estructura; cambios de nombre se reconcilian por identidad. Cambio de filas conserva anchos/criterios compatibles, ajusta selección/scroll; cambio de columnas invalida filtros/sorts por columnas y avisa. No invalidar todo por un cambio de valor cualquiera. **Restablecer vista** limpia preferencias y proyección, conserva borrador e historial; **Recargar** vuelve a disco y mantiene la confirmación de descartar pendientes.
 
-Configuración propuesta bajo `spreadsheet-viewer.*`: `csv.separator` (auto/coma/punto y coma/tab/pipe o carácter literal validado), `csv.quoteMark` (`"`, `'` o vacío), `csv.hasHeaders=false`, `csv.capitalizeHeaders=false`, `csv.skipComments=false`, `csv.commentPrefix="#"`, `csv.lineNumbers="source"`, `csv.openStdin=false`, `view.restoreState=true`, `view.autoSizeColumns="none"`, `view.wrapCells=false`, `view.presentation="raw"`, `save.mode="onCommit"` (alternativa manual explícita). Configuración por recurso vía `getConfiguration(..., uri)`; preferencias de vista por archivo prevalecen sobre defaults. Cambios de parseo con pendientes requieren resolver borrador antes de reinterpretar; cambios visuales no.
+Ideas futuras de configuración (no disponibles en Settings actualmente): `csv.separator`, `csv.quoteMark`, `csv.hasHeaders`, `csv.capitalizeHeaders`, `csv.skipComments`, `csv.lineNumbers`, `csv.openStdin`, `view.autoSizeColumns`, `view.wrapCells`, `view.presentation` y `save.mode`. Las opciones existentes y sus efectos están en `CONFIGURATION.md`. Si se implementa una opción futura, aplicar la regla de documentación de esta sección en el mismo cambio.
 
 #### CSV: dialecto y preservación
 
