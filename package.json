@@ -315,7 +315,7 @@
     "test:xlsx-structure": "npm run compile-tests && node scripts/test-xlsx-structure.js",
     "test:move-range": "npm run compile-tests && node scripts/test-move-range.js",
     "test:xlsx-styles": "npm run compile-tests && node scripts/test-xlsx-styles.js",
-    "test:untrusted": "npm run compile-tests && vscode-test --label untrustedWorkspaceTests",
+    "test:untrusted": "npm run compile-tests && node scripts/test-untrusted-host.js",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
     "test:save-lifecycle": "npm run compile-tests && node scripts/test-save-lifecycle.js",

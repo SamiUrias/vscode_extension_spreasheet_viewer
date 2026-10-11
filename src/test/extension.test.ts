@@ -11,9 +11,6 @@ suite('Spreadsheet Viewer editor', () => {
 		const extension = vscode.extensions.all.find(item => item.packageJSON.name === 'spreadsheet-viewer');
 		assert.ok(extension);
 		assert.strictEqual((extension.packageJSON.capabilities as { untrustedWorkspaces?: { supported?: boolean } }).untrustedWorkspaces?.supported, true);
-		if (process.env.SPREADSHEET_VIEWER_EXPECT_UNTRUSTED === 'true') {
-			assert.strictEqual(vscode.workspace.isTrusted, false, 'the dedicated test workspace must be in Restricted Mode');
-		}
 	});
 
 	test('only accepts supported spreadsheet extensions for the command', () => {
