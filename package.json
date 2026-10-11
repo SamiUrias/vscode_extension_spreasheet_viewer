@@ -298,6 +298,7 @@
     "test:clipboard": "npm run compile-tests && node scripts/test-clipboard.js",
     "test:edit-transactions": "npm run compile-tests && node scripts/test-edit-transactions.js",
     "test:save-coordinator": "npm run compile-tests && node scripts/test-save-coordinator.js",
+    "test:recovery": "npm run compile-tests && node scripts/test-recovery-lifecycle.js",
     "test:cell-deltas": "npm run compile-tests && node scripts/test-cell-deltas.js",
     "test:grid-layout": "npm run compile-tests && node scripts/test-grid-layout.js",
     "test:csv-dialect": "npm run compile-tests && node scripts/test-csv-dialect.js",

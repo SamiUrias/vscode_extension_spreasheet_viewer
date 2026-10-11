@@ -822,7 +822,8 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Agregar política de Save para borradores, setting `spreadsheet-viewer.edit.saveOnCommit` (default `true`), y recolección de draft antes de backup/Save.
 - [x] Detectar que el archivo en disco no coincide con el baseline del respaldo y conservar la recuperación para Save As.
 - [x] Añadir pruebas de envelope y restauración con conflicto; tipos, lint y compilación de pruebas pasan.
-- [ ] Ejecutar el ciclo completo de save/backup/hot-exit en Extension Host y revisar manualmente recuperación y Save As. El runner `vscode-test` falla antes de cargar suites bajo Node 18.20.4 por la expresión con flag `/v` de `string-width`; este punto no está probado.
+- [x] Añadir `npm run test:recovery`: valida sobre los métodos reales el envelope, la captura de un draft no confirmado, las tres opciones al guardar, auto-guardado por defecto, recuperación con undo y conflicto, y Save As que conserva el archivo externo y el draft separado.
+- [ ] Repetir el ciclo completo de hot-exit/reinicio y Escape en Extension Host. El runner aislado no puede iniciar VS Code en este entorno (`SIGABRT` antes de cargar las suites); la cobertura local de backup/restore pasa, pero esa interacción todavía no está certificada.
 
 #### V2-13 — Pegado y borrar contenido
 
