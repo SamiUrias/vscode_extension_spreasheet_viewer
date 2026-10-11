@@ -1,11 +1,35 @@
 import * as vscode from 'vscode';
+import * as os from 'node:os';
 import { SpreadsheetEditorProvider, resolveDirtyTextBuffer } from './editor';
 import { SpreadsheetPreviewProvider } from './preview';
+import { isStdinTempPath, isSupportedCsvLanguageId } from './csv-dialect';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const provider = new SpreadsheetEditorProvider(context.extensionUri, context.workspaceState);
 	const previews = new SpreadsheetPreviewProvider(context.extensionUri, (uri, webview, label) => provider.getHtml(uri, webview, label), context.workspaceState);
+	const stdinAttempts = new Set<string>();
+	const maybePreviewStdin = (document: vscode.TextDocument): void => {
+		if (!vscode.workspace.getConfiguration('spreadsheet-viewer.stdin').get<boolean>('openStdin', false)) {return;}
+		if (document.uri.scheme !== 'file' || !isStdinTempPath(document.uri.fsPath, os.tmpdir())) {return;}
+		if (document.languageId !== 'plaintext' && !isSupportedCsvLanguageId(document.languageId)) {return;}
+		const key = document.uri.toString();
+		if (stdinAttempts.has(key)) {return;}
+		stdinAttempts.add(key);
+		void previews.openBuffer(document.uri).then(() => stdinAttempts.delete(key), error => {
+			stdinAttempts.delete(key);
+			void vscode.window.showErrorMessage(`No se pudo abrir la vista previa de stdin: ${error instanceof Error ? error.message : String(error)}`);
+		});
+	};
+	const stdinOpenListener = vscode.workspace.onDidOpenTextDocument(maybePreviewStdin);
+	const stdinConfigListener = vscode.workspace.onDidChangeConfiguration(event => {
+		if (event.affectsConfiguration('spreadsheet-viewer.stdin.openStdin')) {
+			for (const document of vscode.workspace.textDocuments) {maybePreviewStdin(document);}
+		}
+	});
+	for (const document of vscode.workspace.textDocuments) {maybePreviewStdin(document);}
 	context.subscriptions.push(
+		stdinOpenListener,
+		stdinConfigListener,
 		vscode.window.registerCustomEditorProvider(
 			SpreadsheetEditorProvider.viewType,
 			provider,

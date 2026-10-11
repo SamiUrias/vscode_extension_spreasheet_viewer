@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { SpreadsheetDocument } from './document';
 import { loadFormulaParserService } from './formula-parser-loader';
 import { CsvDelimiterAmbiguityError, type CsvParseOptions } from './formats/csv';
+import { delimiterForCsvResource } from './csv-dialect';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
@@ -131,7 +132,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (backupBytes) {document.recoveryConflict = true;}
 			return document;
 		};
-		try { return await open(); }
+		const textDocument = vscode.workspace.textDocuments.find(item => item.uri.toString() === uri.toString());
+		const dialectDelimiter = delimiterForCsvResource(uri.path, textDocument?.languageId);
+		const commentPrefix = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<string>('commentPrefix', '#');
+		try { return await open({ delimiter: dialectDelimiter, commentPrefix: commentPrefix || undefined }); }
 		catch (error) {
 			if (!(error instanceof CsvDelimiterAmbiguityError)) {throw error;}
 			const delimiter = await vscode.window.showQuickPick(error.delimiters.map(value => ({
@@ -139,7 +143,6 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				description: `Separador ${JSON.stringify(value)}`, value,
 			})), { title: 'Elige el separador del archivo', placeHolder: 'El archivo admite más de una interpretación.' });
 			if (!delimiter) {throw new Error('Se canceló la selección del dialecto CSV.');}
-			const commentPrefix = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri).get<string>('commentPrefix', '#');
 			return open({ delimiter: delimiter.value, persistDelimiter: true, commentPrefix: commentPrefix || undefined });
 		}
 	}

@@ -18,6 +18,7 @@
 - **Adjust the table layout:** resize columns and rows, auto-fit columns, wrap text, and freeze visible rows or columns.
 - **Remember your view:** restore selection, scroll position, search, sort, filters, and sizes per file and sheet. This can be disabled in Settings.
 - **Preview without editing:** inspect a file from disk, preview unsaved CSV/TSV/TAB text, or explicitly preview another text file as CSV.
+- **Preview piped CSV input:** optionally open VS Code's `code -` standard-input buffer as a read-only table; this is off by default.
 - **Inspect and edit XLSX formulas:** supported formulas are calculated in a local Web Worker so they do not run on the grid's UI thread. Select a formula cell to edit its expression, or enable **Editar como fórmula** to create one. Syntax is checked before applying; tested function completions and explicit cell-reference insertion are available by default. Valid functions the calculator does not support can still be saved and are labeled unsupported in the cell details. Shared and array formulas cannot be edited. Calculated results are for display and are never written to the workbook.
 
 ## Get started
@@ -66,6 +67,8 @@ The Command Palette includes these read-only options:
 - **Vista previa del buffer CSV/TSV/TAB** (Preview Text Buffer) follows unsaved text changes in the active text editor.
 - **Vista previa como CSV…** (Preview as CSV…) explicitly interprets a text file as CSV.
 
+To automatically preview text piped into VS Code with `code -`, enable `spreadsheet-viewer.stdin.openStdin`. The setting only recognizes VS Code's temporary stdin file and opens it read-only. Plain Text and supported CSV language modes can provide the delimiter (including semicolon and pipe modes); `.tsv` and `.tab` always use tabs. No Rainbow CSV installation is required.
+
 Opening the editable view while the text buffer has unsaved changes asks whether to save, discard, or cancel first.
 
 ## Raw values and file compatibility
@@ -93,6 +96,7 @@ All settings default to the values shown below. Add only the settings you want t
 | `spreadsheet-viewer.csv.commentPrefix` | `"#"` | Recognize CSV records beginning with this prefix as comments. Use `""` to disable comment detection. |
 | `spreadsheet-viewer.csv.firstRowHeader` | `true` | Use the first CSV data row as the visual column label. The row remains in the data. |
 | `spreadsheet-viewer.csv.headerCase` | `"none"` | Choose `"none"`, `"upper"`, or `"lower"` for visual CSV heading labels. |
+| `spreadsheet-viewer.stdin.openStdin` | `false` | Automatically preview VS Code's `code -` stdin buffer as a read-only table. |
 | `spreadsheet-viewer.view.restoreState` | `true` | Save and restore view preferences per file, sheet, and mode. |
 | `spreadsheet-viewer.view.showResetButton` | `true` | Show or hide **Restablecer vista** (Reset View). |
 | `spreadsheet-viewer.view.showClearSortButton` | `true` | Show or hide **Limpiar orden** (Clear Sort). |

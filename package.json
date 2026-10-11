@@ -20,7 +20,7 @@
   "categories": [
     "Visualization"
   ],
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished", "onLanguage:plaintext"],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -172,6 +172,11 @@
           "default": "#",
           "description": "Prefijo que identifica comentarios CSV al inicio de un registro. Usa una cadena vacía para desactivar los comentarios."
         },
+        "spreadsheet-viewer.stdin.openStdin": {
+          "type": "boolean",
+          "default": false,
+          "description": "Abre automáticamente una vista previa de lectura para el buffer CSV compatible creado con la entrada estándar de VS Code (code -)."
+        },
         "spreadsheet-viewer.csv.firstRowHeader": {
           "type": "boolean",
           "default": true,
@@ -253,6 +258,7 @@
     "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
     "test:cell-deltas": "npm run compile-tests && node scripts/test-cell-deltas.js",
     "test:grid-layout": "npm run compile-tests && node scripts/test-grid-layout.js",
+    "test:csv-dialect": "npm run compile-tests && node scripts/test-csv-dialect.js",
     "test:formula-references": "node scripts/test-formulas.js --reference",
 		"benchmark:performance": "npm run compile-tests && node --expose-gc scripts/benchmark-performance.js",
     "test:save-lifecycle": "npm run compile-tests && node scripts/test-save-lifecycle.js",

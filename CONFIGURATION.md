@@ -13,6 +13,7 @@ Ejemplo de `.vscode/settings.json`:
   "spreadsheet-viewer.csv.commentPrefix": "#",
   "spreadsheet-viewer.csv.firstRowHeader": true,
   "spreadsheet-viewer.csv.headerCase": "none",
+  "spreadsheet-viewer.stdin.openStdin": false,
   "spreadsheet-viewer.xlsx.showStructureActions": true,
   "spreadsheet-viewer.view.restoreState": true,
   "spreadsheet-viewer.view.showResetButton": true,
@@ -33,6 +34,7 @@ Para probar el comportamiento de la extensión en este repositorio, `.vscode/set
 | Propiedad | Tipo y valores admitidos | Predeterminado | Efecto |
 | --- | --- | --- | --- |
 | `spreadsheet-viewer.csv.commentPrefix` | Cadena de 0 a 128 caracteres | `"#"` | Interpreta como comentario un registro CSV cuyo primer texto sea exactamente este prefijo. Los comentarios se conservan en el archivo, se pueden ocultar de la tabla y no se editan como celdas. Una cadena vacía desactiva la detección de comentarios. |
+| `spreadsheet-viewer.stdin.openStdin` | Booleano: `true` o `false` | `false` | Con `true`, al abrir el buffer temporal de texto creado por VS Code para `code -` en modo Plain Text o CSV compatible, muestra automáticamente una vista previa de solo lectura. Solo reconoce el archivo stdin temporal de VS Code; no inspecciona otros archivos. No guarda ni modifica ese recurso. Al desactivarlo, se puede seguir usando **Vista previa como CSV…** manualmente. |
 | `spreadsheet-viewer.csv.firstRowHeader` | Booleano: `true` o `false` | `true` | Si es `true`, usa el primer registro de datos (no un comentario) como etiqueta visual de las columnas. No elimina ni mueve esa fila: sigue apareciendo en la tabla como dato editable. |
 | `spreadsheet-viewer.csv.headerCase` | Cadena: `"none"`, `"upper"` o `"lower"` | `"none"` | Deja igual, convierte a mayúsculas o convierte a minúsculas las etiquetas visuales del encabezado. No cambia el texto guardado en el CSV. |
 | `spreadsheet-viewer.csv.showRowActions` | Booleano: `true` o `false` | `true` | Muestra u oculta las acciones **Insertar fila**, **Añadir fila** y **Eliminar fila(s)** en el editor CSV. No afecta a XLSX/ODS ni a las vistas previas. |
@@ -76,7 +78,7 @@ CSV no define comentarios en el estándar. Esta opción habilita una convención
 
 Una fila con cantidad irregular de campos no se convierte por eso en comentario. CSV tampoco impone que todas las filas tengan la misma cantidad de columnas; el tratamiento de filas irregulares depende del contenido y de la aplicación.
 
-El delimitador no tiene una propiedad de Settings actualmente: se detecta al abrir el archivo, y `.tsv`/`.tab` fuerzan tabulador. La selección de delimitador que puede aparecer ante una interpretación ambigua es una decisión para esa apertura.
+El delimitador no tiene una propiedad de Settings actualmente: se detecta al abrir el archivo. `.tsv`/`.tab` fuerzan tabulador; cuando el documento tiene un language ID reconocido, `tsv`, `csv (tab)`, `csv (semicolon)` y `csv (pipe)` (además de sus variantes `csv-semicolon`/`csv-pipe`) fuerzan el delimitador correspondiente. La extensión no requiere Rainbow CSV: usa solo el `languageId` que VS Code ya asignó. En caso de `.tsv`/`.tab`, la extensión del archivo tiene prioridad; en otros archivos de texto, el ID especializado tiene prioridad sobre la detección automática. `csv` genérico conserva la detección automática. La selección que puede aparecer ante una interpretación ambigua es una decisión para esa apertura.
 
 ### Encabezados
 

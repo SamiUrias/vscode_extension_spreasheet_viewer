@@ -6,6 +6,7 @@ import { CsvDelimiterAmbiguityError, MAX_CSV_BYTES, parseCsvBytes, type CsvParse
 import type { CsvDataMessage, ExtensionToWebviewMessage, SelectSheetMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import { createHeaderSignature, ViewStateRepository, type ViewStateV1 } from './view-state';
+import { delimiterForCsvResource } from './csv-dialect';
 
 type PreviewMode = 'disk' | 'buffer' | 'csv-text';
 type HtmlFactory = (uri: vscode.Uri, webview: vscode.Webview, title?: string) => string;
@@ -98,7 +99,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 		return this.openDeduplicated(uri, csvOnly ? 'csv-text' : 'buffer', async () => {
 			const textDocument = vscode.workspace.textDocuments.find(item => item.uri.toString() === uri.toString())
 				?? await vscode.workspace.openTextDocument(uri);
-			const options = optionsForUri(uri);
+			const options = optionsForUri(uri, textDocument.languageId);
 			const table = await this.parseTextWithPrompt(uri, textDocument.getText(), options);
 			await this.createSession(uri, csvOnly ? 'csv-text' : 'buffer', { textDocument, csv: table, csvOptions: options });
 		});
@@ -122,7 +123,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 		if (existing) {existing.panel.reveal(vscode.ViewColumn.Beside); return;}
 		const bytes = await SpreadsheetDocument.readBytes(uri);
 		if (isCsvUri(uri)) {
-			const options = optionsForUri(uri);
+			const options = optionsForUri(uri, vscode.workspace.textDocuments.find(item => item.uri.toString() === uri.toString())?.languageId);
 			const table = await this.parseBytesWithPrompt(uri, bytes, options);
 			await this.createSession(uri, mode, { bytes, csv: table, csvOptions: options });
 			return;
@@ -366,9 +367,10 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 	}
 }
 
-function optionsForUri(uri: vscode.Uri): CsvParseOptions {
-	const commentPrefix = vscode.workspace.getConfiguration('spreadsheet-viewer.csv').get<string>('commentPrefix', '#');
-	return { ...(/\.(tsv|tab)$/i.test(uri.path) ? { delimiter: '\t' } : {}), commentPrefix: commentPrefix || undefined };
+function optionsForUri(uri: vscode.Uri, languageId?: string): CsvParseOptions {
+	const config = vscode.workspace.getConfiguration('spreadsheet-viewer.csv', uri);
+	const commentPrefix = config.get<string>('commentPrefix', '#');
+	return { delimiter: delimiterForCsvResource(uri.path, languageId), commentPrefix: commentPrefix || undefined };
 }
 
 function previewSheetId(session: PreviewSession, sheetIndex: number): string {
