@@ -1,9 +1,13 @@
 import type { CsvDataMessage, XlsxDataMessage, FormulaEvaluation } from '../protocol';
-import type { RowLayout } from './grid-layout';
+import { buildProjectedRowLayout, type RowLayout } from './grid-layout';
 import type { RowProjection } from '../table-view';
 import { getRenderableMerges, mergeAnchorIntersectsViewport } from './merge-layout';
 
-export interface GridRendererState { rowsViewport: HTMLDivElement | undefined; renderedColumnCount: number; }
+export interface GridRendererState {
+	rowsViewport: HTMLDivElement | undefined; renderedColumnCount: number;
+	projection?: RowProjection; rowLayout?: RowLayout; rowLayoutRevision?: number;
+	projectedHeights?: number[]; projectedOffsets?: number[];
+}
 export interface GridRenderContext {
 	snapshot: CsvDataMessage | XlsxDataMessage | undefined;
 	state: GridRendererState;
@@ -130,9 +134,13 @@ const templateColumns = gridTemplateColumns(widths);
 	const rowLayout = getActiveRowLayout();
 	const mergeRanges = showWorkbookAppearance && snapshot.type === 'xlsxData'
 		? getRenderableMerges(snapshot.mergedRanges ?? [], snapshot.rowCount, snapshot.columnCount, projection.visibleRows, freezeRows, freezeColumns) : [];
-	const projectedHeights = projection.visibleRows.map(sourceRow => rowLayout.heights[sourceRow] ?? defaultRowHeight);
-	const projectedOffsets = [0];
-	for (const height of projectedHeights) {projectedOffsets.push(projectedOffsets[projectedOffsets.length - 1]! + height);}
+	if (state.projection !== projection || state.rowLayout !== rowLayout || state.rowLayoutRevision !== rowLayout.revision) {
+		const projected = buildProjectedRowLayout(projection.visibleRows, rowLayout.heights, defaultRowHeight);
+		state.projection = projection; state.rowLayout = rowLayout; state.rowLayoutRevision = rowLayout.revision;
+		state.projectedHeights = projected.heights; state.projectedOffsets = projected.offsets;
+	}
+	const projectedHeights = state.projectedHeights ?? [];
+	const projectedOffsets = state.projectedOffsets ?? [0];
 	const visibleRowCount = projection.visibleRows.length;
 	gridScroll.setAttribute('aria-rowcount', String(visibleRowCount + 1));
 	const firstViewportRow = findRowAtOffset(projectedOffsets, Math.max(0, gridScroll.scrollTop - headingHeight));

@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { sampleEvenly, wrappedTextHeight } from '../webview/grid-layout';
+import { buildProjectedRowLayout, rebuildRowOffsets, sampleEvenly, wrappedTextHeight, type RowLayout } from '../webview/grid-layout';
 
 suite('Grid layout helpers', () => {
 	test('samples rows evenly and deterministically within the requested limit', () => {
@@ -12,5 +12,18 @@ suite('Grid layout helpers', () => {
 		const measure = (text: string): number => text.length * 10;
 		assert.strictEqual(wrappedTextHeight(['123456789', '1'], [56, 56], measure, 18, 28, 600), 62);
 		assert.strictEqual(wrappedTextHeight(['x'.repeat(100)], [48], measure, 18, 28, 70), 70);
+	});
+
+	test('builds projected row offsets for reordered rows and revisions resized layouts', () => {
+		assert.deepStrictEqual(buildProjectedRowLayout([3, 1, 4], [10, 20, 30, 40], 25), {
+			heights: [40, 20, 25], offsets: [0, 40, 60, 85],
+		});
+		const layout: RowLayout = { heights: [20, 30], offsets: [] };
+		rebuildRowOffsets(layout);
+		assert.equal(layout.revision, 1);
+		layout.heights[0] = 40;
+		rebuildRowOffsets(layout);
+		assert.equal(layout.revision, 2);
+		assert.deepStrictEqual(layout.offsets, [0, 40, 70]);
 	});
 });

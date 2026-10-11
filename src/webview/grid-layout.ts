@@ -1,4 +1,13 @@
-export interface RowLayout { heights: number[]; offsets: number[]; }
+export interface RowLayout { heights: number[]; offsets: number[]; revision?: number; }
+export interface ProjectedRowLayout { heights: number[]; offsets: number[]; }
+
+export function buildProjectedRowLayout(sourceRows: readonly number[], rowHeights: readonly number[], defaultHeight: number): ProjectedRowLayout {
+	const heights = sourceRows.map(row => rowHeights[row] ?? defaultHeight);
+	const offsets = new Array<number>(heights.length + 1);
+	offsets[0] = 0;
+	for (let index = 0; index < heights.length; index++) {offsets[index + 1] = offsets[index]! + heights[index]!;}
+	return { heights, offsets };
+}
 
 export function sampleEvenly<T>(items: readonly T[], maximum: number): T[] {
 	if (maximum <= 0 || items.length === 0) {return [];}
@@ -34,6 +43,7 @@ export function wrappedTextHeight(texts: readonly string[], widths: readonly num
 }
 
 export function rebuildRowOffsets(layout: RowLayout): void {
+	layout.revision = (layout.revision ?? 0) + 1;
 	layout.offsets.length = layout.heights.length + 1;
 	layout.offsets[0] = 0;
 	for (let row = 0; row < layout.heights.length; row++) {
