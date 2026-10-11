@@ -139,6 +139,10 @@ All settings default to the values shown below. Add only the settings you want t
 
 For complete behavior details and examples, see the `CONFIGURATION.md` file included with the extension. **Restablecer vista** clears view preferences such as search, sort, filters, selection, and sizes. It does not change the document or discard an edit draft. Both view buttons include tooltips.
 
+## Development checks
+
+The extension targets VS Code 1.140 or newer. Use Node.js 22 or newer for the development test tools; the VS Code test runner's dependencies use JavaScript syntax that older Node releases cannot parse. The project provides focused local tests and `npm test` for Extension Host coverage. Some host tests need a local VS Code installation or network access to download the configured test host. A build or unit test does not replace checks in the VS Code Extension Host or opening saved workbook copies in Excel or LibreOffice.
+
 ## Language and support
 
 The current interface is Spanish-only. English UI localization is planned but is not part of this release.

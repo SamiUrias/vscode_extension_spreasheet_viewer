@@ -1142,6 +1142,46 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Aceptación:** `check-types`, `lint`, unit, `npm test`, `test:formulas`, build producción y VSIX pasan o limitación se documenta sin falso éxito; guardar/reabrir con Excel/LibreOffice copias de fixtures reales; flujos E2E de 15.10; accesibilidad y hosts certificados. No publicar Marketplace ni cambiar asociaciones del usuario sin solicitud explícita; generar paquete local sí forma parte de esta etapa.
 
+**Checklist F01–F31 (V2-25, estado honesto de esta entrega):** `parcial` significa que hay implementación local comprobable, pero queda parte de la comparación, integración o verificación manual requerida; `diferido` significa fuera del alcance comprometido. No se marca `entregado` mientras siga pendiente el Extension Host o la validación externa requerida.
+
+| F | Estado | Evidencia local y límite pendiente |
+| --- | --- | --- |
+| F01 | Parcial | CSV/XLSX/ODS/TSV/TAB y lectura XLSM están en el manifiesto; XLS no está soportado y XLSM es solo lectura. |
+| F02 | Parcial | Comandos de Explorer, título, pestaña y paleta; secuencia de descubrimiento requiere E2E. |
+| F03 | Parcial | `priority: option` conserva la elección de Open With; asociación predeterminada queda bajo decisión del usuario. |
+| F04 | Parcial | Hay vista previa; no se certificó todo flujo de solo lectura en Extension Host. |
+| F05 | Parcial | Preview de buffer CSV/TSV/TAB y stdin identificados; extensiones arbitrarias requieren elección explícita. |
+| F06 | Parcial | Preview de buffer sin guardar; edición viva y sincronización con documento sucio quedan fuera. |
+| F07 | Parcial | Recargar, restablecer vista, persistencia configurable y deduplicación implementados; reabrir/reiniciar requiere host. |
+| F08 | Parcial | Dialectos CSV, comentarios y encabezados implementados; comparación de todos los casos de referencia pendiente. |
+| F09 | Parcial | Valores crudos y vista de formatos XLSX separados; paridad de modos de conversión no es objetivo. |
+| F10 | Parcial | Índices de origen y opciones de filas disponibles; no se verificaron todas las semánticas con multilinea. |
+| F11 | Parcial | Orden multicolumna estable y limpiable; aceptación manual tras filtrar/editar pendiente. |
+| F12 | Parcial | Filtros por valores/condiciones y búsqueda con proyección; E2E pendiente. |
+| F13 | Parcial | Ajuste manual/automático y multilinea; medición visual en tamaños distintos pendiente. |
+| F14 | Parcial | Virtualización horizontal/vertical, layout y teclado tienen pruebas unitarias; accesibilidad visual requiere host. |
+| F15 | Parcial | Rangos, clipboard y navegación de teclado implementados; prueba integral con IME/lector pendiente. |
+| F16 | Parcial | Edición, guardado, undo/redo y recuperación implementados; ciclo real de CustomDocument no pasó por falta de descarga del host. |
+| F17 | Parcial | Insertar, añadir y eliminar filas CSV disponibles; validación externa de bytes y editor pendiente. |
+| F18 | Parcial | Cambios estructurales XLSX con fórmulas normales y preflight; Excel/LibreOffice no validados. |
+| F19 | Parcial | Selector, tabs y metadata básica de hojas; geometría/visibilidad compleja no certificada. |
+| F20 | Parcial | Formualizer: 2,968 fórmulas probadas; 2,860 calculadas, 1 error, 107 incompatibles/cache-only. Edición/integración host pendiente. |
+| F21 | Parcial | Vista de formato y acciones básicas XLSX; fidelidad completa y aplicación externa pendientes. |
+| F22 | Parcial | Tablas nativas XLSX creadas en perfil restringido; importar y visualizar todas las tablas requiere validación adicional. |
+| F23 | Parcial | Fill de valores, series y fórmulas relativas implementado; gestos drag y prueba visual integral pendientes. |
+| F24 | Parcial | Mover valores y borrar contenido en rangos compatibles; no mueve fórmulas ni filas/columnas por drag. |
+| F25 | Parcial | Añadir/renombrar/eliminar hojas con límites de perfil; prueba de libro resultante en aplicaciones externas pendiente. |
+| F26 | Parcial | Links/notas y límites se documentan; preservación de todo tipo de relación de libro no está garantizada. |
+| F27 | Parcial | Temas del host y estilos básicos; alto contraste, 400 px y lector de pantalla requieren revisión manual. |
+| F28 | Parcial | Bundles Node/Web, Restricted Mode y capacidades de filesystem tienen checks locales; VS Code Web/remotos no certificados. |
+| F29 | Parcial | Freeze/merge/formato básico disponibles; diferencias respecto de APIs Excel permanecen delimitadas. |
+| F30 | Parcial | README, changelog, iconos, licencias y VSIX local inspeccionado; instalación limpia en VS Code queda pendiente. |
+| F31 | Diferido | OLAP, barcode, PDF, cloud, search especializado, touch y paquetes no cargados no se incluyen en V2. |
+
+**Evidencia V2-25 ejecutada:** Node 24.21.0; `check-types`, `lint`, build de producción, `test:formulas` y `test:formula-references` pasan. También pasan `test:formula-edits`, `test:cell-deltas`, `test:grid-layout`, `test:csv-dialect`, `test:filesystem-capability`, `test:runtime`, `test:xlsm-format`, `test:fill`, `test:xlsx-tables`, `test:xlsx-sheets`, `test:xlsx-structure`, `test:move-range` y `test:xlsx-styles`. `test:web-target` pasa. `vsce package --no-dependencies` generó `spreadsheet-viewer-0.0.1.vsix` (28 archivos, 6.65 MB); inspección del ZIP confirma WASM Node/Web, parser, worker, CSS/JS, SSF y licencias, sin `out/`, `src/`, scripts ni diagnósticos. Los warnings de webpack son por los WASM de 9.26 MiB.
+
+**Pendientes que impiden declarar V2-25 verificada:** con Node 18.20.4, `npm test` falla antes del runner por la bandera RegExp `/v` de `string-width`; el README ahora requiere Node 22+ para desarrollo. Con Node 24.21.0, `npm test` intenta descargar VS Code y DNS no resuelve `update.code.visualstudio.com`. El VS Code local 1.141.0 sí satisface el mínimo, pero `test:save-lifecycle` con `VSCODE_EXECUTABLE_PATH` termina en `SIGABRT`; el host local no queda certificado. `test:untrusted` está pendiente por el mismo bloqueo de Extension Host. Tampoco se pudieron abrir Excel/LibreOffice, instalar el VSIX en una instancia limpia, validar E2E/accesibilidad ni certificar VS Code Web/remotos. No declarar V2 completa con estos checks pendientes.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
@@ -1182,7 +1222,7 @@ Crear fixtures pequeños propios y expectativas explícitas. No comparar únicam
 >
 > Al cerrar, actualiza estado de **esa tarjeta** con archivos, evidencia/tests y pendientes; reporta qué acciones manuales la verifican. Todo botón añadido debe tener tooltip; toda nueva funcionalidad queda activada por defecto y se puede desactivar desde `settings.json`. Documenta las opciones en `CONFIGURATION.md` y la experiencia en `README.md` en el mismo cambio. Ejecuta los criterios de aceptación y, cuando la etapa quede verificada y la documentación esté actualizada, crea un commit. Si un check requerido está bloqueado por el entorno, describe el comando y error, deja el check pendiente y no marques la etapa como verificada. No declares v2 completa ni soporte de host/formato complejo antes de sus criterios. Si detectas una brecha nueva, agrégala a F/T y describe su efecto; no la implementes como refactor incidental.
 
-La implementación local llega hasta **V2-24D (parcial)**; **V2-22A/B/C** tienen avances con verificaciones de host pendientes, además de **V2-18B**, **V2-20A/B** y la verificación visual de **V2-23A/B, 24A/B, 24C y 24D**. Las pruebas de integración de V2-19A2/19A3/19B2/19B3 y V2-20A/20B/21/22A/22C siguen pendientes en Extension Host; 22B requiere validar VS Code Web. V2-18B también requiere abrir el archivo resultante en Excel o LibreOffice; ambas aplicaciones no arrancaron en este entorno. Se debe continuar hasta cerrar **V2-25**, conservando las verificaciones externas pendientes y sin iniciar la internacionalización. Después de completar la V2, se implementará la internacionalización español/inglés como el siguiente bloque de trabajo, en el orden **ML-01 a ML-06** definido en [`plugin_multilingue.md`](plugin_multilingue.md). V2-24A–D tienen perfiles concretos implementables; V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y exige que sus límites estén visibles y probados. El objetivo de este documento es concentrar aquí las decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
+La implementación local llega hasta **V2-25 (parcial)**. Los checks locales y VSIX pasan, pero Extension Host aborta incluso con VS Code local 1.141.0; siguen pendientes las verificaciones en Excel/LibreOffice, instalación limpia, E2E/accesibilidad y hosts remotos/Web. No declarar la V2 completa hasta resolver estos checks. La internacionalización español/inglés sigue como siguiente bloque después de V2, en el orden **ML-01 a ML-06** de [`plugin_multilingue.md`](plugin_multilingue.md), y no se implementó aquí. V2-24E mantiene las ampliaciones complejas fuera de la entrega inicial y sus límites están en README con pruebas locales de preflight. El objetivo de este documento es concentrar decisiones costosas y dejar unidades pequeñas, comprobables y con un contrato claro.
 
 La internacionalización es un requisito confirmado: la primera versión debe incluir **español e inglés**, seleccionarse según el idioma de visualización de VS Code y usar español como fallback para idiomas no incluidos. El plan detallado está en [`plugin_multilingue.md`](plugin_multilingue.md). No cuenta como implementada: requiere ML-01 a ML-06 y debe seguir las reglas de tooltip, Settings habilitado por defecto, documentación y commit definidas arriba.
 

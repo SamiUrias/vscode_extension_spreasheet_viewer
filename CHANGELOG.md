@@ -19,6 +19,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Opciones CSV para prefijo de comentarios, tratamiento de la primera fila como encabezado y capitalización visual de encabezados.
 - XLSX: cálculo de fórmulas para presentación con Formualizer 0.10.1. Los resultados calculados no se escriben y el motor no modifica las fórmulas ni las cachés originales.
 - ODS: lectura, navegación entre hojas y edición/guardado preservando valores crudos; las fórmulas se muestran con su caché y no se recalculan.
+- XLSX: acciones acotadas para crear tablas, gestionar hojas, aplicar formato básico, combinar celdas, congelar paneles y rellenar rangos con valores, series o fórmulas relativas.
+- XLSX: mover rangos de valores dentro de una hoja y editar estructura en perfiles compatibles; libros XLSM, VBA o con firma digital permanecen en solo lectura.
+- Las acciones de edición XLSX se bloquean cuando el libro contiene estructuras que la operación no puede preservar; los límites por acción están descritos en `README.md`.
 - Interfaz: **Recargar** vuelve a leer el archivo desde disco y solicita confirmación cuando hay cambios locales pendientes.
 
 ### Cambiado
