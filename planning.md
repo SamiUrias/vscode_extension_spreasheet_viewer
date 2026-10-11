@@ -1197,7 +1197,7 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 | F25 | Parcial | Añadir/renombrar/eliminar hojas con límites de perfil; prueba de libro resultante en aplicaciones externas pendiente. |
 | F26 | Parcial | Links/notas y límites se documentan; preservación de todo tipo de relación de libro no está garantizada. |
 | F27 | Parcial | Temas del host y estilos básicos; alto contraste, 400 px y lector de pantalla requieren revisión manual. |
-| F28 | Parcial | Bundles Node/Web y capability tienen checks locales; Restricted Mode no se reprodujo: dos reruns salieron con código 1 antes de crear logs; VS Code Web/remotos y proveedores no certificados. |
+| F28 | Parcial | Bundles Node/Web y capability tienen checks locales; Restricted Mode pasa en VS Code 1.141.0 local fuera del sandbox; VS Code Web/remotos y matriz de proveedores no certificados. |
 | F29 | Parcial | Freeze/merge/formato básico disponibles; diferencias respecto de APIs Excel permanecen delimitadas. |
 | F30 | Parcial | README, changelog, iconos, licencias y VSIX local inspeccionado; instalación limpia en VS Code queda pendiente. |
 | F31 | Diferido | OLAP, barcode, PDF, cloud, search especializado, touch y paquetes no cargados no se incluyen en V2. |
