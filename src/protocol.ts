@@ -211,7 +211,7 @@ export interface XlsxDataMessage {
 	cellVisualStyles?: Array<CellVisualStyle>;
 	date1904?: boolean;
 	workbookBase64?: string;
-	structureCapability?: { allowed: boolean; reason?: string; reasonCode?: 'pending-changes' };
+	structureCapability?: { allowed: boolean; reason?: string; reasonCode?: string };
 	rowCount: number;
 	columnCount: number;
 	warnings: string[];

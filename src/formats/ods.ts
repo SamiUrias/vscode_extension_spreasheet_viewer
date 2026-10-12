@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { DOMParser, XMLSerializer, type Document, type Element, type Node } from '@xmldom/xmldom';
 import { unzipSync, zipSync, type Zippable } from 'fflate';
 import type { XlsxCellEdit, XlsxCellKind, XlsxSheet, XlsxStoredType, XlsxWorkbook } from './xlsx';
@@ -178,7 +179,7 @@ function parseSheet(table: Element, index: number, warnings: string[]): OdsSheet
 		if (values.size) {maxRow = rowIndex;}
 		if (maxRow * maxColumn > MAX_RECTANGLE_CELLS || presentCount > MAX_PRESENT_CELLS) {throw new Error(`La hoja «${name}» excede el límite de celdas que se pueden mostrar.`);}
 	}
-	if (rowIndex > MAX_ROWS) {warnings.push(`La hoja «${name}» contiene filas vacías repetidas más allá del límite visible.`);}
+	if (rowIndex > MAX_ROWS) {warnings.push(t('domain.ods.warning.repeatedRows', name));}
 	const rows: string[][] = [];
 	const cellKinds: XlsxCellKind[][] = [];
 	const cellTypes: XlsxStoredType[][] = [];

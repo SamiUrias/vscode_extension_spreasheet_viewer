@@ -12,12 +12,13 @@ import type { XlsxStyleOperation } from './formats/xlsx-styles';
 import type { FormulaParserService } from './formula-reference';
 import { MAX_ODS_BYTES, parseOdsBytes, type OdsWorkbook } from './formats/ods';
 import { isWritableFileSystem } from './filesystem-capability';
+import { t } from './i18n';
 
 export class SpreadsheetDocument implements vscode.CustomDocument {
 	readonly documentId = createUuid();
 	csv: CsvTable | undefined;
 	xlsx: XlsxWorkbook | undefined;
-	xlsxStructureCapability: XlsxStructureCapability = { allowed: false, reason: 'El documento no es XLSX.' };
+	xlsxStructureCapability: XlsxStructureCapability = { allowed: false, reason: t('domain.capability.notXlsx'), reasonCode: 'not-xlsx' };
 	ods: OdsWorkbook | undefined;
 	sourceBytes: Uint8Array;
 	editSession: SpreadsheetEditSession;
@@ -213,7 +214,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	undo(transactionId?: number): boolean {
 		if (this.editSession.undo(transactionId)) {
 			this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook;
-			this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(this.editSession.serializeCopy()) : { allowed: false, reason: 'El documento no es XLSX.' };
+			this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(this.editSession.serializeCopy()) : { allowed: false, reason: t('domain.capability.notXlsx'), reasonCode: 'not-xlsx' };
 			this.revision++; return true;
 		}
 		return false;
@@ -222,7 +223,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	redo(transactionId?: number): boolean {
 		if (this.editSession.redo(transactionId)) {
 			this.csv = this.editSession.csvTable; this.xlsx = this.editSession.xlsxWorkbook;
-			this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(this.editSession.serializeCopy()) : { allowed: false, reason: 'El documento no es XLSX.' };
+			this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(this.editSession.serializeCopy()) : { allowed: false, reason: t('domain.capability.notXlsx'), reasonCode: 'not-xlsx' };
 			this.revision++; return true;
 		}
 		return false;
@@ -231,7 +232,7 @@ export class SpreadsheetDocument implements vscode.CustomDocument {
 	replaceSavedBytes(bytes: Uint8Array, csvOptions?: CsvParseOptions): void {
 		if (csvOptions) {this.csvOptions = { ...csvOptions };}
 		({ csv: this.csv, xlsx: this.xlsx, ods: this.ods } = parseDocument(this.uri, bytes, this.csvOptions));
-		this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(bytes) : { allowed: false, reason: 'El documento no es XLSX.' };
+		this.xlsxStructureCapability = this.xlsx ? getXlsxStructureCapability(bytes) : { allowed: false, reason: t('domain.capability.notXlsx'), reasonCode: 'not-xlsx' };
 		this.sourceBytes = bytes.slice();
 		this.editSession = new SpreadsheetEditSession(this.csv, this.xlsx, this.xlsx ? bytes : undefined, this.ods, this.ods ? bytes : undefined);
 		this.revision++;

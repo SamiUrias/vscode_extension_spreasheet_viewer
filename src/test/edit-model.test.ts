@@ -1,16 +1,18 @@
 import * as assert from 'node:assert/strict';
+import { configureLocale } from '../i18n';
 import { SpreadsheetEditSession } from '../edit-model';
 import { parseCsvBytes } from '../formats/csv';
 import type { XlsxWorkbook } from '../formats/xlsx';
 
 suite('edit transactions', () => {
+	configureLocale('en');
 	test('preflights the whole transaction before changing any cell', () => {
 		const csv = parseCsvBytes(new TextEncoder().encode('a,b\nc,d'));
 		const session = new SpreadsheetEditSession(csv);
 		assert.throws(() => session.editCells([
 			{ sheetIndex: 0, row: 0, column: 0, value: 'changed' },
 			{ sheetIndex: 0, row: 99, column: 1, value: 'out of range' },
-		]), /rango actual/);
+		]), /current range/);
 		assert.deepStrictEqual(session.getRows(0), [['a', 'b'], ['c', 'd']]);
 		assert.equal(session.hasEdits, false);
 		assert.equal(session.undo(), false);
@@ -22,10 +24,10 @@ suite('edit transactions', () => {
 		assert.throws(() => session.editCells([
 			{ sheetIndex: 0, row: 0, column: 0, value: '2' },
 			{ sheetIndex: 0, row: 0, column: 1, value: 'plain text' },
-		]), /no se puede editar/);
+		]), /cannot be edited/ );
 		assert.deepStrictEqual(session.getRows(0), [['1', '=A1+1']]);
 		assert.equal(session.hasEdits, false);
-		assert.throws(() => session.editCell(0, 0, 0, 'plain text'), /Número inválido/);
+		assert.throws(() => session.editCell(0, 0, 0, 'plain text'), /Invalid number/);
 		assert.equal(session.getCell(0, 0, 0).value, '1');
 	});
 	test('applies a multi-cell transaction with one undo and one redo', () => {

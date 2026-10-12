@@ -1,6 +1,6 @@
 import type { SaveStateMessage } from './protocol';
 
-export interface StructureCapabilityState { readonly allowed: boolean; readonly reason?: string; readonly reasonCode?: 'pending-changes'; }
+export interface StructureCapabilityState { readonly allowed: boolean; readonly reason?: string; readonly reasonCode?: string; }
 
 /** Re-enable structural actions only after the transient pending-changes block is saved. */
 export function refreshStructureCapabilityAfterSave(

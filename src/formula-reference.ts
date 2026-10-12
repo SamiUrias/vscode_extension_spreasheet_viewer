@@ -1,3 +1,4 @@
+import { formatUiNumber, t } from './i18n';
 import type { ASTNodeData, Token } from 'formualizer' with { 'resolution-mode': 'import' };
 
 export interface FormulaParserService {
@@ -16,12 +17,12 @@ export type FormulaTransformResult =
 
 /** Validates formula syntax without restricting valid functions the calculation engine cannot evaluate. */
 export async function validateFormulaExpression(formula: string, parser: FormulaParserService): Promise<void> {
-	if (formula.length > MAX_FORMULA_LENGTH) {throw new Error(`La fórmula supera el límite de ${MAX_FORMULA_LENGTH.toLocaleString()} caracteres.`);}
+	if (formula.length > MAX_FORMULA_LENGTH) {throw new Error(t('domain.formula.tooLong', formatUiNumber(MAX_FORMULA_LENGTH)));}
 	if (!formula.startsWith('=') || formula.length < 2 || formula.slice(1).trim().length === 0) {
-		throw new Error('La fórmula debe comenzar con = y contener una expresión.');
+		throw new Error(t('domain.formula.syntax'));
 	}
 	const ast = await parser.parseFormula(formula);
-	if (containsUnsupportedAstError(ast)) {throw new Error('La fórmula contiene una expresión que el parser no puede validar.');}
+	if (containsUnsupportedAstError(ast)) {throw new Error(t('domain.formula.parser'));}
 }
 
 const MAX_FORMULA_LENGTH = 32 * 1024;
@@ -36,7 +37,7 @@ export async function transformFormulaReferences(
 	operation: ReferenceTransform,
 	parser: FormulaParserService,
 ): Promise<FormulaTransformResult> {
-	if (formula.length > MAX_FORMULA_LENGTH) {return unsupported(formula, `La fórmula supera el límite de ${MAX_FORMULA_LENGTH.toLocaleString()} caracteres.`);}
+	if (formula.length > MAX_FORMULA_LENGTH) {return unsupported(formula, t('domain.formula.tooLong', formatUiNumber(MAX_FORMULA_LENGTH)));}
 	if (operation.kind !== 'copy' && (!Number.isSafeInteger(operation.index) || operation.index < 1
 		|| !Number.isSafeInteger(operation.count) || operation.count < 1 || !operation.formulaSheet || !operation.targetSheet)) {
 		return unsupported(formula, 'La operación de referencias requiere una posición y cantidad positivas.');

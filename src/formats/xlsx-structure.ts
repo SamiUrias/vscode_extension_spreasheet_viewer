@@ -2,13 +2,15 @@ import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/x
 import { unzipSync, zipSync } from 'fflate';
 import { transformFormulaReferences, type FormulaParserService } from '../formula-reference';
 import { parseXlsxBytes, type XlsxWorkbook } from './xlsx';
+import { t } from '../i18n';
 
 export type XlsxStructureOperation =
 	| { readonly kind: 'insertRows' | 'deleteRows'; readonly sheetIndex: number; readonly index: number; readonly count: number }
 	| { readonly kind: 'insertColumns' | 'deleteColumns'; readonly sheetIndex: number; readonly index: number; readonly count: number };
 
 export interface XlsxStructureSnapshot { readonly before: Uint8Array; readonly after: Uint8Array; readonly operation: XlsxStructureOperation; }
-export interface XlsxStructureCapability { readonly allowed: boolean; readonly reason?: string; readonly reasonCode?: 'pending-changes'; }
+export type XlsxStructureCapabilityReasonCode = 'pending-changes' | 'not-xlsx' | 'unsafe-profile' | 'connections' | 'missing-structure' | 'missing-sheet' | 'unsupported-sheet-content' | 'unknown-parts' | 'defined-names' | 'external-references' | 'unsupported-cells' | 'protected-structures' | 'external-diagnostic';
+export interface XlsxStructureCapability { readonly allowed: boolean; readonly reason?: string; readonly reasonCode?: XlsxStructureCapabilityReasonCode; }
 
 export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapability {
 	try {
@@ -34,8 +36,33 @@ export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapa
 		}
 		return { allowed: true };
 	} catch (error) {
-		return { allowed: false, reason: error instanceof Error ? error.message.replace(/^No se puede cambiar la estructura:\s*/, '') : 'El libro no cumple el perfil estructural seguro.' };
+		const rawReason = error instanceof Error ? error.message : '';
+		const reason = rawReason.replace(/^No se puede cambiar la estructura:\s*/, '');
+		const external = rawReason !== reason || !isKnownCapabilityReason(reason);
+		return { allowed: false, reason, reasonCode: external ? 'external-diagnostic' : capabilityReasonCode(reason) };
 	}
+}
+
+function isKnownCapabilityReason(reason: string): boolean {
+	return reason === 'El libro contiene conexiones o referencias de cálculo no compatibles.'
+		|| reason === 'Falta la estructura de libro esperada.'
+		|| reason === 'No se pudo localizar una hoja interna del libro.'
+		|| reason === 'Una hoja contiene filtros, vínculos o extensiones que la operación no actualiza.'
+		|| reason.startsWith('No se puede cambiar la estructura:');
+}
+
+function capabilityReasonCode(reason: string): XlsxStructureCapabilityReasonCode {
+	if (reason.includes('conexiones o referencias de cálculo')) {return 'connections';}
+	if (reason === 'Falta la estructura de libro esperada.') {return 'missing-structure';}
+	if (reason === 'No se pudo localizar una hoja interna del libro.') {return 'missing-sheet';}
+	if (reason === 'Una hoja contiene filtros, vínculos o extensiones que la operación no actualiza.') {return 'unsupported-sheet-content';}
+	if (reason.includes('componentes XLSX no interpretados')) {return 'unknown-parts';}
+	if (reason.includes('nombres definidos')) {return 'defined-names';}
+	if (reason.includes('referencias externas')) {return 'external-references';}
+	if (reason.includes('fórmulas no compatibles o tipos de celda desconocidos')) {return 'unsupported-cells';}
+	if (reason.includes('protección, combinaciones o referencias adicionales')) {return 'protected-structures';}
+	if (reason) {return 'external-diagnostic';}
+	return 'unsafe-profile';
 }
 
 /**

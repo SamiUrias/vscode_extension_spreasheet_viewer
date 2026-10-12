@@ -15,6 +15,7 @@ import { presentXlsxCell, type CellPresentation } from './presentation';
 import { completeFormulaFunction, getFormulaCompletions, insertFormulaReference, type FormulaCompletion } from '../formula-assistance';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
+import { t, type MessageKey } from '../i18n';
 
 window.addEventListener('error', event => {
 	const detail = event.target instanceof HTMLScriptElement
@@ -1257,9 +1258,21 @@ function updateXlsxStructureActions(): void {
 	const blockedByProjection = sortCriteria.length > 0 || columnFilters.length > 0;
 	const capability = snapshot?.type === 'xlsxData' ? snapshot.structureCapability : undefined;
 	const blocked = blockedByProjection || !capability?.allowed || !selectedCell;
-	xlsxStructureStatus.textContent = blockedByProjection ? 'Quita el orden y los filtros antes de cambiar la estructura.'
-		: capability?.allowed ? selectedCell ? '' : 'Selecciona una celda en la fila o columna que quieres modificar.'
-			: capability?.reason ?? 'El libro no cumple el perfil de seguridad para cambios estructurales.';
+	const capabilityReason: Record<string, string> = {
+		'not-xlsx': 'domain.capability.notXlsx', 'unsafe-profile': 'domain.capability.profile',
+		connections: 'domain.capability.connections', 'missing-structure': 'domain.capability.missingStructure',
+		'missing-sheet': 'domain.capability.missingSheet', 'unsupported-sheet-content': 'domain.capability.unsupportedSheetContent',
+		'unknown-parts': 'domain.capability.unknownParts', 'defined-names': 'domain.capability.definedNames',
+		'external-references': 'domain.capability.externalReferences', 'unsupported-cells': 'domain.capability.unsupportedCells',
+		'protected-structures': 'domain.capability.protectedStructures',
+	};
+	xlsxStructureStatus.textContent = blockedByProjection ? t('domain.capability.blockedProjection')
+		: capability?.allowed ? selectedCell ? '' : t('domain.capability.selectCell')
+			: capability?.reasonCode && capabilityReason[capability.reasonCode]
+				? t(capabilityReason[capability.reasonCode] as MessageKey)
+				: capability?.reasonCode === 'external-diagnostic' && capability.reason
+					? t('domain.capability.externalDiagnostic', capability.reason)
+					: capability?.reason ?? t('domain.capability.fallback');
 	xlsxStructureStatus.hidden = !blocked || !visible;
 	for (const button of xlsxStructureActions.querySelectorAll<HTMLButtonElement>('button')) {
 		button.disabled = blocked;

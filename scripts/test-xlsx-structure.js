@@ -1,3 +1,5 @@
+const { configureLocale } = require('../out/i18n/index.js');
+configureLocale('en');
 const tests = [];
 global.suite = (_name, run) => run();
 global.test = (name, run) => tests.push({ name, run });

@@ -1,3 +1,4 @@
+import { formatUiNumber, t } from '../i18n';
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import { unzipSync, zipSync } from 'fflate';
 import { isCellCoveredByRange } from '../cell-reference';
@@ -126,21 +127,21 @@ export function parseXlsxBytes(bytes: Uint8Array): XlsxWorkbook {
 		throw new Error(`El XLSX excede el límite de ${MAX_SHEETS} hojas.`);
 	}
 	const warnings: string[] = [];
-	if (macroEnabled || hasVbaProject) {warnings.push('El libro contiene contenido XLSM/macros VBA; se abre solo para lectura y las macros nunca se ejecutan.');}
-	if (hasDigitalSignatures) {warnings.push('El libro contiene firmas digitales; se abre solo para lectura para conservar el paquete original.');}
+	if (macroEnabled || hasVbaProject) {warnings.push(t('domain.xlsx.warning.macros'));}
+	if (hasDigitalSignatures) {warnings.push(t('domain.xlsx.warning.signatures'));}
 	const unsupported = [
-		{ pattern: /^xl\/vbaProject\.bin$/i, label: 'macros VBA' },
-		{ pattern: /^xl\/(?:charts|pivotTables|drawings|tables)\//i, label: 'gráficos, tablas dinámicas o estructuras avanzadas' },
-		{ pattern: /^xl\/externalLinks\//i, label: 'vínculos externos' },
-		{ pattern: /^_xmlsignatures\//i, label: 'firmas digitales' },
+		{ pattern: /^xl\/vbaProject\.bin$/i, label: 'domain.xlsx.feature.macros' as const },
+		{ pattern: /^xl\/(?:charts|pivotTables|drawings|tables)\//i, label: 'domain.xlsx.feature.advanced' as const },
+		{ pattern: /^xl\/externalLinks\//i, label: 'domain.xlsx.feature.externalLinks' as const },
+		{ pattern: /^_xmlsignatures\//i, label: 'domain.xlsx.feature.signatures' as const },
 	];
 	for (const feature of unsupported) {
 		if (Object.keys(files).some(name => feature.pattern.test(name))) {
-			warnings.push(`El libro contiene ${feature.label}; no se interpretan en la vista tabular.`);
+			warnings.push(t('domain.xlsx.warning.feature', t(feature.label)));
 		}
 	}
 	const unknownParts = Object.keys(files).filter(name => !isKnownXlsxPart(name));
-	if (unknownParts.length) {warnings.push(`El paquete conserva ${unknownParts.length} componente(s) XLSX no interpretado(s): ${unknownParts.slice(0, 10).join(', ')}${unknownParts.length > 10 ? ', …' : ''}.`);}
+	if (unknownParts.length) {warnings.push(t('domain.xlsx.warning.unknownParts', formatUiNumber(unknownParts.length), unknownParts.slice(0, 10).join(', '), unknownParts.length > 10 ? ', …' : ''));}
 	let workbookPresentCells = 0;
 	const sheets = sheetNodes.map((sheetNode, index) => {
 		const name = sheetNode.getAttribute('name') || `Hoja ${index + 1}`;

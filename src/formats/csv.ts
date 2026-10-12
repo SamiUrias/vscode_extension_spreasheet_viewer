@@ -1,3 +1,4 @@
+import { formatUiNumber, t } from '../i18n';
 import Papa = require('papaparse');
 
 export const MAX_CSV_BYTES = 10 * 1024 * 1024;
@@ -52,15 +53,15 @@ export type CsvRowOperation =
 export interface CsvParseOptions { delimiter?: string; quoteChar?: string; quotes?: boolean; persistDelimiter?: boolean; commentPrefix?: string; }
 
 export class CsvDelimiterAmbiguityError extends Error {
-	constructor(readonly delimiters: string[]) { super('El delimitador del archivo CSV es ambiguo.'); }
+	constructor(readonly delimiters: string[]) { super(t('domain.csv.ambiguous')); }
 }
 
 export function parseCsvBytes(bytes: Uint8Array, options: CsvParseOptions = {}): CsvTable {
 	if (options.commentPrefix !== undefined && options.commentPrefix.length > 128) {
-		throw new Error('El prefijo de comentario CSV no puede exceder 128 caracteres.');
+		throw new Error(t('domain.csv.prefixLimit'));
 	}
 	if (bytes.byteLength > MAX_CSV_BYTES) {
-		throw new Error(`El CSV excede el límite de ${MAX_CSV_BYTES / (1024 * 1024)} MiB.`);
+		throw new Error(t('domain.csv.limit', String(MAX_CSV_BYTES / (1024 * 1024))));
 	}
 
 	const { text, encoding, bom } = decodeCsv(bytes);
@@ -89,7 +90,7 @@ export function parseCsvBytes(bytes: Uint8Array, options: CsvParseOptions = {}):
 			const line = error.row === undefined ? '' : `fila ${error.row + 1}: `;
 			return `${line}${error.message}`;
 		}).join('; ');
-		throw new Error(`No se pudo interpretar el CSV: ${detail}`);
+		throw new Error(t('domain.csv.parse', detail));
 	}
 
 	const parsedRows = result.data;
@@ -116,17 +117,17 @@ export function parseCsvBytes(bytes: Uint8Array, options: CsvParseOptions = {}):
 	const columnCount = rows.reduce((maximum, row) => Math.max(maximum, row.length), 0);
 	const presentCells = rows.reduce((total, row) => total + row.length, 0);
 	if (rows.length > MAX_ROWS) {
-		throw new Error(`El CSV excede el límite de ${MAX_ROWS.toLocaleString('es')} filas.`);
+		throw new Error(t('domain.csv.rowsLimit', formatUiNumber(MAX_ROWS)));
 	}
 	if (columnCount > MAX_COLUMNS) {
-		throw new Error(`El CSV excede el límite de ${MAX_COLUMNS} columnas.`);
+		throw new Error(t('domain.csv.columnsLimit', formatUiNumber(MAX_COLUMNS)));
 	}
 	if (rows.length * columnCount > MAX_RECTANGLE_CELLS || presentCells > MAX_PRESENT_CELLS) {
-		throw new Error('El CSV excede el límite de celdas que se pueden mostrar.');
+		throw new Error(t('domain.csv.cellsLimit'));
 	}
 	if (fieldSpans.length !== rows.length
 		|| fieldSpans.some((record, index) => record.kind !== 'comment' && record.fields.length !== rows[index].length)) {
-		throw new Error('No se pudo conservar la estructura original de los campos CSV para editar con seguridad.');
+		throw new Error(t('domain.csv.sourceLayout'));
 	}
 
 	return {
@@ -156,7 +157,7 @@ export function serializeCsvEdits(table: CsvTable, edits: readonly CsvCellEdit[]
 		if (!Number.isInteger(edit.row) || !Number.isInteger(edit.column)
 			|| edit.row < 0 || edit.row >= table.rowCount
 			|| edit.column < 0 || edit.column >= table.columnCount) {
-			throw new Error('La celda CSV está fuera del rango actual.');
+			throw new Error(t('domain.csv.cellBounds'));
 		}
 		let row = byRow.get(edit.row);
 		if (!row) {
@@ -221,10 +222,10 @@ export function serializeCsvRowOperation(table: CsvTable, operation: CsvRowOpera
 		const chosenWidth = emptyTable ? operation.rows[0]?.length ?? 0 : table.columnCount;
 		if (!Number.isInteger(operation.index) || operation.index < 0 || operation.index > table.rowCount
 			|| operation.rows.length === 0 || chosenWidth < 1 || chosenWidth > 256 || table.rowCount + operation.rows.length > 50_000) {
-			throw new Error('La inserción CSV está fuera de los límites permitidos.');
+			throw new Error(t('domain.csv.insertBounds'));
 		}
 		const serialized = operation.rows.map(row => {
-			if (row.length !== chosenWidth || row.some(value => typeof value !== 'string')) {throw new Error('Cada registro nuevo debe tener el ancho de la tabla y valores de texto.');}
+			if (row.length !== chosenWidth || row.some(value => typeof value !== 'string')) {throw new Error(t('domain.csv.rowShape'));}
 			return row.map(value => encodeCsvField(value, table.delimiter, table.quoteChar, table.quotes, false)).join(table.delimiter);
 		}).join(eol);
 		const position = operation.index < table.rowCount ? recordStarts[operation.index]! : text.length;
@@ -235,7 +236,7 @@ export function serializeCsvRowOperation(table: CsvTable, operation: CsvRowOpera
 		const selected = new Set(operation.rows);
 		if (!selected.size || selected.size !== operation.rows.length || [...selected].some(index => !Number.isInteger(index)
 			|| index < 0 || index >= table.rowCount || table.rowKinds[index] !== 'data')) {
-			throw new Error('Solo se pueden eliminar registros de datos existentes, sin duplicados.');
+			throw new Error(t('domain.csv.deleteRows'));
 		}
 		const chunks = table.fieldSpans.map((record, index) => {
 			const start = recordStarts[index]!;
@@ -316,7 +317,7 @@ function decodeCsv(bytes: Uint8Array): { text: string; encoding: CsvTable['encod
 			bom: bytes.slice(0, bomLength),
 		};
 	} catch {
-		throw new Error('La codificación del CSV no es válida o no está admitida. Usa UTF-8 o UTF-16 con BOM.');
+		throw new Error(t('domain.csv.encoding'));
 	}
 }
 
@@ -398,7 +399,7 @@ function isRecordBreak(character: string): boolean {
 
 function encodeCsvField(value: string, delimiter: string, quoteChar: string, quotes: boolean, preserveQuotes: boolean): string {
 	if (!quotes && (value.includes(delimiter) || value.includes('\r') || value.includes('\n'))) {
-		throw new Error('El valor contiene separadores o saltos de línea que el dialecto no puede representar con quoting desactivado.');
+		throw new Error(t('domain.csv.unrepresentable'));
 	}
 	const mustQuote = quotes && (preserveQuotes
 		|| value.includes(delimiter)

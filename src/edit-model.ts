@@ -7,6 +7,7 @@ import { applyXlsxStyleOperation, type XlsxStyleOperation } from './formats/xlsx
 import { validateFormulaExpression, type FormulaParserService } from './formula-reference';
 import { serializeOdsEdits, type OdsWorkbook } from './formats/ods';
 import { isCellCoveredByRange } from './cell-reference';
+import { t } from './i18n';
 
 export type EditableCellType = 'string' | 'number' | 'boolean' | 'date' | 'formula';
 
@@ -168,22 +169,22 @@ export class SpreadsheetEditSession {
 		const changes: CellChange[] = [];
 		for (const input of inputs) {
 			const { sheetIndex, row, column, value, targetType } = input;
-			if (this.ods?.sheets[sheetIndex]?.odsMetadata?.protected) {throw new Error('La hoja ODS está protegida y no se puede editar.');}
+			if (this.ods?.sheets[sheetIndex]?.odsMetadata?.protected) {throw new Error(t('domain.cell.protected'));}
 			const xlsxSheet = this.xlsx?.sheets[sheetIndex];
-			if (xlsxSheet?.metadata?.protected) {throw new Error('La hoja XLSX está protegida y no se puede editar.');}
+			if (xlsxSheet?.metadata?.protected) {throw new Error(t('domain.cell.protected'));}
 			if (xlsxSheet?.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, row, column))
 				|| this.ods?.sheets[sheetIndex]?.odsMetadata?.mergedRanges.some(range => isCellCoveredByRange(range, row, column))) {
-				throw new Error('La celda está cubierta por una combinación y no se puede editar directamente.');
+				throw new Error(t('domain.cell.merged'));
 			}
 			const beforeValue = this.getCell(sheetIndex, row, column);
 			if (beforeValue.storedType === 'formula' || beforeValue.storedType === 'error' || beforeValue.storedType === 'unsupported' || beforeValue.storedType === 'duration') {
-				throw new Error('Esta celda XLSX no se puede editar en esta etapa.');
+				throw new Error(t('domain.cell.unsupported'));
 			}
-			if (this.csv && targetType !== undefined && targetType !== 'string') {throw new Error('Las celdas CSV se conservan como texto.');}
+			if (this.csv && targetType !== undefined && targetType !== 'string') {throw new Error(t('domain.cell.csvText'));}
 			const type = targetType ?? beforeValue.type;
 			validateValue(type, value);
 			const key = cellKey(sheetIndex, row, column);
-			if (keys.has(key)) {throw new Error('La transacción contiene una celda repetida.');}
+			if (keys.has(key)) {throw new Error(t('domain.cell.duplicate'));}
 			keys.add(key);
 			const after: CellEdit = { sheetIndex, row, column, value, type, storedType: type, exists: true };
 			const normalized = equivalent(after, this.original(sheetIndex, row, column)) ? undefined : after;
@@ -199,14 +200,14 @@ export class SpreadsheetEditSession {
 	}
 
 	async editFormula(sheetIndex: number, row: number, column: number, formula: string, parser: FormulaParserService): Promise<number | undefined> {
-		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La edición de fórmulas solo está disponible en libros XLSX.');}
-		if (this.xlsx.sheets[sheetIndex]?.metadata?.protected) {throw new Error('La hoja XLSX está protegida y no se puede editar.');}
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error(t('domain.formula.required'));}
+		if (this.xlsx.sheets[sheetIndex]?.metadata?.protected) {throw new Error(t('domain.cell.protected'));}
 		const sheet = this.xlsx.sheets[sheetIndex];
 		if (!sheet || !Number.isInteger(row) || !Number.isInteger(column) || row < 0 || column < 0 || row >= sheet.rowCount || column >= sheet.columnCount) {
-			throw new Error('La celda está fuera del rango actual.');
+			throw new Error(t('domain.formula.range'));
 		}
 		if (sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, row, column))) {
-			throw new Error('La celda está cubierta por una combinación y no se puede editar directamente.');
+			throw new Error(t('domain.cell.merged'));
 		}
 		await validateFormulaExpression(formula, parser);
 		// Exercise ZIP/XML constraints before mutating the undo journal. This also blocks edits to
@@ -247,16 +248,16 @@ export class SpreadsheetEditSession {
 	}
 
 	async validateFormulaBatch(inputs: readonly FormulaEditInput[], parser: FormulaParserService): Promise<void> {
-		if (!this.xlsx || !this.xlsxBytes) {throw new Error('La edición de fórmulas solo está disponible en libros XLSX.');}
-		if (!inputs.length) {throw new Error('El rango no contiene fórmulas de destino.');}
+		if (!this.xlsx || !this.xlsxBytes) {throw new Error(t('domain.formula.required'));}
+		if (!inputs.length) {throw new Error(t('domain.formula.targets'));}
 		const keys = new Set<string>();
 		for (const input of inputs) {
 			const sheet = this.xlsx.sheets[input.sheetIndex];
 			if (!sheet || !Number.isInteger(input.row) || !Number.isInteger(input.column) || input.row < 0 || input.column < 0
-				|| input.row >= sheet.rowCount || input.column >= sheet.columnCount) {throw new Error('Una fórmula está fuera del rango actual.');}
-			if (sheet.metadata?.protected || sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, input.row, input.column))) {throw new Error('El rango incluye una celda protegida o combinada.');}
+				|| input.row >= sheet.rowCount || input.column >= sheet.columnCount) {throw new Error(t('domain.formula.range'));}
+			if (sheet.metadata?.protected || sheet.metadata?.mergedRanges.some(range => isCellCoveredByRange(range, input.row, input.column))) {throw new Error(t('domain.formula.protected'));}
 			const key = cellKey(input.sheetIndex, input.row, input.column);
-			if (keys.has(key)) {throw new Error('La transacción contiene una celda repetida.');}
+			if (keys.has(key)) {throw new Error(t('domain.cell.duplicate'));}
 			keys.add(key);
 			await validateFormulaExpression(input.formula, parser);
 		}
@@ -329,16 +330,16 @@ export class SpreadsheetEditSession {
 
 	private assertInRange(sheetIndex: number, row: number, column: number): void {
 		if (!Number.isInteger(row) || !Number.isInteger(column) || row < 0 || column < 0) {
-			throw new Error('La celda está fuera del rango actual.');
+			throw new Error(t('domain.formula.range'));
 		}
 		if (this.csv) {
 			if (sheetIndex !== 0 || row >= this.csv.rowCount || column >= this.csv.columnCount) {
-				throw new Error('La celda está fuera del rango actual.');
+				throw new Error(t('domain.formula.range'));
 			}
 		} else {
 			const sheet = (this.xlsx ?? this.ods)?.sheets[sheetIndex];
 			if (!sheet || row >= sheet.rowCount || column >= sheet.columnCount) {
-				throw new Error('La celda está fuera del rango actual.');
+				throw new Error(t('domain.formula.range'));
 			}
 		}
 	}
@@ -361,13 +362,13 @@ export class SpreadsheetEditSession {
 function validateValue(type: EditableCellType, value: string): void {
 	if (type === 'formula') {throw new Error('Las fórmulas requieren el flujo explícito de edición de fórmulas.');}
 	if (type === 'number' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) {
-		throw new Error('Número inválido.');
+		throw new Error(t('domain.value.number'));
 	}
 	if (type === 'boolean' && value !== '0' && value !== '1') {
-		throw new Error('Booleano inválido; usa 0 o 1.');
+		throw new Error(t('domain.value.boolean'));
 	}
 	if (type === 'date' && !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(value)) {
-		throw new Error('Fecha inválida; usa el valor ISO sin conversión.');
+		throw new Error(t('domain.value.date'));
 	}
 }
 

@@ -459,7 +459,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			formulaCaches: snapshot.formulaCaches ?? sheet.formulaCaches,
 			...(document.xlsx ? {
 				structureCapability: document.isReadOnly
-					? { allowed: false, reason: 'El proveedor de archivos no permite escribir este recurso.' }
+					? { allowed: false, reason: t('editor.capability.readOnly'), reasonCode: 'read-only' }
 					: !workbookMatchesSavedBytes
 					? { allowed: false, reasonCode: 'pending-changes', reason: t('editor.structure.pending') }
 					: document.xlsxStructureCapability,

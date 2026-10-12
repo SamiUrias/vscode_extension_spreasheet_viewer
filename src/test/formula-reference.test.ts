@@ -3,9 +3,11 @@ import initializeWasm, { parse, tokenize } from 'formualizer';
 import { unzipSync, zipSync } from 'fflate';
 import { applyXlsxStructureOperation } from '../formats/xlsx-structure';
 import { parseXlsxBytes, serializeXlsxEdits } from '../formats/xlsx';
+import { configureLocale } from '../i18n';
 import { transformFormulaReferences, validateFormulaExpression, type FormulaParserService } from '../formula-reference';
 
 async function run(): Promise<void> {
+	configureLocale('en');
 	await initializeWasm();
 	const parser: FormulaParserService = {
 		parseFormula: formula => parse(formula),

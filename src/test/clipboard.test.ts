@@ -1,7 +1,9 @@
 import * as assert from 'node:assert/strict';
+import { configureLocale } from '../i18n';
 import { parseClipboardTsv, parseTsv, serializeTsv, serializeVisibleSelection } from '../clipboard';
 
 suite('spreadsheet clipboard TSV', () => {
+	configureLocale('en');
 	test('round-trips delimiters, quotes, line endings, Unicode, blanks, and trailing zeros', () => {
 		const rows = [
 			['normal', 'contains\ttab', 'contains\r\nnewline', 'quote " here'],
@@ -20,9 +22,9 @@ suite('spreadsheet clipboard TSV', () => {
 	});
 	test('parses quoted multiline clipboard cells and rejects malformed or oversized clipboard text', () => {
 		assert.deepStrictEqual(parseClipboardTsv('one\t"two\nlines"\r\nthree\tfour'), [['one', 'two\nlines'], ['three', 'four']]);
-		assert.throws(() => parseClipboardTsv('"unclosed'), /comillas sin cerrar/);
-		assert.throws(() => parseClipboardTsv('"quoted"tail'), /después de una comilla/);
-		assert.throws(() => parseClipboardTsv('unescaped"quote'), /comilla dentro de un campo/);
+		assert.throws(() => parseClipboardTsv('"unclosed'), /unclosed quote/);
+		assert.throws(() => parseClipboardTsv('"quoted"tail'), /after a closing quote/);
+		assert.throws(() => parseClipboardTsv('unescaped"quote'), /inside an unescaped field/);
 		assert.throws(() => parseClipboardTsv('x'.repeat(50 * 1024 * 1024 + 1)), /50 MiB/);
 	});
 	test('maps a selected source range through sorted and filtered visible rows', () => {

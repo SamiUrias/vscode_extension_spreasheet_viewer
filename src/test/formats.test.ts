@@ -8,11 +8,13 @@ import { applyXlsxTableOperation } from '../formats/xlsx-tables';
 import { applyXlsxSheetOperation } from '../formats/xlsx-sheets';
 import { applyXlsxStyleOperation } from '../formats/xlsx-styles';
 import { createMoveRangeEdits } from '../move-range';
+import { configureLocale } from '../i18n';
 import { parseOdsBytes, serializeOdsEdits } from '../formats/ods';
 import { SpreadsheetEditSession } from '../edit-model';
 import type { FormulaParserService } from '../formula-reference';
 
 suite('CSV reader', () => {
+	configureLocale('en');
 	test('keeps numeric-looking and date-looking values as text', () => {
 		const table = parseUtf8('id,value,date\n00123,0.25,2026-02-04');
 		assert.deepStrictEqual(table.rows, [['id', 'value', 'date'], ['00123', '0.25', '2026-02-04']]);
@@ -66,8 +68,8 @@ suite('CSV reader', () => {
 	});
 
 	test('reports malformed quoting and invalid UTF-8 rather than displaying a guessed parse', () => {
-		assert.throws(() => parseUtf8('a,b\n1,"unterminated'), /No se pudo interpretar el CSV/);
-		assert.throws(() => parseCsvBytes(Buffer.from([0xc3, 0x28])), /codificación/);
+		assert.throws(() => parseUtf8('a,b\n1,"unterminated'), /Could not parse the CSV/);
+		assert.throws(() => parseCsvBytes(Buffer.from([0xc3, 0x28])), /encoding/);
 	});
 
 	test('treats an empty file as a sheet with zero rows and columns', () => {
@@ -88,7 +90,7 @@ suite('CSV reader', () => {
 		assert.deepStrictEqual(parseCsvBytes(Buffer.from('a|b\n1|2'), { delimiter: '|' }).rows, [['a', 'b'], ['1', '2']]);
 		assert.deepStrictEqual(parseCsvBytes(Buffer.from("a,b\n'one, two',2"), { quoteChar: "'" }).rows, [['a', 'b'], ['one, two', '2']]);
 		assert.deepStrictEqual(parseCsvBytes(Buffer.from('a,b\n"one, two",2'), { quotes: false }).rows, [['a', 'b'], ['"one', ' two"', '2']]);
-		assert.throws(() => parseCsvBytes(Buffer.from('a,b;c\n1,2;3')), /ambiguo/);
+		assert.throws(() => parseCsvBytes(Buffer.from('a,b;c\n1,2;3')), /ambiguous/);
 		const selected = parseCsvBytes(Buffer.from('a|b\n1|2'), { delimiter: '|', persistDelimiter: true });
 		const selectedOutput = serializeCsvEdits(selected, [{ row: 1, column: 0, value: 'x' }]);
 		assert.deepStrictEqual(parseCsvBytes(selectedOutput).rows, [['a', 'b'], ['x', '2']]);
@@ -112,7 +114,7 @@ suite('CSV reader', () => {
 		assert.match(new TextDecoder().decode(inserted), /#keep this note\r\n"multi\nline";1\r\n"new;name";003\r\nlast;2\r\n$/);
 		const deleted = serializeCsvRowOperation(table, { kind: 'delete', rows: [2] });
 		assert.deepStrictEqual(parseCsvBytes(deleted, { commentPrefix: '#' }).rows, [['name', 'value'], [''], ['last', '2']]);
-		assert.throws(() => serializeCsvRowOperation(table, { kind: 'delete', rows: [1] }), /registros de datos/);
+		assert.throws(() => serializeCsvRowOperation(table, { kind: 'delete', rows: [1] }), /data records/);
 	});
 
 	test('CSV row operations create the first chosen-width record and preserve UTF-16 byte order', () => {
@@ -120,8 +122,8 @@ suite('CSV reader', () => {
 		const first = serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [['001', '', 'three']] });
 		assert.equal(new TextDecoder().decode(first), '001,,three');
 		assert.deepStrictEqual(parseCsvBytes(first).rows, [['001', '', 'three']]);
-		assert.throws(() => serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [[]] }), /límites/);
-		assert.throws(() => serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [['a'], ['b', 'c']] }), /ancho/);
+		assert.throws(() => serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [[]] }), /allowed bounds/);
+		assert.throws(() => serializeCsvRowOperation(empty, { kind: 'insert', index: 0, rows: [['a'], ['b', 'c']] }), /table width/);
 		for (const littleEndian of [true, false]) {
 			const source = encodeUtf16('name,value\r\nfirst,1\r\n', littleEndian);
 			const table = parseCsvBytes(source);
@@ -136,7 +138,7 @@ suite('CSV reader', () => {
 		const session = new SpreadsheetEditSession(table);
 		session.editCell(0, 1, 1, '0.25000000000000000002');
 		assert.strictEqual(session.getCell(0, 1, 1).value, '0.25000000000000000002');
-		assert.throws(() => session.editCell(0, 1, 1, 'bad', 'number'), /CSV se conservan como texto/);
+		assert.throws(() => session.editCell(0, 1, 1, 'bad', 'number'), /CSV cells are preserved as text/);
 		assert.strictEqual(session.getCell(0, 1, 1).value, '0.25000000000000000002');
 		assert.strictEqual(session.undo(), true);
 		assert.strictEqual(session.getCell(0, 1, 1).value, '0.25000000000000000001');
@@ -150,7 +152,7 @@ suite('CSV reader', () => {
 		session.editCell(0, 1, 1, '');
 		assert.strictEqual(session.getCell(0, 1, 1).exists, true);
 		assert.strictEqual(new TextDecoder().decode(session.serializeCopy()), 'a,b\n1,');
-		assert.throws(() => session.editCell(0, 1, 0, '1', 'number'), /CSV se conservan como texto/);
+		assert.throws(() => session.editCell(0, 1, 0, '1', 'number'), /CSV cells are preserved as text/);
 	});
 });
 
@@ -283,8 +285,8 @@ suite('XLSX reader', () => {
 		assert.equal(workbook.macroEnabled, true);
 		assert.equal(workbook.hasVbaProject, true);
 		assert.equal(workbook.hasDigitalSignatures, true);
-		assert.ok(workbook.warnings.some(warning => warning.includes('macros nunca se ejecutan')));
-		assert.ok(workbook.warnings.some(warning => warning.includes('firmas digitales')));
+		assert.ok(workbook.warnings.some(warning => warning.includes('macros are never run')));
+		assert.ok(workbook.warnings.some(warning => warning.includes('digital signatures')));
 	});
 
 	test('reads raw numeric/date values, booleans, gaps, shared/inline strings and formula cache', () => {
@@ -398,6 +400,10 @@ suite('XLSX reader', () => {
 		const unsafeWorksheet = new DOMParser().parseFromString(new TextDecoder().decode(safeParts['xl/worksheets/sheet1.xml']), 'application/xml');
 		unsafeWorksheet.documentElement?.appendChild(unsafeWorksheet.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'autoFilter'));
 		const unsafe = zipSync({ ...safeParts, 'xl/worksheets/sheet1.xml': xml(new XMLSerializer().serializeToString(unsafeWorksheet)) });
+		const unsafeCapability = getXlsxStructureCapability(unsafe);
+		assert.equal(unsafeCapability.allowed, false);
+		assert.equal(unsafeCapability.reasonCode, 'unsupported-sheet-content');
+		assert.ok(unsafeCapability.reason);
 		await assert.rejects(applyXlsxStructureOperation(unsafe, { kind: 'insertRows', sheetIndex: 0, index: 0, count: 1 }), /referencias o extensiones/);
 
 		const formulaParts = unzipSync(original);
@@ -413,7 +419,7 @@ suite('XLSX reader', () => {
 		const sharedFormulaSheet = new TextDecoder().decode(sharedFormulaParts['xl/worksheets/sheet1.xml']);
 		sharedFormulaParts['xl/worksheets/sheet1.xml'] = xml(sharedFormulaSheet.replace('<f>A1+1</f>', '<f t="shared" si="0" ref="B2:B3">A1+1</f>'));
 		const sharedFormulaBytes = zipSync(sharedFormulaParts);
-		await assert.rejects(applyXlsxStructureOperation(sharedFormulaBytes, { kind: 'insertRows', sheetIndex: 0, index: 0, count: 1 }, noReferenceParser), /fórmulas no compatibles|fórmula compartida/);
+		await assert.rejects(applyXlsxStructureOperation(sharedFormulaBytes, { kind: 'insertRows', sheetIndex: 0, index: 0, count: 1 }, noReferenceParser), /fórmula compartida|shared, array, or extended/);
 		const formulaTransaction = await formulaSession.applyXlsxStructure({ kind: 'insertRows', sheetIndex: 0, index: 1, count: 1 }, noReferenceParser);
 		const formulaEdited = formulaSession.serializeCopy();
 		assert.equal(parseXlsxBytes(formulaEdited).sheets[0]?.rows[3]?.[1], '=2+3');
@@ -529,7 +535,7 @@ suite('XLSX reader', () => {
 		assert.throws(() => applyXlsxTableOperation(original, { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'A1' }), /nombre debe ser válido/);
 		const duplicateHeaderParts: Record<string, Uint8Array> = unzipSync(original);
 		duplicateHeaderParts['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(duplicateHeaderParts['xl/worksheets/sheet1.xml']).replace('<t>Name</t>', '<t>ID</t>'));
-		assert.throws(() => applyXlsxTableOperation(zipSync(duplicateHeaderParts), { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'DuplicateHeaders' }), /encabezado/);
+		assert.throws(() => applyXlsxTableOperation(zipSync(duplicateHeaderParts), { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'DuplicateHeaders' }), /encabezado de la columna/);
 		const mergedParts: Record<string, Uint8Array> = unzipSync(original);
 		mergedParts['xl/worksheets/sheet1.xml'] = xml(new TextDecoder().decode(mergedParts['xl/worksheets/sheet1.xml']).replace('</sheetData>', '</sheetData><mergeCells count="1"><mergeCell ref="B1:C1"/></mergeCells>'));
 		assert.throws(() => applyXlsxTableOperation(zipSync(mergedParts), { sheetIndex: 0, startRow: 0, startColumn: 0, endRow: 1, endColumn: 2, name: 'MergedHeaders' }), /combinadas/);
@@ -615,13 +621,13 @@ suite('XLSX reader', () => {
 		assert.deepStrictEqual(workbook.sheets[0]?.metadata?.notes[0], { reference: 'A1', author: 'Sam', text: 'Check value' });
 		assert.equal(workbook.sheets[0]?.metadata?.hasDrawings, true);
 		assert.equal(workbook.sheets[0]?.rowCount, 1, 'style/merge geometry must not expand the value matrix');
-		assert.throws(() => serializeXlsxEdits(zipSync(files), [{ sheetIndex: 0, row: 0, column: 0, value: '1', type: 'number' }]), /protegida/);
+		assert.throws(() => serializeXlsxEdits(zipSync(files), [{ sheetIndex: 0, row: 0, column: 0, value: '1', type: 'number' }]), /protected/);
 		const unprotectedFiles: Record<string, Uint8Array> = unzipSync(createXlsxFixture());
 		unprotectedFiles['xl/customFeature.bin'] = new Uint8Array([9, 8, 7]);
 		const sheetXml = new TextDecoder().decode(unprotectedFiles['xl/worksheets/sheet1.xml']);
 		unprotectedFiles['xl/worksheets/sheet1.xml'] = xml(sheetXml.replace('</worksheet>', '<mergeCells><mergeCell ref="A1:B1"/></mergeCells></worksheet>'));
 		const mergedBytes = zipSync(unprotectedFiles);
-		assert.throws(() => serializeXlsxEdits(mergedBytes, [{ sheetIndex: 0, row: 0, column: 1, value: 'x', type: 'number' }]), /cubierta por una combinación/);
+		assert.throws(() => serializeXlsxEdits(mergedBytes, [{ sheetIndex: 0, row: 0, column: 1, value: 'x', type: 'number' }]), /merged range/);
 		const edited = unzipSync(serializeXlsxEdits(mergedBytes, [{ sheetIndex: 0, row: 0, column: 0, value: '0.5', type: 'number' }]));
 		assert.deepStrictEqual(edited['xl/customFeature.bin'], new Uint8Array([9, 8, 7]));
 	});
@@ -659,8 +665,8 @@ suite('ODS reader', () => {
 		const protectedWorkbook = parseOdsBytes(protectedBytes);
 		assert.equal(protectedWorkbook.sheets[0]?.odsMetadata?.protected, true);
 		assert.throws(() => new SpreadsheetEditSession(undefined, undefined, undefined, protectedWorkbook, protectedBytes)
-			.editCell(0, 0, 0, 'x'), /protegida/);
-		assert.throws(() => serializeOdsEdits(protectedBytes, [{ sheetIndex: 0, row: 0, column: 0, value: 'x', type: 'string' }]), /protegida/);
+			.editCell(0, 0, 0, 'x'), /protected/);
+		assert.throws(() => serializeOdsEdits(protectedBytes, [{ sheetIndex: 0, row: 0, column: 0, value: 'x', type: 'string' }]), /protected/);
 	});
 	test('edits ODS raw values while retaining formulas and untouched package parts', () => {
 		const original = createOdsFixture();

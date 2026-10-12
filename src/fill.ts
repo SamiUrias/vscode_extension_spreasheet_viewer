@@ -1,3 +1,5 @@
+import { formatUiNumber, t } from './i18n';
+
 export type FillDirection = 'down' | 'right';
 export type FillMode = 'repeat' | 'series';
 
@@ -15,12 +17,12 @@ export function createFillEdits(
 	mode: FillMode,
 	maxCells = 100_000,
 ): FillEdit[] {
-	if (!source.length || source.some(row => !row.length || row.length !== source[0]!.length)) {throw new Error('El bloque de origen debe ser rectangular y no estar vacío.');}
-	if (![startRow, startColumn, targetHeight, targetWidth].every(Number.isInteger) || startRow < 0 || startColumn < 0 || targetHeight < 1 || targetWidth < 1) {throw new Error('El destino no es válido.');}
-	if (targetHeight * targetWidth > maxCells) {throw new Error(`El rango supera el límite de ${maxCells.toLocaleString()} celdas por operación.`);}
-	if (direction === 'down' && source.length > targetHeight || direction === 'right' && source[0]!.length > targetWidth) {throw new Error('El bloque de origen debe caber dentro del destino.');}
+	if (!source.length || source.some(row => !row.length || row.length !== source[0]!.length)) {throw new Error(t('domain.fill.source'));}
+	if (![startRow, startColumn, targetHeight, targetWidth].every(Number.isInteger) || startRow < 0 || startColumn < 0 || targetHeight < 1 || targetWidth < 1) {throw new Error(t('domain.fill.destination'));}
+	if (targetHeight * targetWidth > maxCells) {throw new Error(t('domain.fill.limit', formatUiNumber(maxCells)));}
+	if (direction === 'down' && source.length > targetHeight || direction === 'right' && source[0]!.length > targetWidth) {throw new Error(t('domain.fill.fits'));}
 	const sourceHeight = source.length, sourceWidth = source[0]!.length;
-	if (mode === 'series' && (direction === 'down' ? sourceHeight : sourceWidth) < 2) {throw new Error('Para crear una serie selecciona al menos dos valores numéricos de referencia.');}
+	if (mode === 'series' && (direction === 'down' ? sourceHeight : sourceWidth) < 2) {throw new Error(t('domain.fill.seriesSource'));}
 	const stepValues = mode === 'series' ? source.map(row => row.slice()) : undefined;
 	const edits: FillEdit[] = [];
 	for (let r = 0; r < targetHeight; r++) {
@@ -46,7 +48,7 @@ export function createFillEdits(
 
 function addDecimalSeries(first: string, second: string, multiplier: number): string {
 	const left = decimal(first), right = decimal(second);
-	if (!left || !right) {throw new Error('La serie requiere valores numéricos decimales válidos.');}
+	if (!left || !right) {throw new Error(t('domain.fill.seriesValues'));}
 	const scale = Math.max(left.scale, right.scale);
 	const a = left.coefficient * 10n ** BigInt(scale - left.scale);
 	const b = right.coefficient * 10n ** BigInt(scale - right.scale);
