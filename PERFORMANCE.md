@@ -19,6 +19,24 @@ Machine: Apple M1 Max, macOS 25.2, Node v18.20.4. Five samples per operation; p5
 | XLSX unzip | 35,290 × 5 | 54.7 | 60.2 | 40 MiB |
 | Wide CSV getRows | 500 × 256; 0.94 MB | 28.6 | 40.7 | 68 MiB |
 
+## Rerun — 2026-10-11
+
+Machine: Apple M1 Max, macOS 25.2, Node v24.21.0. Five samples per operation; p50/p95 in milliseconds. This uses the same generated fixture shapes as the baseline above, but a different Node runtime, so compare as a separate run rather than a controlled before/after optimization result.
+
+| Operation | Fixture | p50 | p95 | Peak heap |
+| --- | --- | ---: | ---: | ---: |
+| CSV parse | 35,290 × 5; 1.36 MB | 66.81 | 68.26 | 137 MiB |
+| Get CSV rows | 35,290 × 5 | 0.86 | 0.98 | 36 MiB |
+| CSV serialization | 35,290 × 5 | 0.07 | 0.33 | 33 MiB |
+| JSON payload preparation | 35,290 × 5; 1.78 MB JSON | 3.89 | 4.11 | 35 MiB |
+| Sort projection | 35,290 × 5 | 9.21 | 10.58 | 52 MiB |
+| XLSX worksheet XML DOM parse | 35,290 × 5; 5.75 MB XML | 1,271.74 | 1,286.11 | 549 MiB |
+| Full XLSX parse | 35,290 × 5; 649 KiB ZIP | 2,799.15 | 2,860.94 | 721 MiB |
+| XLSX unzip | 35,290 × 5 | 25.79 | 36.13 | 33 MiB |
+| Wide CSV getRows | 500 × 256; 0.94 MB | 16.21 | 20.56 | 63 MiB |
+
+The one-cell delta remains 129 bytes versus 1,779,673 bytes for the complete CSV data message. The same limits from the earlier baseline apply: UI rendering, VS Code IPC and formula calculation are not measured by this script.
+
 For this fixture, one changed CSV cell serializes to 129 bytes versus 1,779,673 bytes for the full CSV data message. This compares JSON payload sizes only; VS Code IPC timing is not measured.
 
 This identifies XLSX XML parsing as the main memory and latency cost for this fixture. The benchmark does not measure Extension Host message delivery, browser rendering, or formula calculation: those require an instrumented VS Code/Webview host and formula-bearing fixtures. The JSON measurement estimates serialization size/time; it does not claim to be an IPC timing measurement. The tested XLSX has numeric cells and no formulas, styles, merges, or relationships beyond the minimum workbook parts.
