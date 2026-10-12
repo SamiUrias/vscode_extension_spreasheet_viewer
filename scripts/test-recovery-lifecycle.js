@@ -61,8 +61,15 @@ Module._load = function(request, parent, isMain) {
 };
 
 const tests = [];
-global.suite = (_name, run) => run();
-global.test = (name, run) => tests.push({ name, run });
+let currentSuite = { beforeEach: [], afterEach: [] };
+global.suite = (_name, run) => {
+	const parentSuite = currentSuite;
+	currentSuite = { beforeEach: [], afterEach: [] };
+	try {run();} finally {currentSuite = parentSuite;}
+};
+global.setup = run => currentSuite.beforeEach.push(run);
+global.teardown = run => currentSuite.afterEach.push(run);
+global.test = (name, run) => tests.push({ name, run, beforeEach: [...currentSuite.beforeEach], afterEach: [...currentSuite.afterEach] });
 require('../out/test/recovery.test.js');
 require('../out/test/recovery-document.test.js');
 const { SpreadsheetDocument } = require('../out/document.js');
@@ -159,7 +166,7 @@ async function testSaveDraftChoicesAndConfigurationDefault() {
 	assert.deepEqual(warningActionIds, ['apply', 'save', 'cancel'], 'draft dialog exposes stable action IDs');
 	assert.equal(document.editSession.getCell(0, 1, 1).value, '1', 'saving applied changes does not apply the draft');
 	assert.equal(context.provider.panelDrafts.get(context.panel).value, 'unconfirmed', 'the unconfirmed draft remains available');
-	assert.ok(context.events.some(event => event.label === 'Borrador de celda sin confirmar'), 'the pending draft remains visible to VS Code as dirty');
+	assert.ok(context.events.some(event => event.label === 'Unconfirmed cell draft'), 'the pending draft remains visible to VS Code as dirty in the default English locale');
 	document.dispose();
 
 	document = SpreadsheetDocument.fromBytes(uri, bytes);
@@ -185,8 +192,13 @@ async function testSaveDraftChoicesAndConfigurationDefault() {
 
 async function main() {
 	for (const test of tests) {
-		await test.run();
-		console.log(`Passed: ${test.name}`);
+		for (const hook of test.beforeEach) {await hook();}
+		try {
+			await test.run();
+			console.log(`Passed: ${test.name}`);
+		} finally {
+			for (const hook of test.afterEach) {await hook();}
+		}
 	}
 	await testBackupCapturesCommittedBytesAndUnconfirmedDraft();
 	await testSaveDraftChoicesAndConfigurationDefault();
