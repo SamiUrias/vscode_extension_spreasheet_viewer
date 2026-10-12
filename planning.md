@@ -946,7 +946,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Añadir tabs con scroll, navegación por flechas/Home/End, selector respaldo y etiquetas para hojas ocultas/muy ocultas.
 - [x] Aplicar anchos/altos importados y ocultar geométricamente filas/columnas colapsadas; mantener sobreescrituras de usuario y pane congelado original al restaurar/resetear.
 - [x] Corregir la fila de inicio de geometría ODS tras una fila repetida y probar límites de expansión.
-- [ ] Verificación visual y de navegación pendiente: abrir un XLSX y ODS con varias hojas, cambiar hoja con mouse/teclado y revisar geometría/panes. Los tests locales de metadata/layout pasan; el ciclo focalizado de lifecycle no simula la navegación visual.
+- [ ] Verificación visual parcial en Extension Host: el XLSX `formula_matrix_1900.xlsx` cambió de `Inputs` a `Checks` con clic y con flecha derecha en las tabs; el ODS `ciudades_dummy.ods` cambió de `Ciudades` a `Ciudades3` con clic y actualizó contenido/dimensiones (101×10 en la primera hoja). Falta probar flechas de teclado en ODS y revisar geometría/panes con un fixture que los incluya. Los tests locales de metadata/layout pasan; lifecycle no simula navegación visual.
 
 ##### V2-16B2 — Estilos y celdas combinadas
 
