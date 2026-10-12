@@ -1232,6 +1232,8 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Reejecución de dialectos y suite general 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:csv-dialect` pasó. `npm test` completó compilación, tipos y lint, pero el runner de `@vscode/test-electron` terminó con `SIGABRT` al inicializar VS Code 1.141.0 dentro del sandbox, antes de ejecutar Mocha; la suite general no se cuenta como pasada en este intento. La ejecución completa externa que pasó 113 tests/1 pending está registrada arriba; este intento no modifica ese resultado previo ni prueba que el binario de producto falle.
 
+**Reejecución externa de suite general 2026-10-11 (America/Guatemala, Node 24.21.0 / VS Code 1.141.0):** `npm test` pasó fuera del sandbox: tipos, lint, build y **113 passing, 1 pending, 0 failing**. Usó la instalación local con `VSCODE_EXECUTABLE_PATH`; los previews confirman la creación del panel y preservación de bytes, pero no validan render visual/accesibilidad de la Webview. Los mensajes de API de Copilot y canales desconocidos vienen del producto de prueba y no fallaron la suite.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
