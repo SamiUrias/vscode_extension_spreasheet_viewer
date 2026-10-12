@@ -1226,6 +1226,8 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Reejecución adicional 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:xlsx-structure`, `test:move-range`, `test:fill`, `test:formula-edits` y `test:formula-references` terminan con código 0. Se comprobaron preflight/serialización estructural, movimiento rectangular, cálculo de relleno, edición asistida de fórmulas y referencias con el parser. Los checks no validan los menús de V2-17B, escritura desde la UI ni reparación en Excel; esos puntos siguen pendientes en sus tarjetas.
 
+**Reejecución de compatibilidad y rendimiento 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:cell-deltas`, `test:grid-layout`, `test:runtime`, `test:filesystem-capability`, `test:xlsm-format` y `test:xlsx-tables` pasan. Esto revalida snapshots incrementales, geometría/virtualización, runtime Web, permisos de escritura, inspección XLSM y creación de tablas XLSX en sus perfiles delimitados. No sustituye medición de scroll en Extension Host, pruebas VS Code Web/remotas ni verificación de la interfaz.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
