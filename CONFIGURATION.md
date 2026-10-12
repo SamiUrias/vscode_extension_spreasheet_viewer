@@ -1,5 +1,9 @@
 # Configuración de Spreadsheet Viewer
 
+## Idioma de la interfaz
+
+VS Code determina el idioma de comandos y descripciones de Settings según **Display Language**. Spreadsheet Viewer incluye inglés (fallback) y español; los demás idiomas usan inglés. Cambia Display Language desde VS Code y reinicia la ventana para aplicar el idioma. La extensión no añade un selector ni una opción de idioma en Settings. Los IDs, valores admitidos y valores predeterminados de los 21 Settings no cambian con el idioma.
+
 Este documento describe las opciones que la extensión declara actualmente en `package.json` y cómo se aplican en el código. La sección `contributes.configuration.properties` de `package.json` define los nombres, tipos, valores admitidos y valores predeterminados que VS Code muestra en Settings. El código consulta esas mismas claves; si se cambia una propiedad, hay que revisar tanto su declaración como todos sus usos.
 
 ## Dónde configurar

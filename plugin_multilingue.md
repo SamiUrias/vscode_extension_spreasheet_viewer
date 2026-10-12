@@ -1,6 +1,6 @@
 # Internacionalización español/inglés — objetivo release 1.0.0
 
-**Estado:** planificación técnica detallada; implementación pendiente. **Revisión:** 2026-10-11 sobre el código 0.0.3. **Planificador solicitado:** GPT-6.1 Sol, esfuerzo medio. **Implementador previsto:** GPT-6 Luna, esfuerzo bajo, una subtarjeta por vez.
+**Estado:** planificación técnica detallada; ML-01A, ML-01B y ML-02 implementadas localmente; quedan tarjetas pendientes. **Revisión:** 2026-10-11 sobre el código 0.0.3. **Planificador solicitado:** GPT-6.1 Sol, esfuerzo medio. **Implementador previsto:** GPT-6 Luna, esfuerzo bajo, una subtarjeta por vez.
 
 El usuario considera el estado actual de V2 suficiente para empezar los idiomas. Este bloque puede comenzar ahora, manteniendo los checks abiertos de V2 en sus tarjetas. La entrega con interfaz completa en español e inglés será **1.0.0**; no implica declarar verificados los hosts, formatos o checks externos pendientes. La versión se cambia al preparar el release, no al empezar a traducir. No se ejecuta V3 durante este trabajo.
 
@@ -108,13 +108,13 @@ Hay dependencias reales confirmadas que no deben sobrevivir como comparaciones c
 
 ## 4. Etapas ejecutables y commits
 
-**Todas pendientes.** Cada subtarjeta se implementa y se verifica separadamente; el estado debe distinguir `implementada`, `verificada` y `pendiente de entorno`. Al cerrar una etapa, actualizar este documento y el estado breve de planning.md antes de commit. Después del commit, confirmar `git status`/log y coherencia del estado. No introducir refactor funcional incidental.
+**Estado por tarjeta en la tabla.** Cada subtarjeta se implementa y se verifica separadamente; el estado distingue `implementada`, `verificada` y `pendiente de entorno`. Al cerrar una etapa, actualizar este documento y el estado breve de planning.md antes de commit. Después del commit, confirmar `git status`/log y coherencia del estado. No introducir refactor funcional incidental.
 
 | Tarjeta | Depende | Entrega acotada | Commit sugerido |
 | --- | --- | --- | --- |
-| ML-01A | 0.0.3 | Inventario/glosario y helper/catálogos mínimos con tests. | `feat(i18n): add typed English and Spanish runtime catalogs` |
-| ML-01B | ML-01A | Quitar las dos decisiones por frase, IDs de acciones y parser de prompts; tests de comportamiento. | `fix(i18n): keep save and action decisions independent of language` |
-| ML-02 | ML-01A | Manifiesto NLS completo, 21 Settings y tests del manifiesto. | `feat(i18n): localize extension commands and settings` |
+| ML-01A | 0.0.3 | Inventario/glosario y helper/catálogos mínimos con tests. | Implementada (commit previo) |
+| ML-01B | ML-01A | Quitar las dos decisiones por frase, IDs de acciones y parser de prompts; tests de comportamiento. | Implementada (commit previo; Extension Host pendiente) |
+| ML-02 | ML-01A | Manifiesto NLS completo, 21 Settings y tests del manifiesto. | Implementada en este commit: `feat(i18n): localize extension commands and settings` |
 | ML-03A | ML-01B | Inicialización host y mensajes extensión/preview/dialogs/IO. | `feat(i18n): localize extension and preview messages` |
 | ML-03B | ML-03A | Editor handlers de save/recovery/edit/formulas/estructura/tablas/hojas/formato y labels historia. | `feat(i18n): localize editor actions and save feedback` |
 | ML-03C | ML-01B | Mensajes dominio/adaptadores, capabilities/warnings y ayuda de funciones. | `feat(i18n): localize document validation and formula help` |
@@ -150,10 +150,14 @@ Las subtarjetas ML-03C y ML-02 son independientes de la traducción webview. Est
 
 ### ML-02 — Manifiesto
 
-- Crear catálogos NLS y sustituir todos los campos traducibles existentes. La descripción pública de la extensión permanece completa y fiel a capacidades actuales.
-- Ajustar `src/test/extension.test.ts`, que hoy espera literalmente la descripción española de `showResetButton`, para validar token NLS, resolución en/es, default/ID sin cambios y todas las propiedades. Verificar placeholders `%...%` completos.
-- El guard verifica igualdad exacta de claves NLS y ninguna clave usada ausente. Cero strings `%...%` sin resolver en smoke real.
-- Documentar en CONFIGURATION que los 21 Settings conservan IDs/valores mientras su descripción en la UI sigue Display Language. No agregar un setting ficticio ni cambios de default.
+**Estado local (implementada; verificación local aprobada, Extension Host pendiente; 2026-10-11):** `package.nls.json` y `package.nls.es.json` contienen 27 claves coincidentes: descripción pública, cinco títulos de comandos y las 21 descripciones de Settings. Se conservaron IDs, defaults, tipos y enums. `scripts/check-localization.js` y `npm run check:localization` comprueban claves referenciadas/no usadas, catálogos iguales y placeholders. `src/test/extension.test.ts` valida conteos, referencias, traducciones, IDs/defaults. Pasan `check:localization`, `compile-tests`, `test:localization`, `check-types`, `lint` y `git diff --check` con Node 24.21.0. `npm test -- --grep 'contributes the Explorer command'` compila y empaqueta, pero el Extension Host instalado VS Code 1.141.0 termina con `SIGABRT`; la resolución de versión también reporta `ENOTFOUND update.code.visualstudio.com`. Por ello no se verificó la prueba de manifiesto en Extension Host ni el smoke real es/en. CONFIGURATION documenta Display Language, inglés fallback, español, reinicio y ausencia de selector/setting.
+
+### ML-02 — Manifiesto
+
+- Crear catálogos NLS y sustituir todos los campos traducibles existentes. La descripción pública de la extensión permanece completa y fiel a capacidades actuales. (Implementado.)
+- Ajustar `src/test/extension.test.ts` para validar token NLS, resolución en/es, default/ID sin cambios y todas las propiedades. Verificar placeholders `%...%` completos. (Implementado; ejecución anotada al cierre.)
+- El guard verifica igualdad exacta de claves NLS y ninguna clave usada ausente. Cero strings `%...%` sin resolver en smoke real. (Guard implementado; smoke real pendiente.)
+- Documentar en CONFIGURATION que los 21 Settings conservan IDs/valores mientras su descripción en la UI sigue Display Language. No agregar un setting ficticio ni cambios de default. (Implementado.)
 
 ### ML-03A/B/C — Host y mensajes compartidos
 

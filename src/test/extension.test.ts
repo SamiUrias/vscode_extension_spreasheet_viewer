@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { readFileSync } from 'node:fs';
 import * as vscode from 'vscode';
 import { zipSync } from 'fflate';
 import { isSupportedSpreadsheetUri } from '../extension';
@@ -31,7 +32,7 @@ suite('Spreadsheet Viewer editor', () => {
 			customEditors: Array<{ viewType: string; priority: string; selector: Array<{ filenamePattern: string }> }>;
 			menus: { 'explorer/context': Array<{ command: string; when: string }>; 'commandPalette': Array<{ command: string; when: string }>; 'tabContext': Array<{ command: string; when: string }> };
 			keybindings: Array<{ command: string; key: string; mac?: string; when: string }>;
-			configuration: { properties: Record<string, { type: string; default: unknown }> };
+			configuration: { properties: Record<string, { type: string; default: unknown; description?: string; enum?: unknown[] }> };
 		};
 		assert.ok(contributions.commands.some(command =>
 			command.command === 'spreadsheet-viewer.open' && command.title === 'Abrir en Spreadsheet Viewer'
@@ -50,8 +51,29 @@ suite('Spreadsheet Viewer editor', () => {
 			['**/*.[cC][sS][vV]', '**/*.[tT][sS][vV]', '**/*.[tT][aA][bB]', '**/*.[xX][lL][sS][xX]', '**/*.[xX][lL][sS][mM]', '**/*.[oO][dD][sS]'],
 		);
 		assert.strictEqual(contributions.customEditors.find(editor => editor.viewType === 'spreadsheet-viewer.editor')?.priority, 'option');
-		assert.deepStrictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showResetButton'], { type: 'boolean', default: true, description: 'Muestra el botón para restablecer la vista de la hoja.' });
-		assert.deepStrictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showClearSortButton'], { type: 'boolean', default: true, description: 'Muestra el botón para quitar todos los criterios de orden activos.' });
+		const packageRoot = extension.extensionPath;
+		const english = JSON.parse(readFileSync(path.join(packageRoot, 'package.nls.json'), 'utf8')) as Record<string, string>;
+		const spanish = JSON.parse(readFileSync(path.join(packageRoot, 'package.nls.es.json'), 'utf8')) as Record<string, string>;
+		assert.strictEqual(contributions.commands.length, 5);
+		assert.strictEqual(Object.keys(contributions.configuration.properties).length, 21);
+		const originalManifest = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8')) as typeof extension.packageJSON;
+		const originalProperties = (originalManifest.contributes as { configuration: { properties: Record<string, { type: string; default: unknown; enum?: unknown[] }> } }).configuration.properties;
+		for (const command of contributions.commands) {
+			const key = /^%([\w.-]+)%$/.exec(command.title)?.[1];
+			assert.ok(key && english[key] && spanish[key], `Command ${command.command} should use a key in both NLS catalogs`);
+		}
+		for (const [id, property] of Object.entries(contributions.configuration.properties)) {
+			const key = /^%([\w.-]+)%$/.exec((property as { description?: string }).description ?? '')?.[1];
+			assert.ok(key && english[key] && spanish[key], `${id} should use a key in both NLS catalogs`);
+			assert.deepStrictEqual({ type: property.type, default: property.default, enum: property.enum }, {
+				type: originalProperties[id]?.type,
+				default: originalProperties[id]?.default,
+				enum: originalProperties[id]?.enum,
+			});
+		}
+		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showResetButton']?.description, '%config.view.showResetButton%');
+		assert.strictEqual(english['config.view.showResetButton'], 'Shows the button to reset the spreadsheet view.');
+		assert.strictEqual(spanish['config.view.showResetButton'], 'Muestra el botón para restablecer la vista de la hoja.');
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showDisplayModeButton']?.default, true);
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.view.showWorkbookAppearance']?.default, true);
 		assert.strictEqual(contributions.configuration.properties['spreadsheet-viewer.xlsx.showStructureActions']?.default, true);

@@ -2,7 +2,7 @@
   "name": "spreadsheet-viewer",
   "displayName": "Spreadsheet Viewer by Samuel Urias",
   "publisher": "SamuelUrias",
-  "description": "View and edit CSV, TSV, TAB, XLSX, and ODS in VS Code. Search, sort, filter, edit formulas, and save supported files. XLSM opens read-only.",
+  "description": "%extension.description%",
   "version": "0.0.3",
   "license": "MIT",
   "keywords": [
@@ -32,29 +32,29 @@
     "commands": [
       {
         "command": "spreadsheet-viewer.open",
-        "title": "Abrir en Spreadsheet Viewer",
+        "title": "%command.open%",
         "category": "Spreadsheet Viewer",
         "icon": "resources/spreadsheet.svg"
       },
       {
         "command": "spreadsheet-viewer.preview",
-        "title": "Vista previa de hoja",
+        "title": "%command.preview%",
         "category": "Spreadsheet Viewer",
         "icon": "resources/preview.svg"
       },
       {
         "command": "spreadsheet-viewer.previewBuffer",
-        "title": "Vista previa del buffer CSV/TSV/TAB",
+        "title": "%command.previewBuffer%",
         "category": "Spreadsheet Viewer"
       },
       {
         "command": "spreadsheet-viewer.previewCsv",
-        "title": "Vista previa como CSV…",
+        "title": "%command.previewCsv%",
         "category": "Spreadsheet Viewer"
       },
       {
         "command": "spreadsheet-viewer.resetView",
-        "title": "Restablecer vista de hoja",
+        "title": "%command.resetView%",
         "category": "Spreadsheet Viewer"
       }
     ],
@@ -179,108 +179,108 @@
         "spreadsheet-viewer.csv.commentPrefix": {
           "type": "string",
           "default": "#",
-          "description": "Prefijo que identifica comentarios CSV al inicio de un registro. Usa una cadena vacía para desactivar los comentarios."
+          "description": "%config.csv.commentPrefix%"
         },
         "spreadsheet-viewer.stdin.openStdin": {
           "type": "boolean",
           "default": false,
-          "description": "Abre automáticamente una vista previa de lectura para el buffer CSV compatible creado con la entrada estándar de VS Code (code -)."
+          "description": "%config.stdin.openStdin%"
         },
         "spreadsheet-viewer.csv.firstRowHeader": {
           "type": "boolean",
           "default": true,
-          "description": "Usa la primera fila de datos como etiqueta visual de las columnas CSV."
+          "description": "%config.csv.firstRowHeader%"
         },
         "spreadsheet-viewer.csv.headerCase": {
           "type": "string",
           "enum": ["none", "upper", "lower"],
           "default": "none",
-          "description": "Transformación visual aplicada a las etiquetas de encabezado CSV."
+          "description": "%config.csv.headerCase%"
         },
         "spreadsheet-viewer.csv.showRowActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra acciones para insertar, añadir y eliminar registros CSV en el editor."
+          "description": "%config.csv.showRowActions%"
         },
         "spreadsheet-viewer.xlsx.showStructureActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra las acciones para insertar y eliminar filas o columnas en libros XLSX compatibles."
+          "description": "%config.xlsx.showStructureActions%"
         },
         "spreadsheet-viewer.xlsx.allowFormulaEditing": {
           "type": "boolean",
           "default": true,
-          "description": "Permite crear y editar fórmulas XLSX mediante el modo explícito de edición de fórmula."
+          "description": "%config.xlsx.allowFormulaEditing%"
         },
         "spreadsheet-viewer.xlsx.showFormulaAssistance": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra sugerencias de funciones probadas y la inserción explícita de referencias XLSX."
+          "description": "%config.xlsx.showFormulaAssistance%"
         },
         "spreadsheet-viewer.xlsx.showFormulaFillActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra las acciones para copiar fórmulas XLSX relativas hacia abajo o a la derecha."
+          "description": "%config.xlsx.showFormulaFillActions%"
         },
         "spreadsheet-viewer.xlsx.showTableActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra la acción para crear tablas nativas en rangos XLSX compatibles."
+          "description": "%config.xlsx.showTableActions%"
         },
         "spreadsheet-viewer.xlsx.showSheetActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra acciones para añadir, renombrar o eliminar hojas en libros XLSX compatibles."
+          "description": "%config.xlsx.showSheetActions%"
         },
         "spreadsheet-viewer.xlsx.showStyleActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra acciones para aplicar formato simple, combinar celdas y guardar paneles fijos en XLSX compatibles."
+          "description": "%config.xlsx.showStyleActions%"
         },
         "spreadsheet-viewer.view.restoreState": {
           "type": "boolean",
           "default": true,
-          "description": "Restaura y guarda selección, scroll, búsqueda y tamaños por archivo y hoja."
+          "description": "%config.view.restoreState%"
         },
         "spreadsheet-viewer.view.showResetButton": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra el botón para restablecer la vista de la hoja."
+          "description": "%config.view.showResetButton%"
         },
         "spreadsheet-viewer.view.showClearSortButton": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra el botón para quitar todos los criterios de orden activos."
+          "description": "%config.view.showClearSortButton%"
         },
         "spreadsheet-viewer.view.showCopyButtons": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra los controles para copiar la selección como TSV."
+          "description": "%config.view.showCopyButtons%"
         },
         "spreadsheet-viewer.view.showMoveActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra las acciones para cortar y mover rangos dentro de la hoja."
+          "description": "%config.view.showMoveActions%"
         },
         "spreadsheet-viewer.view.showFillActions": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra la acción para rellenar rangos con valores repetidos o series numéricas."
+          "description": "%config.view.showFillActions%"
         },
         "spreadsheet-viewer.view.showDisplayModeButton": {
           "type": "boolean",
           "default": true,
-          "description": "Muestra el botón para alternar entre valores crudos y formatos numéricos de Excel en XLSX."
+          "description": "%config.view.showDisplayModeButton%"
         },
         "spreadsheet-viewer.view.showWorkbookAppearance": {
           "type": "boolean",
           "default": true,
-          "description": "Aplica estilos básicos y celdas combinadas de XLSX/ODS en la cuadrícula."
+          "description": "%config.view.showWorkbookAppearance%"
         },
         "spreadsheet-viewer.edit.saveOnCommit": {
           "type": "boolean",
           "default": true,
-          "description": "Guarda automáticamente cada cambio confirmado; al desactivarlo, guarda con Ctrl/Cmd+S."
+          "description": "%config.edit.saveOnCommit%"
         }
       }
     }
@@ -295,6 +295,7 @@
     "compile-tests": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
     "test:formulas": "node scripts/test-formulas.js",
     "test:localization": "npm run compile-tests && node scripts/test-localization.js",
+    "check:localization": "node scripts/check-localization.js",
     "test:ml-01b-contracts": "npm run compile-tests && node scripts/test-ml-01b-contracts.js",
     "test:storage-node-conflict": "npm run compile-tests && node scripts/test-storage-node-conflict.js",
     "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
