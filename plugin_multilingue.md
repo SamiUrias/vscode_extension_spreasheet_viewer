@@ -139,6 +139,8 @@ Las subtarjetas ML-03C y ML-02 son independientes de la traducción webview. Est
 
 ### ML-01B — Lógica independiente de idioma
 
+**Estado local (implementada; verificación local aprobada, Extension Host pendiente; commit de etapa creado, 2026-10-11):** `src/user-errors.ts` define `external-file-conflict` y storage web/Node y el preflight de save usan esa identidad; el editor programa `scheduleExternalCheck` por code. `reasonCode: pending-changes` se emite solo para el bloqueo transitorio y la webview reactiva acciones únicamente en `saved`/`clean`; los demás bloqueos permanecen. Acciones pactadas usan `MessageItem { id, title }`; el parser `src/fill-prompt.ts` mapea opciones en/es a enums actuales. Pruebas que pasan con Node 24.21.0: `test:storage-node-conflict`, `test:ml-01b-contracts`, `test:save-coordinator`, `test:fill`, `test:xlsx-structure`, `test:recovery`, `check-types`, `lint` y `git diff --check`. `test:save-lifecycle` no se verificó: `@vscode/test-electron` usó VS Code 1.141.0 instalado pero el Extension Host terminó con `SIGABRT` (resolución de versión falló por `ENOTFOUND update.code.visualstudio.com`). Reintentar en entorno con Extension Host estable. No se cambió backup/atomic write ni se tradujeron cadenas de UI.
+
 - Cambiar exclusivamente los casos de la tabla 3.4; crear un módulo `src/user-errors.ts` solo si necesita error de conflicto/code, no una jerarquía universal de errores.
 - Para conflicto externo, probar same outcome en/es y que scheduleExternalCheck sigue invocado. Cubrir ambos storage paths; no cambiar backup/atomic write.
 - Para structure pending-changes, probar que save clean/saved habilita ese caso y no permite un libro protegido/no compatible.

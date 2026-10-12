@@ -8,7 +8,7 @@ export type XlsxStructureOperation =
 	| { readonly kind: 'insertColumns' | 'deleteColumns'; readonly sheetIndex: number; readonly index: number; readonly count: number };
 
 export interface XlsxStructureSnapshot { readonly before: Uint8Array; readonly after: Uint8Array; readonly operation: XlsxStructureOperation; }
-export interface XlsxStructureCapability { readonly allowed: boolean; readonly reason?: string; }
+export interface XlsxStructureCapability { readonly allowed: boolean; readonly reason?: string; readonly reasonCode?: 'pending-changes'; }
 
 export function getXlsxStructureCapability(bytes: Uint8Array): XlsxStructureCapability {
 	try {

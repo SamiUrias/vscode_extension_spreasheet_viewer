@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { isWritableFileSystem } from './filesystem-capability';
 import { createUuid } from './runtime';
 import { uriBasename, uriDirname, uriJoin } from './uri-path';
+import { ExternalFileConflictError } from './user-errors';
 
 type LocalFileReplaceAdapter = (uri: vscode.Uri, bytes: Uint8Array, expected?: Uint8Array, isCancelled?: () => boolean) => Promise<void>;
 let localFileReplaceAdapter: LocalFileReplaceAdapter | undefined;
@@ -19,7 +20,7 @@ export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?:
 	if (isCancelled()) {throw new vscode.CancellationError();}
 	let original = await readIfExists(uri);
 	if (expected && (!original || !equalBytes(original, expected))) {
-		throw new Error('El archivo cambió en disco desde que se abrió. Recárgalo antes de guardar.');
+		throw new ExternalFileConflictError('El archivo cambió en disco desde que se abrió. Recárgalo antes de guardar.');
 	}
 	const temporary = uri.with({ path: uriJoin(uriDirname(uri.path), `.${uriBasename(uri.path)}.spreadsheet-viewer-${createUuid()}.tmp`) });
 	const backup = original
@@ -34,7 +35,7 @@ export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?:
 		if (original) {
 			const latest = await readIfExists(uri);
 			if (!latest || !equalBytes(latest, original)) {
-				throw new Error('El archivo cambió en disco durante el guardado; se conservó la versión externa.');
+				throw new ExternalFileConflictError('El archivo cambió en disco durante el guardado; se conservó la versión externa.');
 			}
 		}
 		if (isCancelled()) {throw new vscode.CancellationError();}

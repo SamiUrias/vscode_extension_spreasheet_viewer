@@ -295,6 +295,8 @@
     "compile-tests": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
     "test:formulas": "node scripts/test-formulas.js",
     "test:localization": "npm run compile-tests && node scripts/test-localization.js",
+    "test:ml-01b-contracts": "npm run compile-tests && node scripts/test-ml-01b-contracts.js",
+    "test:storage-node-conflict": "npm run compile-tests && node scripts/test-storage-node-conflict.js",
     "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
     "test:formula-fill-host": "npm run package && npm run compile-tests && node scripts/test-formula-fill-host.js",
     "test:clipboard": "npm run compile-tests && node scripts/test-clipboard.js",

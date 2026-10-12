@@ -15,7 +15,8 @@ suite('Spreadsheet storage', () => {
 		try {
 			await replaceFile(uri, updated, original);
 			assert.deepStrictEqual(await readFile(uri.fsPath), updated);
-			await assert.rejects(replaceFile(uri, Buffer.from('bad'), original), /cambió en disco/);
+			await assert.rejects(replaceFile(uri, Buffer.from('bad'), original), error =>
+				error instanceof Error && 'code' in error && error.code === 'external-file-conflict');
 			assert.deepStrictEqual(await readFile(uri.fsPath), updated);
 		} finally {
 			await rm(directory, { recursive: true, force: true });

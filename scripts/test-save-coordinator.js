@@ -38,7 +38,7 @@ setLocalFileReplaceAdapter(async (_uri, bytes, expected) => {
 		await new Promise(resolve => {writeRelease = resolve;});
 	}
 	if (expected && !disk.equals(Buffer.from(expected))) {
-		throw new Error('El archivo cambió en disco desde que se abrió.');
+		const conflict = new Error('Disk bytes differ from the opened version.'); conflict.code = 'external-file-conflict'; throw conflict;
 	}
 	disk = Buffer.from(bytes);
 });
@@ -102,7 +102,7 @@ async function testDiskConflictPreservesExternalBytesAndJournal() {
 	disk = external.slice();
 	writeStarted = undefined;
 	writeRelease();
-	await assert.rejects(save, /cambió en disco/);
+	await assert.rejects(save, error => error.code === 'external-file-conflict');
 	assert.deepEqual(disk, external, 'a failed save does not replace the external file');
 	assert.equal(document.editSession.getCell(0, 1, 1).value, '30', 'the conflicting local journal remains available');
 	assert.deepEqual(document.sourceBytes, initial, 'the original baseline remains available');

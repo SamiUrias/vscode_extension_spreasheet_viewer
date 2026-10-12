@@ -21,6 +21,7 @@ class MockFileSystemError extends Error {
 	constructor(code) {super(code); this.code = code;}
 }
 let warningChoice;
+let warningActionIds = [];
 let configuredSaveOnCommit;
 const vscode = {
 	CancellationError,
@@ -48,7 +49,10 @@ const vscode = {
 		},
 		getConfiguration: () => ({ get: (key, fallback) => key === 'saveOnCommit' && configuredSaveOnCommit !== undefined ? configuredSaveOnCommit : fallback }),
 	},
-	window: { showErrorMessage: async () => undefined, showWarningMessage: async () => warningChoice },
+	window: { showErrorMessage: async () => undefined, showWarningMessage: async (_message, ...items) => {
+		warningActionIds = items.filter(item => item && typeof item === 'object' && typeof item.id === 'string').map(item => item.id);
+		return warningChoice;
+	} },
 };
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
@@ -150,8 +154,9 @@ async function testSaveDraftChoicesAndConfigurationDefault() {
 		revision: document.revision, sheetId: document.sheetId(0), sheetIndex: 0, row: 1, column: 1, value: 'unconfirmed' });
 	let document = SpreadsheetDocument.fromBytes(uri, bytes);
 	let context = createDraftDecisionProvider(document, makeDraft(document));
-	warningChoice = 'Guardar solo cambios aplicados';
+	warningChoice = { id: 'save', title: 'Guardar solo cambios aplicados' };
 	await context.provider.confirmDraftsBeforeSave(document);
+	assert.deepEqual(warningActionIds, ['apply', 'save', 'cancel'], 'draft dialog exposes stable action IDs');
 	assert.equal(document.editSession.getCell(0, 1, 1).value, '1', 'saving applied changes does not apply the draft');
 	assert.equal(context.provider.panelDrafts.get(context.panel).value, 'unconfirmed', 'the unconfirmed draft remains available');
 	assert.ok(context.events.some(event => event.label === 'Borrador de celda sin confirmar'), 'the pending draft remains visible to VS Code as dirty');
@@ -159,14 +164,14 @@ async function testSaveDraftChoicesAndConfigurationDefault() {
 
 	document = SpreadsheetDocument.fromBytes(uri, bytes);
 	context = createDraftDecisionProvider(document, makeDraft(document));
-	warningChoice = 'Cancelar';
+	warningChoice = { id: 'cancel', title: 'Cancelar' };
 	await assert.rejects(context.provider.confirmDraftsBeforeSave(document), CancellationError);
 	assert.equal(context.provider.panelDrafts.get(context.panel).value, 'unconfirmed', 'cancel keeps the draft');
 	document.dispose();
 
 	document = SpreadsheetDocument.fromBytes(uri, bytes);
 	context = createDraftDecisionProvider(document, makeDraft(document));
-	warningChoice = 'Aplicar borradores y guardar';
+	warningChoice = { id: 'apply', title: 'Aplicar borradores y guardar' };
 	await context.provider.confirmDraftsBeforeSave(document);
 	assert.equal(document.editSession.getCell(0, 1, 1).value, 'unconfirmed', 'apply-and-save commits the draft');
 	assert.equal(context.provider.panelDrafts.has(context.panel), false, 'the committed draft is cleared');

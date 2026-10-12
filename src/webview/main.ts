@@ -7,7 +7,9 @@ import { findRowAtOffset, gridTemplateColumns, rebuildRowOffsets, sampleEvenly, 
 import { renderSpreadsheetGrid, type GridRendererState } from './grid-renderer';
 import { selectGridCell, type CellRange } from './selection';
 import { isCellInVisibleRange } from '../range-selection';
-import { createFillEdits, type FillCell, type FillDirection, type FillMode } from '../fill';
+import { createFillEdits, type FillCell } from '../fill';
+import { parseFillDirection, parseFillMode } from '../fill-prompt';
+import { refreshStructureCapabilityAfterSave } from '../structure-capability';
 import { parseClipboardTsv, serializeVisibleSelection } from '../clipboard';
 import { presentXlsxCell, type CellPresentation } from './presentation';
 import { completeFormulaFunction, getFormulaCompletions, insertFormulaReference, type FormulaCompletion } from '../formula-assistance';
@@ -973,13 +975,11 @@ fillRangeButton.addEventListener('click', () => {
 	const lastColumn = Math.max(selectionRange.anchor.column, selectionRange.focus.column);
 	const height = lastRow - firstRow + 1, width = lastColumn - firstColumn + 1;
 	if (height === 1 && width === 1) {showFillMessage('Selecciona un rango con una celda de destino además del origen.'); return;}
-	const direction = window.prompt('Dirección: escribe abajo o derecha.', height > 1 ? 'abajo' : 'derecha')?.trim().toLowerCase();
-	if (direction !== 'abajo' && direction !== 'derecha') {return;}
-	const axis: FillDirection = direction === 'abajo' ? 'down' : 'right';
+	const axis = parseFillDirection(window.prompt('Dirección: escribe abajo o derecha.', height > 1 ? 'abajo' : 'derecha'));
+	if (!axis) {return;}
 	if (axis === 'down' && height < 2 || axis === 'right' && width < 2) {showFillMessage('El rango no tiene espacio en esa dirección.'); return;}
-	const choice = window.prompt('Modo: escribe repetir o serie. Serie requiere dos valores numéricos iniciales.', 'repetir')?.trim().toLowerCase();
-	if (choice !== 'repetir' && choice !== 'serie') {return;}
-	const mode: FillMode = choice === 'serie' ? 'series' : 'repeat';
+	const mode = parseFillMode(window.prompt('Modo: escribe repetir o serie. Serie requiere dos valores numéricos iniciales.', 'repetir'));
+	if (!mode) {return;}
 	const seedHeight = axis === 'down' ? (mode === 'series' ? 2 : 1) : height;
 	const seedWidth = axis === 'right' ? (mode === 'series' ? 2 : 1) : width;
 	const source: FillCell[][] = [];
@@ -1647,10 +1647,12 @@ function isEditing(row: number, column: number): boolean {
 }
 
 function updateSaveStatus(message: SaveStateMessage): void {
-	if ((message.state === 'saved' || message.state === 'clean') && snapshot?.type === 'xlsxData'
-		&& snapshot.structureCapability?.reason === 'Guarda o deshaz los cambios pendientes antes de cambiar la estructura.') {
-		snapshot = { ...snapshot, structureCapability: { allowed: true } };
-		updateXlsxStructureActions();
+	if (snapshot?.type === 'xlsxData') {
+		const capability = refreshStructureCapabilityAfterSave(snapshot.structureCapability, message.state);
+		if (capability !== snapshot.structureCapability) {
+			snapshot = { ...snapshot, structureCapability: capability };
+			updateXlsxStructureActions();
+		}
 	}
 	saveStatus.textContent = message.state === 'clean' ? 'Sin cambios'
 		: message.state === 'pending' ? 'Cambios pendientes…'

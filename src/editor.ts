@@ -7,6 +7,7 @@ import { isDocumentMutationMessageType } from './filesystem-capability';
 import { bytesToBase64, randomBase64 } from './runtime';
 import { uriBasename, uriDirname, uriExtname, uriJoin } from './uri-path';
 import { deleteBackup, readBackup, replaceFile, writeBackup } from './storage';
+import { ExternalFileConflictError, isExternalFileConflictError } from './user-errors';
 import type { CsvDataMessage, ReloadStateMessage, SaveStateMessage, SortStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from './protocol';
 import { createHeaderSignature, ViewStateRepository, type ViewMode, type ViewStateV1 } from './view-state';
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from './recovery';
@@ -257,8 +258,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 			if (isCopyToClipboardMessage(message)) {
 				if (message.text.length > 5 * 1024 * 1024) {
-					void vscode.window.showWarningMessage('El texto copiado supera 5 MiB y puede ser demasiado grande para el portapapeles.', 'Copiar de todos modos')
-						.then(choice => choice === 'Copiar de todos modos' ? writeClipboard(message.text) : undefined);
+					void vscode.window.showWarningMessage('El texto copiado supera 5 MiB y puede ser demasiado grande para el portapapeles.', { id: 'copy', title: 'Copiar de todos modos' })
+						.then(choice => choice?.id === 'copy' ? writeClipboard(message.text) : undefined);
 				} else {
 					void writeClipboard(message.text);
 				}
@@ -459,7 +460,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				structureCapability: document.isReadOnly
 					? { allowed: false, reason: 'El proveedor de archivos no permite escribir este recurso.' }
 					: !workbookMatchesSavedBytes
-					? { allowed: false, reason: 'Guarda o deshaz los cambios pendientes antes de cambiar la estructura.' }
+					? { allowed: false, reasonCode: 'pending-changes', reason: 'Guarda o deshaz los cambios pendientes antes de cambiar la estructura.' }
 					: document.xlsxStructureCapability,
 				cellStyleIndexes: document.xlsx.sheets[sheetIndex]?.cellStyleIndexes,
 				cellNumberFormats: document.xlsx.styles?.cellFormats.map(style => {
@@ -548,9 +549,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const bytes = document.serializeCopy();
 			const conflict = this.externalConflicts.get(document.uri.toString());
 			if (conflict) {
-				throw new Error(conflict.deleted
-					? 'El archivo original fue eliminado; usa Save As para conservar el borrador.'
-				: 'El archivo cambió en disco; recarga o guarda una copia antes de continuar.');
+				if (conflict.deleted) {throw new Error('El archivo original fue eliminado; usa Save As para conservar el borrador.');}
+				throw new ExternalFileConflictError('El archivo cambió en disco; recarga o guarda una copia antes de continuar.');
 			}
 			if (equalBytes(bytes, document.sourceBytes)) {
 				this.postSaveState(document, { type: 'saveState', state: this.hasPendingDraft(document) ? 'pending' : 'saved' });
@@ -583,7 +583,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				const message = errorMessage(error);
 				this.postSaveState(document, { type: 'saveState', state: 'error', message });
 				void vscode.window.showErrorMessage(`No se pudo guardar ${uriBasename(document.uri.path)}: ${message}`);
-				if (message.includes('cambió en disco')) {this.scheduleExternalCheck(document);}
+				if (isExternalFileConflictError(error)) {this.scheduleExternalCheck(document);}
 				throw error;
 			} finally {
 				const index = ownWrites.indexOf(bytes);
@@ -640,9 +640,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			const choice = await vscode.window.showWarningMessage(
 				'Recargar desde disco descartará las ediciones locales pendientes. ¿Deseas continuar?',
 				{ modal: true },
-				'Recargar archivo',
+				{ id: 'apply', title: 'Recargar archivo' },
 			);
-			if (choice !== 'Recargar archivo') {
+			if (choice?.id !== 'apply') {
 				this.postReloadState(document, { type: 'reloadState', state: 'cancelled' });
 				this.postSaveState(document, { type: 'saveState', state: 'pending' });
 				return;
@@ -1126,10 +1126,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		if (!entries.length) {return;}
 		const choice = await vscode.window.showWarningMessage(
 			'Hay texto de celda sin confirmar. ¿Quieres aplicarlo antes de guardar?',
-			{ modal: true }, 'Aplicar borradores y guardar', 'Guardar solo cambios aplicados', 'Cancelar',
+			{ modal: true }, { id: 'apply', title: 'Aplicar borradores y guardar' }, { id: 'save', title: 'Guardar solo cambios aplicados' }, { id: 'cancel', title: 'Cancelar' },
 		);
-		if (choice === 'Cancelar' || choice === undefined) {throw new vscode.CancellationError();}
-		if (choice === 'Aplicar borradores y guardar') {
+		if (choice?.id === 'cancel' || choice === undefined) {throw new vscode.CancellationError();}
+		if (choice.id === 'apply') {
 			const formulaDrafts = entries.filter(({ draft }) => draft.formula);
 			if (formulaDrafts.length) {
 				if (!document.xlsx) {throw new Error('Las fórmulas solo se pueden aplicar a borradores de libros XLSX.');}
@@ -1338,16 +1338,16 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		this.postSaveState(document, { type: 'saveState', state: 'error', message });
 		if (this.conflictPrompts.has(key)) {return;}
 		this.conflictPrompts.add(key);
-		const actions = allowReload ? ['Recargar descartando cambios', 'Guardar copia…'] : ['Guardar copia…'];
+		const actions = allowReload ? [{ id: 'reload', title: 'Recargar descartando cambios' }, { id: 'copy', title: 'Guardar copia…' }] : [{ id: 'copy', title: 'Guardar copia…' }];
 		void vscode.window.showWarningMessage(message, ...actions).then(async action => {
 			this.conflictPrompts.delete(key);
-			if (action === 'Recargar descartando cambios') {
+			if (action?.id === 'reload') {
 				try {
 					await vscode.commands.executeCommand('workbench.action.files.revert', document.uri);
 				} catch (error) {
 					void vscode.window.showErrorMessage(`No se pudo recargar el archivo: ${errorMessage(error)}`);
 				}
-			} else if (action === 'Guardar copia…') {
+			} else if (action?.id === 'copy') {
 				await this.saveConflictCopy(document);
 			}
 		});
@@ -1969,10 +1969,10 @@ export async function resolveDirtyTextBuffer(uri: vscode.Uri): Promise<boolean> 
 	if (!textDocument?.isDirty) {return true;}
 	const action = await vscode.window.showWarningMessage(
 		'Hay cambios de texto sin guardar. Resuélvelos antes de abrir el archivo en el editor de hojas.',
-		'Guardar y abrir', 'Descartar y abrir', 'Cancelar',
+		{ id: 'save', title: 'Guardar y abrir' }, { id: 'discard', title: 'Descartar y abrir' }, { id: 'cancel', title: 'Cancelar' },
 	);
-	if (action === 'Guardar y abrir') {return textDocument.save();}
-	if (action === 'Descartar y abrir') {
+	if (action?.id === 'save') {return textDocument.save();}
+	if (action?.id === 'discard') {
 		await vscode.commands.executeCommand('workbench.action.files.revert', uri);
 		return !textDocument.isDirty;
 	}
