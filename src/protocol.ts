@@ -12,6 +12,18 @@ export interface WebviewReadyMessage {
 	type: 'ready';
 }
 
+export interface RequestFormulaWasmMessage {
+	type: 'requestFormulaWasm';
+	requestId: number;
+}
+
+export interface FormulaWasmDataMessage {
+	type: 'formulaWasmData';
+	requestId: number;
+	wasmBase64?: string;
+	error?: string;
+}
+
 export interface ReloadFileMessage {
 	type: 'reloadFile';
 }
@@ -133,7 +145,7 @@ export interface DraftStateMessage {
 export interface DraftCaptureResultMessage { type: 'draftCaptureResult'; requestId: number; draft?: RecoveredDraft; }
 export interface CaptureDraftMessage { type: 'captureDraft'; requestId: number; }
 
-export type WebviewToExtensionMessage = WebviewReadyMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | CreateXlsxTableMessage | XlsxSheetOperationMessage | MoveCellsMessage | XlsxStyleOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
+export type WebviewToExtensionMessage = WebviewReadyMessage | RequestFormulaWasmMessage | ReloadFileMessage | SelectSheetMessage | InvalidCellMessage | CopyToClipboardMessage | EditCellMessage | EditFormulaMessage | EditCellsMessage | CsvRowOperationMessage | XlsxStructureOperationMessage | FillFormulaRangeMessage | CreateXlsxTableMessage | XlsxSheetOperationMessage | MoveCellsMessage | XlsxStyleOperationMessage | HistoryMessage | DraftStateMessage | DraftCaptureResultMessage | SetSortMessage | PersistViewStateMessage | ResetViewMessage | RequestSnapshotMessage;
 
 export interface ReloadStateMessage {
 	type: 'reloadState';
@@ -230,5 +242,5 @@ export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibi
 export interface FormulaEditingVisibilityMessage { type: 'formulaEditingVisibility'; visible: boolean; }
 export interface FormulaAssistanceVisibilityMessage { type: 'formulaAssistanceVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | FormulaFillActionsVisibilityMessage | TableActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | FormulaWasmDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | FormulaFillActionsVisibilityMessage | TableActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

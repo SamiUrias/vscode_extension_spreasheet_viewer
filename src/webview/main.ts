@@ -146,8 +146,13 @@ let snapshot: CsvDataMessage | XlsxDataMessage | undefined;
 let formulaResults: Record<string, FormulaEvaluation> = {};
 let formulaCalculationGeneration = 0;
 let formulaWorkerPromise: Promise<Worker> | undefined;
+let formulaWasmWorkerReady = false;
 let formulaWorkerRequestId = 0;
 const pendingFormulaRequests = new Map<number, { resolve: (results: Record<string, FormulaEvaluation>) => void; reject: (error: Error) => void; timer: number }>();
+let formulaWasmBase64: string | undefined;
+let formulaWasmRequestId = 0;
+let formulaWasmPromise: Promise<string> | undefined;
+const pendingFormulaWasmRequests = new Map<number, { resolve: (wasmBase64: string) => void; reject: (error: Error) => void; timer: number }>();
 let formulaWorkbookSnapshot: { documentId: string; revision: number; base64: string } | undefined;
 let reloadWatchdog: number | undefined;
 let startupDataTimer: number | undefined;
@@ -209,6 +214,21 @@ gridScroll.setAttribute('role', 'grid');
 gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
+	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'formulaWasmData'
+		&& 'requestId' in event.data && Number.isInteger(event.data.requestId)) {
+		const message = event.data as { requestId: number; wasmBase64?: unknown; error?: unknown };
+		const pending = pendingFormulaWasmRequests.get(message.requestId);
+		if (!pending) {return;}
+		window.clearTimeout(pending.timer);
+		pendingFormulaWasmRequests.delete(message.requestId);
+		if (typeof message.wasmBase64 === 'string' && message.wasmBase64.length > 0) {
+			formulaWasmBase64 = message.wasmBase64;
+			pending.resolve(message.wasmBase64);
+		} else {
+			pending.reject(new Error(typeof message.error === 'string' ? message.error : 'No se recibió el recurso WASM de fórmulas.'));
+		}
+		return;
+	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'captureDraft'
 		&& 'requestId' in event.data && Number.isInteger(event.data.requestId)) {
 		let draft: { sheetIndex: number; row: number; column: number; value: string } | undefined;
@@ -583,6 +603,7 @@ function getFormulaWorker(): Promise<Worker> {
 		let worker: Worker;
 		try {worker = new Worker(blobUrl);}
 		finally {URL.revokeObjectURL(blobUrl);}
+		formulaWasmWorkerReady = false;
 		worker.addEventListener('message', event => {
 			const result = event.data as FormulaWorkerResponse;
 			const pending = pendingFormulaRequests.get(result?.requestId);
@@ -607,6 +628,8 @@ function getFormulaWorker(): Promise<Worker> {
 async function calculateFormulasInWorker(data: XlsxDataMessage, generation: number): Promise<Record<string, FormulaEvaluation>> {
 	const worker = await getFormulaWorker();
 	if (generation !== formulaCalculationGeneration) {return {};}
+	const wasmBase64 = await getFormulaWasm();
+	if (generation !== formulaCalculationGeneration) {return {};}
 	const requestId = ++formulaWorkerRequestId;
 	return new Promise((resolve, reject) => {
 		const timer = window.setTimeout(() => {
@@ -620,16 +643,41 @@ async function calculateFormulasInWorker(data: XlsxDataMessage, generation: numb
 			reject(new Error('No se encontró el recurso WASM local para fórmulas.'));
 			return;
 		}
+		const includeWasmBytes = !formulaWasmWorkerReady;
 		worker.postMessage({
 			type: 'calculate', requestId, workbookBase64: data.workbookBase64!, revision: data.revision,
-			sheetName: data.sheetName, kinds: data.cellKinds, rows: data.rows, wasmBaseUri,
+			sheetName: data.sheetName, kinds: data.cellKinds, rows: data.rows, wasmBaseUri, wasmBase64: includeWasmBytes ? wasmBase64 : '',
 		});
+		if (includeWasmBytes) {
+			formulaWasmWorkerReady = true;
+			formulaWasmBase64 = undefined;
+			formulaWasmPromise = undefined;
+		}
 	});
+}
+
+function getFormulaWasm(): Promise<string> {
+	if (formulaWasmBase64) {return Promise.resolve(formulaWasmBase64);}
+	if (formulaWasmPromise) {return formulaWasmPromise;}
+	const requestId = ++formulaWasmRequestId;
+	formulaWasmPromise = new Promise<string>((resolve, reject) => {
+		const timer = window.setTimeout(() => {
+			pendingFormulaWasmRequests.delete(requestId);
+			reject(new Error('Se agotó el tiempo para recibir el motor WASM de fórmulas.'));
+		}, 60_000);
+		pendingFormulaWasmRequests.set(requestId, { resolve, reject, timer });
+		vscodeApi.postMessage({ type: 'requestFormulaWasm', requestId });
+	}).catch(error => {
+		formulaWasmPromise = undefined;
+		throw error;
+	});
+	return formulaWasmPromise!;
 }
 
 function stopFormulaWorker(error: Error): void {
 	void formulaWorkerPromise?.then(worker => worker.terminate(), () => undefined);
 	formulaWorkerPromise = undefined;
+	formulaWasmWorkerReady = false;
 	for (const [requestId, pending] of pendingFormulaRequests) {
 		window.clearTimeout(pending.timer);
 		pending.reject(error);

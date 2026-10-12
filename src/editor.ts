@@ -38,6 +38,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 	private readonly ownWrites = new WeakMap<SpreadsheetDocument, Uint8Array[]>();
 	private readonly formulaSnapshots = new WeakMap<SpreadsheetDocument, { revision: number; base64: string }>();
 	private readonly formulaSnapshotsSent = new WeakMap<vscode.WebviewPanel, { documentId: string; revision: number }>();
+	private formulaWasmBase64: Promise<string> | undefined;
 	private readonly panelDrafts = new Map<vscode.WebviewPanel, Extract<WebviewToExtensionMessage, { type: 'draftState' }>>();
 	private readonly draftTransactions = new Map<vscode.WebviewPanel, { current: Extract<WebviewToExtensionMessage, { type: 'draftState' }>; active: boolean }>();
 	private readonly draftCaptureWaiters = new Map<number, { panel: vscode.WebviewPanel; timer: ReturnType<typeof setTimeout>; resolve: (ok: boolean) => void }>();
@@ -202,6 +203,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		};
 		listeners.push(panel.webview.onDidReceiveMessage((message: unknown) => {
 			if (document.isDisposed) {return;}
+			if (isRequestFormulaWasmMessage(message)) {
+				void this.postFormulaWasm(panel, message.requestId);
+				return;
+			}
 			if (isRequestSnapshotMessage(message)) {
 				if (message.documentId === document.documentId) {this.postDocument(document, panel);}
 				return;
@@ -373,6 +378,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			}
 		}));
 		panel.webview.html = this.getHtml(document.uri, panel.webview);
+	}
+
+	private async postFormulaWasm(panel: vscode.WebviewPanel, requestId: number): Promise<void> {
+		try {
+			this.formulaWasmBase64 ??= Promise.resolve(vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.extensionUri, 'dist', 'formualizer.wasm')))
+				.then(bytesToBase64)
+				.catch(error => { this.formulaWasmBase64 = undefined; throw error; });
+			const wasmBase64 = await this.formulaWasmBase64;
+			await panel.webview.postMessage({ type: 'formulaWasmData', requestId, wasmBase64 });
+		} catch (error) {
+			await panel.webview.postMessage({ type: 'formulaWasmData', requestId, error: errorMessage(error) });
+		}
 	}
 
 	private postXlsxSheet(
@@ -1707,6 +1724,11 @@ function isWebviewReadyMessage(message: unknown): message is WebviewToExtensionM
 		&& message !== null
 		&& 'type' in message
 		&& message.type === 'ready';
+}
+
+function isRequestFormulaWasmMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'requestFormulaWasm' }> {
+	return typeof message === 'object' && message !== null && 'type' in message && message.type === 'requestFormulaWasm'
+		&& 'requestId' in message && Number.isInteger(message.requestId);
 }
 
 function isReloadFileMessage(message: unknown): message is Extract<WebviewToExtensionMessage, { type: 'reloadFile' }> {
