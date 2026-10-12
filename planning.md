@@ -1234,6 +1234,8 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Reejecución externa de suite general 2026-10-11 (America/Guatemala, Node 24.21.0 / VS Code 1.141.0):** `npm test` pasó fuera del sandbox: tipos, lint, build y **113 passing, 1 pending, 0 failing**. Usó la instalación local con `VSCODE_EXECUTABLE_PATH`; los previews confirman la creación del panel y preservación de bytes, pero no validan render visual/accesibilidad de la Webview. Los mensajes de API de Copilot y canales desconocidos vienen del producto de prueba y no fallaron la suite.
 
+**Reejecución de ciclos Host 2026-10-11 (America/Guatemala, Node 24.21.0 / VS Code 1.141.0):** con `VSCODE_EXECUTABLE_PATH` fuera del sandbox pasaron `test:save-lifecycle`, `test:hot-exit` (restauración y descarte con Escape a través de reinicios) y `test:untrusted` (1 passing). Se revalidaron ediciones CSV consecutivas/lote/borrado, insertar y undo/redo, CSV vacío, escritura en vuelo, fórmula XLSX, backup/restore, conflicto y Save As; Restricted Mode abrió CSV sin cambiar bytes. Estas suites no cubren guardado estructural XLSX por UI, clics/diálogos de Webview ni proveedores remotos reales.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
