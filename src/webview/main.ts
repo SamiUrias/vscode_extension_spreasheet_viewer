@@ -15,7 +15,7 @@ import { presentXlsxCell, type CellPresentation } from './presentation';
 import { completeFormulaFunction, getFormulaCompletions, insertFormulaReference, type FormulaCompletion } from '../formula-assistance';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
-import { configureLocale, getLocale, setActiveLocale, t, type MessageKey } from '../i18n';
+import { configureLocale, formatUiNumber, getLocale, setActiveLocale, t, type MessageKey } from '../i18n';
 
 configureLocale(document.documentElement.lang);
 
@@ -216,7 +216,7 @@ let suppressNextCellClick = false;
 
 gridScroll.tabIndex = 0;
 gridScroll.setAttribute('role', 'grid');
-gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
+gridScroll.setAttribute('aria-label', t('webview.grid.gridA11y'));
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	const locale = localizationLocaleFromMessage(event.data);
@@ -236,7 +236,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 			formulaWasmBase64 = message.wasmBase64;
 			pending.resolve(message.wasmBase64);
 		} else {
-			pending.reject(new Error(typeof message.error === 'string' ? message.error : 'No se recibió el recurso WASM de fórmulas.'));
+		pending.reject(new Error(typeof message.error === 'string' ? message.error : t('webview.formula.wasmMissing')));
 		}
 		return;
 	}
@@ -443,8 +443,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (!isCsvDataMessage(event.data) && !isXlsxDataMessage(event.data)) {
 		if (typeof event.data === 'object' && event.data !== null && 'type' in event.data
 			&& (event.data.type === 'csvData' || event.data.type === 'xlsxData')) {
-			dimensions.textContent = 'No se pudieron recibir los datos del archivo. Puedes volver a intentar con Recargar.';
-			saveStatus.textContent = 'Error al cargar los datos del archivo.';
+			dimensions.textContent = t('webview.data.unreceived');
+			saveStatus.textContent = t('webview.data.loadError');
 			saveStatus.classList.add('save-error');
 		}
 		return;
@@ -469,7 +469,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	if (snapshot && snapshot.documentId !== event.data.documentId) {
 		cellPresentation = 'raw';
 		showComments = false;
-		toggleCommentsButton.textContent = 'Mostrar comentarios';
+		toggleCommentsButton.textContent = t('webview.comments.show');
 		columnFilters = [];
 		sortCriteria = [];
 		searchAllRows = false;
@@ -480,7 +480,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		startupDataTimer = undefined;
 	}
 	formulaCalculationGeneration++;
-	if (pendingFormulaRequests.size > 0) {stopFormulaWorker(new Error('Se canceló un cálculo de fórmulas reemplazado por una vista más reciente.'));}
+	if (pendingFormulaRequests.size > 0) {stopFormulaWorker(new Error(t('webview.formula.replaced')));}
 	snapshot = event.data;
 	updateDisplayModeControl();
 	updateCsvRowActions();
@@ -490,23 +490,23 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	const restoredView = restoreViewForSnapshot(snapshot, changedSheet);
 	if (!restoredView && (previousDocumentId !== snapshot.documentId || previousSheetId !== snapshot.sheetId)) {applyWorkbookViewDefaults(snapshot);}
 	const changedContent = previousRevision !== undefined && previousRevision !== snapshot.revision;
-	dimensions.textContent = `${snapshot.rowCount.toLocaleString()} filas · ${snapshot.columnCount.toLocaleString()} columnas`;
+	dimensions.textContent = t('webview.dimensions', formatUiNumber(snapshot.rowCount), formatUiNumber(snapshot.columnCount));
 	toggleCommentsButton.hidden = snapshot.type !== 'csvData' || snapshot.rowKinds?.includes('comment') !== true;
 	formatNote.textContent = snapshot.type === 'xlsxData'
 		? snapshot.fileFormat === 'ods'
-			? `Hoja: ${snapshot.sheetName}. Los valores se muestran sin formatos visuales de ODS; las fórmulas muestran su expresión y valor almacenado, sin recalcularse.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
+			? t('webview.format.ods', snapshot.sheetName, snapshot.warnings.length ? t('webview.format.warnings', snapshot.warnings.join(' ')) : '')
 			: snapshot.fileFormat === 'xlsm'
-				? `Hoja: ${snapshot.sheetName}. XLSM se muestra solo para lectura; las fórmulas conservan su expresión y caché sin recalcularse. No se ejecutan macros.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
-				: `Hoja: ${snapshot.sheetName}. La vista cruda conserva los valores almacenados; el modo libro puede aplicar formatos numéricos sin modificar el archivo. Las fórmulas muestran su expresión y los resultados calculados solo como información; no se guardan como valores.${snapshot.warnings.length ? ` Avisos: ${snapshot.warnings.join(' ')}` : ''}`
+				? t('webview.format.xlsm', snapshot.sheetName, snapshot.warnings.length ? t('webview.format.warnings', snapshot.warnings.join(' ')) : '')
+				: t('webview.format.xlsx', snapshot.sheetName, snapshot.warnings.length ? t('webview.format.warnings', snapshot.warnings.join(' ')) : '')
 		: '';
 	if (viewStateNotice) {formatNote.textContent = `${formatNote.textContent} ${viewStateNotice}`.trim(); viewStateNotice = '';}
 	if (snapshot.readonly) {
 		cellEditorGroup.hidden = true;
 		cellEditor.disabled = true;
 		applyCellEditButton.disabled = true;
-		saveStatus.textContent = snapshot.sourceStatus ?? (snapshot.sourceMode === 'buffer' ? 'Vista previa de cambios sin guardar' : 'Vista previa de solo lectura');
+		saveStatus.textContent = snapshot.sourceStatus ?? (snapshot.sourceMode === 'buffer' ? t('webview.preview.unsaved') : t('webview.preview.readonlyStatus'));
 		saveStatus.classList.remove('save-error');
-		formatNote.textContent = `${formatNote.textContent} Vista previa de solo lectura.${snapshot.sourceStatus ? ` ${snapshot.sourceStatus}` : ''}`.trim();
+		formatNote.textContent = `${formatNote.textContent} ${t('webview.preview.readonly')}${snapshot.sourceStatus ? ` ${snapshot.sourceStatus}` : ''}`.trim();
 	} else {
 		cellEditorGroup.hidden = false;
 	}
@@ -523,7 +523,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 	updateSheetActions();
 	updateXlsxStyleActions();
 	if (pendingMoveCut && !moveAwaitingToken && (pendingMoveCut.documentId !== snapshot.documentId || pendingMoveCut.revision !== snapshot.revision
-		|| pendingMoveCut.sheetId !== snapshot.sheetId)) {clearPendingMoveCut('El documento cambió; se canceló el corte pendiente.');}
+		|| pendingMoveCut.sheetId !== snapshot.sheetId)) {clearPendingMoveCut(t('webview.sheet.changeCancelled'));}
 	updateMoveActions();
 	if (selectedCell && (selectedCell.row >= snapshot.rowCount || selectedCell.column >= snapshot.columnCount)) {
 		selectedCell = undefined;
@@ -544,7 +544,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 		gridScroll.focus({ preventScroll: true });
 	} else {
 		selectedCell = undefined;
-		cellReference.textContent = 'Sin selección';
+		cellReference.textContent = t('webview.selection.none');
 		cellReferenceInput.value = '';
 		cellState.textContent = '';
 		cellValue.textContent = '';
@@ -606,9 +606,9 @@ function getFormulaWorker(): Promise<Worker> {
 	if (formulaWorkerPromise) {return formulaWorkerPromise;}
 	formulaWorkerPromise = (async () => {
 		const source = document.body.dataset.formulaWorkerSrc;
-		if (!source) {throw new Error('No se encontró el worker local de fórmulas.');}
+		if (!source) {throw new Error(t('webview.worker.missing'));}
 		const response = await fetch(source);
-		if (!response.ok) {throw new Error(`No se pudo cargar el worker de fórmulas (${response.status}).`);}
+		if (!response.ok) {throw new Error(t('webview.worker.loadFailed', response.status));}
 		const code = await response.text();
 		const blobUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
 		let worker: Worker;
@@ -622,10 +622,10 @@ function getFormulaWorker(): Promise<Worker> {
 			window.clearTimeout(pending.timer);
 			pendingFormulaRequests.delete(result.requestId);
 			if (result.type === 'result' && result.results) {pending.resolve(result.results);}
-			else {pending.reject(new Error(result.error || 'Falló el cálculo de fórmulas.'));}
+			else {pending.reject(new Error(result.error || t('webview.formula.failed')));}
 		});
 		worker.addEventListener('error', event => {
-			const error = new Error(event.message || 'Falló el worker de fórmulas.');
+			const error = new Error(event.message || t('webview.formula.workerFailed'));
 			stopFormulaWorker(error);
 		});
 		return worker;
@@ -644,14 +644,14 @@ async function calculateFormulasInWorker(data: XlsxDataMessage, generation: numb
 	const requestId = ++formulaWorkerRequestId;
 	return new Promise((resolve, reject) => {
 		const timer = window.setTimeout(() => {
-			stopFormulaWorker(new Error('El cálculo de fórmulas excedió el límite de 60 segundos.'));
+			stopFormulaWorker(new Error(t('webview.formula.timeout')));
 		}, 60_000);
 		pendingFormulaRequests.set(requestId, { resolve, reject, timer });
 		const wasmBaseUri = document.body.dataset.formulaWasmBaseUri;
 		if (!wasmBaseUri) {
 			window.clearTimeout(timer);
 			pendingFormulaRequests.delete(requestId);
-			reject(new Error('No se encontró el recurso WASM local para fórmulas.'));
+			reject(new Error(t('webview.formula.wasmMissing')));
 			return;
 		}
 		const includeWasmBytes = !formulaWasmWorkerReady;
@@ -674,7 +674,7 @@ function getFormulaWasm(): Promise<string> {
 	formulaWasmPromise = new Promise<string>((resolve, reject) => {
 		const timer = window.setTimeout(() => {
 			pendingFormulaWasmRequests.delete(requestId);
-			reject(new Error('Se agotó el tiempo para recibir el motor WASM de fórmulas.'));
+			reject(new Error(t('webview.formula.wasmTimeout')));
 		}, 60_000);
 		pendingFormulaWasmRequests.set(requestId, { resolve, reject, timer });
 		vscodeApi.postMessage({ type: 'requestFormulaWasm', requestId });
@@ -698,17 +698,17 @@ function stopFormulaWorker(error: Error): void {
 
 reloadFileButton.addEventListener('click', () => {
 	reloadFileButton.disabled = true;
-	reloadFileButton.textContent = 'Recargando…';
-	dimensions.textContent = 'Recargando archivo…';
+	reloadFileButton.textContent = t('webview.reload.loadingButton');
+	dimensions.textContent = t('webview.reload.loadingFile');
 	if (reloadWatchdog !== undefined) {window.clearTimeout(reloadWatchdog);}
 	reloadWatchdog = window.setTimeout(() => {
 		reloadWatchdog = undefined;
 		reloadFileButton.disabled = false;
-		reloadFileButton.textContent = '↻ Recargar';
+		reloadFileButton.textContent = t('webview.reload.button');
 		dimensions.textContent = snapshot
-			? `${snapshot.rowCount.toLocaleString()} filas · ${snapshot.columnCount.toLocaleString()} columnas`
-			: 'No se recibió respuesta al cargar. Puedes volver a intentar con Recargar.';
-		saveStatus.textContent = 'No se recibió respuesta al recargar.';
+			? t('webview.dimensions', formatUiNumber(snapshot.rowCount), formatUiNumber(snapshot.columnCount))
+			: t('webview.reload.noResponseLoad');
+		saveStatus.textContent = t('webview.reload.noResponse');
 		saveStatus.classList.add('save-error');
 	}, 30000);
 	vscodeApi.postMessage({ type: 'reloadFile' });
@@ -717,7 +717,7 @@ reloadFileButton.addEventListener('click', () => {
 toggleCommentsButton.addEventListener('click', () => {
 	showComments = !showComments;
 	selectionRange = undefined;
-	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
+	toggleCommentsButton.textContent = showComments ? t('webview.comments.hide') : t('webview.comments.show');
 	cachedProjection = undefined;
 	renderGrid();
 	updateProjectionControls();
@@ -1335,7 +1335,7 @@ gridRoot.addEventListener('pointerdown', event => {
 		cellEditor.value = inserted.value;
 		cellEditor.setSelectionRange(inserted.cursor, inserted.cursor);
 		editorDirty = true;
-		cellState.textContent = `Referencia ${reference} insertada; la fórmula sigue sin confirmar.`;
+		cellState.textContent = t('webview.selection.formulaReferenceInserted', reference);
 		setFormulaReferencePicking(false);
 		sendDraftState(true);
 		updateFormulaCompletions();
@@ -1447,10 +1447,10 @@ function renderGrid(): void {
 function updateDisplayModeControl(): void {
 	const supported = snapshot?.type === 'xlsxData' && snapshot.fileFormat === 'xlsx';
 	displayModeButton.hidden = !showDisplayModeButton || !supported;
-	displayModeButton.textContent = cellPresentation === 'raw' ? 'Ver libro' : 'Ver valores crudos';
+	displayModeButton.textContent = cellPresentation === 'raw' ? t('webview.display.workbook') : t('webview.display.raw');
 	displayModeTooltip.textContent = cellPresentation === 'raw'
-		? 'Aplica los formatos numéricos de Excel a la cuadrícula sin modificar los valores guardados.'
-		: 'Muestra los valores almacenados sin formato; el archivo permanece intacto.';
+		? t('webview.display.formattedTooltip')
+		: t('webview.display.rawTooltip');
 }
 function selectCell(row: number, column: number, extend = false, coveredMode: 'snap' | 'skip' | 'allow' = 'snap'): void {
 	if (showWorkbookAppearance && snapshot?.type === 'xlsxData' && coveredMode !== 'allow') {
@@ -1472,7 +1472,7 @@ function selectCell(row: number, column: number, extend = false, coveredMode: 's
 	if (!showComments && snapshot?.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
 		showComments = true;
 		selectionRange = undefined;
-		toggleCommentsButton.textContent = 'Ocultar comentarios';
+		toggleCommentsButton.textContent = t('webview.comments.hide');
 	}
 	if (extend && selectedCell) {selectionRange = { anchor: selectionRange?.anchor ?? { ...selectedCell }, focus: { row, column } };}
 	else if (!selectedCell || selectedCell.row !== row || selectedCell.column !== column) {selectionRange = undefined;}
@@ -1497,8 +1497,8 @@ function updateFormulaEditorControls(): void {
 	pickFormulaReferenceButton.disabled = !formulaEditMode.checked || !selectedCell || !canEditFormulaCell(selectedCell.row, selectedCell.column);
 	if (!formulaEditMode.checked || !enabled || !showFormulaAssistance) {setFormulaReferencePicking(false);}
 	if (!formulaEditMode.checked) {
-		cellEditLabel.textContent = 'Editar valor crudo';
-		cellEditor.setAttribute('aria-label', 'Editar valor crudo');
+		cellEditLabel.textContent = t('webview.selection.editRaw');
+		cellEditor.setAttribute('aria-label', t('webview.selection.editRaw'));
 		const normallyEditable = Boolean(selectedCell && canEditCell(selectedCell.row, selectedCell.column));
 		cellEditor.disabled = !normallyEditable;
 		applyCellEditButton.disabled = !normallyEditable || !editorDirty;
@@ -1506,8 +1506,8 @@ function updateFormulaEditorControls(): void {
 		return;
 	}
 	const canEditFormula = Boolean(selectedCell && canEditFormulaCell(selectedCell.row, selectedCell.column));
-	cellEditLabel.textContent = 'Editar fórmula';
-	cellEditor.setAttribute('aria-label', 'Editar fórmula XLSX');
+	cellEditLabel.textContent = t('webview.selection.editFormula');
+	cellEditor.setAttribute('aria-label', t('webview.selection.editFormulaAria'));
 	cellEditor.disabled = !canEditFormula;
 	applyCellEditButton.disabled = !canEditFormula || !editorDirty;
 	updateFormulaCompletions();
@@ -1533,7 +1533,7 @@ function updateFormulaCompletions(): void {
 function setFormulaReferencePicking(active: boolean): void {
 	pickingFormulaReference = active;
 	pickFormulaReferenceButton.setAttribute('aria-pressed', String(active));
-	pickFormulaReferenceButton.textContent = active ? 'Selecciona una celda…' : 'Insertar referencia seleccionada';
+	pickFormulaReferenceButton.textContent = active ? t('webview.selection.formulaReferencePicking') : t('webview.selection.formulaReferenceInsert');
 	if (active) {gridScroll.setAttribute('data-picking-formula-reference', 'true');}
 	else {gridScroll.removeAttribute('data-picking-formula-reference');}
 }
@@ -1558,7 +1558,7 @@ function commitSelectedEdit(): void {
 		sendCellEdit(selectedCell, cellEditor.value);
 	}
 	editorDirty = false;
-	saveStatus.textContent = 'Cambios pendientes…';
+	saveStatus.textContent = t('webview.save.pending');
 }
 
 function beginInlineEdit(row: number, column: number, initialText?: string): void {
@@ -1580,7 +1580,7 @@ function commitInlineEdit(): void {
 	editingCell = undefined;
 	if (inlineEditorDirty && canEditCell(position.row, position.column)) {
 		sendCellEdit(position, inlineEditValue);
-		saveStatus.textContent = 'Cambios pendientes…';
+		saveStatus.textContent = t('webview.save.pending');
 	}
 	inlineEditorDirty = false;
 	renderGrid();
@@ -1651,7 +1651,7 @@ function restoreCellDraft(draft: { sheetIndex: number; row: number; column: numb
 	cellEditor.value = draft.value;
 	editorDirty = true;
 	applyCellEditButton.disabled = false;
-	cellState.textContent = 'Borrador recuperado; presiona Aplicar para confirmar o Esc para descartarlo.';
+	cellState.textContent = t('webview.selection.draftRecovered');
 	sendDraftState(true, draft.value, { row: draft.row, column: draft.column });
 }
 
@@ -1675,11 +1675,11 @@ function updateSaveStatus(message: SaveStateMessage): void {
 			updateXlsxStructureActions();
 		}
 	}
-	saveStatus.textContent = message.state === 'clean' ? 'Sin cambios'
-		: message.state === 'pending' ? 'Cambios pendientes…'
-			: message.state === 'saving' ? 'Guardando…'
-				: message.state === 'saved' ? 'Guardado'
-				: `Error: ${message.message ?? 'Error desconocido'}`;
+	saveStatus.textContent = message.state === 'clean' ? t('webview.save.clean')
+		: message.state === 'pending' ? t('webview.save.pending')
+			: message.state === 'saving' ? t('webview.save.saving')
+				: message.state === 'saved' ? t('webview.save.saved')
+		: t('webview.save.error', message.message ?? t('webview.save.unknownError'));
 	saveStatus.classList.toggle('save-error', message.state === 'error');
 }
 
@@ -1696,8 +1696,8 @@ function goToCell(): void {
 	if (!getRowProjection().sourceToVisible.has(position.row)) {
 		pendingHiddenCell = position;
 		revealHiddenMatchButton.hidden = false;
-		revealHiddenMatchButton.textContent = 'Mostrar celda';
-		filterStatus.textContent = `La celda ${cellReferenceInput.value.toUpperCase()} está oculta. Puedes mostrarla quitando los filtros.`;
+		revealHiddenMatchButton.textContent = t('webview.grid.showCell');
+		filterStatus.textContent = t('webview.grid.hiddenCell', cellReferenceInput.value.toUpperCase());
 		return;
 	}
 	selectCell(position.row, position.column);
@@ -1711,7 +1711,7 @@ function updateSheetOptions(names: string[], activeIndex: number, states: Array<
 		const state = states[index] ?? 'visible';
 		const option = document.createElement('option');
 		option.value = String(index);
-		option.textContent = `${names[index]}${state === 'veryHidden' ? ' (muy oculta)' : state === 'hidden' ? ' (oculta)' : ''}`;
+		option.textContent = `${names[index]}${state === 'veryHidden' ? t('webview.sheet.veryHidden') : state === 'hidden' ? t('webview.sheet.hidden') : ''}`;
 		sheetSelector.append(option);
 		const tab = document.createElement('button');
 		tab.type = 'button';
@@ -1721,8 +1721,8 @@ function updateSheetOptions(names: string[], activeIndex: number, states: Array<
 		tab.dataset.state = state;
 		tab.tabIndex = index === activeIndex ? 0 : -1;
 		tab.textContent = option.textContent;
-		tab.title = state === 'veryHidden' ? `${names[index]}: hoja marcada como muy oculta en el libro.`
-			: state === 'hidden' ? `${names[index]}: hoja marcada como oculta en el libro.` : `Abrir hoja ${names[index]}`;
+		tab.title = state === 'veryHidden' ? t('webview.sheet.markedVeryHidden', names[index]!)
+			: state === 'hidden' ? t('webview.sheet.markedHidden', names[index]!) : t('webview.sheet.open', names[index]!);
 		tab.addEventListener('click', () => requestSheetSelection(index));
 		tab.addEventListener('keydown', event => {
 			if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {return;}
@@ -1737,7 +1737,7 @@ function updateSheetOptions(names: string[], activeIndex: number, states: Array<
 	}
 	sheetSelector.value = String(activeIndex);
 	const state = states[activeIndex] ?? 'visible';
-	sheetStateStatus.textContent = state === 'veryHidden' ? 'Hoja muy oculta en el libro.' : state === 'hidden' ? 'Hoja oculta en el libro.' : '';
+	sheetStateStatus.textContent = state === 'veryHidden' ? t('webview.sheet.statusVeryHidden') : state === 'hidden' ? t('webview.sheet.statusHidden') : '';
 	sheetTabs.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -2156,7 +2156,7 @@ function revealPendingCell(): void {
 	if (!pendingHiddenCell || !snapshot) {return;}
 	const target = pendingHiddenCell;
 	pendingHiddenCell = undefined; revealHiddenMatchButton.hidden = true;
-	columnFilters = []; showComments = true; toggleCommentsButton.textContent = 'Ocultar comentarios';
+	columnFilters = []; showComments = true; toggleCommentsButton.textContent = t('webview.comments.hide');
 	cachedProjection = undefined; gridRendererState.rowsViewport = undefined;
 	filterStatus.textContent = 'Se quitaron los filtros para mostrar la celda.';
 	updateProjectionControls(); renderGrid(); selectCell(target.row, target.column); gridScroll.focus({ preventScroll: true }); schedulePersistViewState();
@@ -2205,7 +2205,7 @@ function restoreViewForSnapshot(current: CsvDataMessage | XlsxDataMessage, chang
 	wrapCellsInput.checked = wrapCells;
 	freezeRowsInput.value = String(freezeRows);
 	freezeColumnsInput.value = String(freezeColumns);
-	toggleCommentsButton.textContent = showComments ? 'Ocultar comentarios' : 'Mostrar comentarios';
+	toggleCommentsButton.textContent = showComments ? t('webview.comments.hide') : t('webview.comments.show');
 	rowLayoutsBySheet.set(sheetIndex, rowLayout);
 	manualRowHeightsBySheet.set(sheetIndex, manualHeights);
 	rebuildRowOffsets(rowLayout);
@@ -2262,7 +2262,7 @@ function resetSheetView(current: CsvDataMessage | XlsxDataMessage): void {
 	gridRendererState.rowsViewport = undefined;
 	manualRowHeightsBySheet.delete(sheetIndex);
 	applyWorkbookViewDefaults(current);
-	toggleCommentsButton.textContent = 'Mostrar comentarios';
+	toggleCommentsButton.textContent = t('webview.comments.show');
 	gridScroll.scrollTop = 0;
 	gridScroll.scrollLeft = 0;
 }
@@ -2806,7 +2806,7 @@ function isReloadStateMessage(value: unknown): value is ReloadStateMessage {
 function updateReloadState(message: ReloadStateMessage): void {
 	if (message.state === 'loading') {
 		reloadFileButton.disabled = true;
-		reloadFileButton.textContent = 'Recargando…';
+		reloadFileButton.textContent = t('webview.reload.loadingButton');
 		return;
 	}
 	if (reloadWatchdog !== undefined) {
@@ -2814,18 +2814,18 @@ function updateReloadState(message: ReloadStateMessage): void {
 		reloadWatchdog = undefined;
 	}
 	reloadFileButton.disabled = false;
-	reloadFileButton.textContent = '↻ Recargar';
+	reloadFileButton.textContent = t('webview.reload.button');
 	if (message.state === 'done' && !snapshot) {
-		dimensions.textContent = 'No se recibieron los datos del archivo. Puedes volver a intentar con Recargar.';
-		saveStatus.textContent = 'La vista no recibió los datos del archivo.';
+		dimensions.textContent = t('webview.reload.noData');
+		saveStatus.textContent = t('webview.reload.notReceived');
 		saveStatus.classList.add('save-error');
 	} else if ((message.state === 'cancelled' || message.state === 'error') && snapshot) {
-		dimensions.textContent = `${snapshot.rowCount.toLocaleString()} filas · ${snapshot.columnCount.toLocaleString()} columnas`;
+		dimensions.textContent = t('webview.dimensions', formatUiNumber(snapshot.rowCount), formatUiNumber(snapshot.columnCount));
 	} else if (message.state === 'error') {
-		dimensions.textContent = 'No se pudo recargar el archivo.';
+		dimensions.textContent = t('webview.reload.failed');
 	}
 	if (message.state === 'error') {
-		saveStatus.textContent = `Error al recargar: ${message.message ?? 'error desconocido'}`;
+		saveStatus.textContent = t('webview.reload.failedMessage', message.message ?? t('webview.reload.unknown'));
 		saveStatus.classList.add('save-error');
 	}
 }
@@ -2841,8 +2841,8 @@ function requiredElement<T extends HTMLElement>(selector: string): T {
 function requestInitialData(): void {
 	if (snapshot) {return;}
 	if (startupDataAttempts >= 5) {
-		dimensions.textContent = 'No se recibió la tabla. Pulsa Recargar para volver a intentarlo.';
-		saveStatus.textContent = 'La vista no recibió los datos del archivo.';
+		dimensions.textContent = t('webview.startup.noTable');
+		saveStatus.textContent = t('webview.reload.notReceived');
 		saveStatus.classList.add('save-error');
 		return;
 	}

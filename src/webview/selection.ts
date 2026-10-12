@@ -1,6 +1,7 @@
 import type { CsvDataMessage, FormulaEvaluation, XlsxDataMessage } from '../protocol';
 
 import type { CellPosition, CellRange } from '../range-selection';
+import { t } from '../i18n';
 export type { CellPosition, CellRange } from '../range-selection';
 
 export interface CellSelectionContext {
@@ -35,15 +36,15 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 	const capability = snapshot.type === 'xlsxData' ? snapshot.cellCapabilities[row]?.[column] : undefined;
 	const result = kind === 'formula' ? context.getFormulaResult(row, column) : undefined;
 	context.cellState.textContent = kind === 'formula'
-		? snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm') ? 'Fórmula (no recalculada)'
-			: result?.status === 'calculated' ? 'Fórmula (calculada)'
+		? snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm') ? t('webview.formula.notRecalculated')
+			: result?.status === 'calculated' ? t('webview.formula.result')
 			: result?.status === 'unsupported' ? unsupportedFormulaLabel(result.reason)
-				: result ? 'Fórmula (error de cálculo)' : 'Calculando fórmula…'
+				: result ? t('webview.formula.error', result.value) : t('webview.formula.calculating')
 		: kind === 'empty' || (exists && values[column] === '')
-			? 'Celda vacía almacenada'
-			: kind === 'missing' || !exists ? 'Celda ausente' : 'Valor crudo';
+			? t('webview.formula.cellEmpty')
+			: kind === 'missing' || !exists ? t('webview.formula.cellMissing') : t('webview.formula.rawValue');
 	if (snapshot.type === 'csvData' && snapshot.physicalLines?.[row]) {
-		context.cellState.textContent += ` · Registro ${row + 1}, línea física ${snapshot.physicalLines[row]}`;
+		context.cellState.textContent += ` · ${t('webview.formula.recordLine', row + 1, snapshot.physicalLines[row])}`;
 	}
 	if (capability?.reason) {context.cellState.textContent += ` · ${capability.reason}`;}
 	context.cellState.dataset.state = kind === 'formula'
@@ -53,28 +54,28 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 	context.cellValue.textContent = exists ? values[column]! : '';
 	if (snapshot.type === 'csvData' && snapshot.rowKinds?.[row] === 'comment') {
 		context.cellValue.textContent = snapshot.rowComments?.[row] ?? '';
-		context.cellState.textContent = 'Registro de comentario';
-		if (snapshot.physicalLines?.[row]) {context.cellState.textContent += ` · Registro ${row + 1}, línea física ${snapshot.physicalLines[row]}`;}
+		context.cellState.textContent = t('webview.formula.commentRecord');
+		if (snapshot.physicalLines?.[row]) {context.cellState.textContent += ` · ${t('webview.formula.recordLine', row + 1, snapshot.physicalLines[row])}`;}
 	}
 	if (kind === 'formula') {
-		const cache = context.getFormulaCache(row, column) || 'Sin valor almacenado';
-		context.cellValue.textContent += `\nValor almacenado en caché: ${cache}`;
-		if (result?.status === 'calculated') {context.cellValue.textContent += `\n\nFórmula (calculada)\n${result.value}`;}
-		else if (snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm')) {context.cellValue.textContent += '\n\nFórmula (no recalculada)';}
+		const cache = context.getFormulaCache(row, column) || t('webview.formula.stored');
+		context.cellValue.textContent += `\n${t('webview.formula.cache')}: ${cache}`;
+		if (result?.status === 'calculated') {context.cellValue.textContent += `\n\n${t('webview.formula.result')}\n${result.value}`;}
+		else if (snapshot.type === 'xlsxData' && (snapshot.fileFormat === 'ods' || snapshot.fileFormat === 'xlsm')) {context.cellValue.textContent += `\n\n${t('webview.formula.notRecalculated')}`;}
 		else if (result?.status === 'unsupported') {context.cellValue.textContent += `\n\n${unsupportedFormulaLabel(result.reason)}`;}
-		else if (result) {context.cellValue.textContent += `\n\nError al calcular: ${result.value}`;}
-		else {context.cellValue.textContent += '\n\nCalculando fórmula…';}
+		else if (result) {context.cellValue.textContent += `\n\n${t('webview.formula.error', result.value)}`;}
+		else {context.cellValue.textContent += `\n\n${t('webview.formula.calculating')}`;}
 	}
 	if (snapshot.type === 'xlsxData') {
 		const note = snapshot.cellNotes?.find(item => item.reference.toUpperCase() === reference);
 		const hyperlink = snapshot.cellHyperlinks?.find(item => item.reference.toUpperCase() === reference);
 		if (note) {
-			context.cellState.textContent += ' · Tiene una nota';
-			context.cellValue.textContent += `\n\nNota${note.author ? ` (${note.author})` : ''}\n${note.text}`;
+			context.cellState.textContent += ` · ${t('webview.formula.notePresent')}`;
+			context.cellValue.textContent += `\n\n${t('webview.formula.note')}${note.author ? ` (${note.author})` : ''}\n${note.text}`;
 		}
 		if (hyperlink) {
-			context.cellState.textContent += ' · Tiene un vínculo';
-			context.cellValue.textContent += `\n\nVínculo (texto sin abrir)\n${hyperlink.target ?? ''}${hyperlink.location ? `#${hyperlink.location}` : ''}`;
+			context.cellState.textContent += ` · ${t('webview.formula.linkPresent')}`;
+			context.cellValue.textContent += `\n\n${t('webview.formula.link')}\n${hyperlink.target ?? ''}${hyperlink.location ? `#${hyperlink.location}` : ''}`;
 		}
 	}
 	context.cellEditor.value = exists ? values[column]! : '';
@@ -89,9 +90,9 @@ export function selectGridCell(context: CellSelectionContext, row: number, colum
 
 function unsupportedFormulaLabel(reason: FormulaEvaluation['reason']): string {
 	switch (reason) {
-		case 'spill': return 'Fórmula NO compatible: requiere un resultado matricial derramado.';
-		case 'date-format': return 'Fórmula NO compatible: el motor formatea esta fecha de forma incorrecta.';
-		case 'date-system': return 'Fórmula NO compatible: no respeta el sistema de fechas 1904 del libro.';
-		default: return 'Fórmula NO compatible: función no implementada.';
+		case 'spill': return t('webview.formula.unsupported', t('webview.formula.unsupportedSpill'));
+		case 'date-format': return t('webview.formula.unsupported', t('webview.formula.unsupportedDateFormat'));
+		case 'date-system': return t('webview.formula.unsupported', t('webview.formula.unsupportedDateSystem'));
+		default: return t('webview.formula.unsupported', t('webview.formula.unsupportedFunction'));
 	}
 }

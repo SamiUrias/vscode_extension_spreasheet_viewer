@@ -33,6 +33,17 @@ suite('Runtime localization', () => {
 		assert.strictEqual(getLocale(), 'en');
 	});
 
+	test('localizes grid, cell, and formula UI while preserving interpolated document data', () => {
+		configureLocale('en');
+		assert.strictEqual(t('webview.grid.filterColumn', 'AB', t('webview.grid.filterColumnLabel', 'Revenue')), 'Filter column AB (Revenue)');
+		assert.strictEqual(t('webview.selection.formulaReferenceInserted', 'AA1048576'), 'Reference AA1048576 inserted; the formula is still unconfirmed.');
+		assert.strictEqual(t('webview.formula.error', '#VALUE!'), 'Calculation error: #VALUE!');
+		configureLocale('es');
+		assert.strictEqual(t('webview.grid.filterColumn', 'AB', t('webview.grid.filterColumnLabel', 'Revenue')), 'Filtrar columna AB (Revenue)');
+		assert.strictEqual(t('webview.selection.formulaReferenceInserted', 'AA1048576'), 'Referencia AA1048576 insertada; la fórmula sigue sin confirmar.');
+		assert.strictEqual(t('webview.formula.error', '#VALUE!'), 'Error de cálculo: #VALUE!');
+	});
+
 	test('uses Spanish and safely interpolates repeated, reordered, and dollar data', () => {
 		configureLocale('es-MX');
 		assert.strictEqual(t('ui.openFailed', '$& {0}', '$1 $` $\' {1}'), 'No se pudo abrir $& {0}: $1 $` $\' {1}');

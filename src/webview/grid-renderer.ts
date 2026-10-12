@@ -2,6 +2,7 @@ import type { CsvDataMessage, XlsxDataMessage, FormulaEvaluation } from '../prot
 import { buildProjectedRowLayout, getVisibleColumnWindow, type RowLayout } from './grid-layout';
 import type { RowProjection } from '../table-view';
 import { getRenderableMerges, mergeAnchorIntersectsViewport } from './merge-layout';
+import { t } from '../i18n';
 
 export interface GridRendererState {
 	rowsViewport: HTMLDivElement | undefined; renderedColumnCount: number;
@@ -54,7 +55,7 @@ export function renderSpreadsheetGrid(context: GridRenderContext): void {
 		gridRoot.replaceChildren();
 		const empty = document.createElement('p');
 		empty.className = 'empty-state';
-		empty.textContent = snapshot?.type === 'xlsxData' ? 'La hoja XLSX no contiene celdas.' : 'El CSV no contiene celdas.';
+		empty.textContent = snapshot?.type === 'xlsxData' ? t('webview.grid.emptyXlsx') : t('webview.grid.emptyCsv');
 		gridRoot.append(empty);
 		return;
 	}
@@ -91,23 +92,23 @@ const templateColumns = gridTemplateColumns(widths);
 				headerLabel.textContent = label;
 				heading.append(headerLabel);
 			}
-			heading.title = 'Click: ascendente, descendente, quitar; Shift+click: añadir criterio; Ctrl/Cmd+click: quitar criterio; Alt+click: alternar texto/número. El número indica prioridad.';
+		heading.title = t('webview.grid.sortHelp');
 			heading.addEventListener('click', event => sortHeader(column, event));
 			const filterButton = document.createElement('button');
 			filterButton.className = 'column-filter-button';
 			filterButton.type = 'button';
 			filterButton.textContent = isFiltered(column) ? '▼' : '▽';
-			filterButton.setAttribute('aria-label', `Filtrar columna ${columnName(column)}${label ? ` (${label})` : ''}`);
+			filterButton.setAttribute('aria-label', t('webview.grid.filterColumn', columnName(column), label ? t('webview.grid.filterColumnLabel', label) : ''));
 			filterButton.setAttribute('aria-haspopup', 'dialog');
 			filterButton.setAttribute('aria-expanded', 'false');
-			filterButton.title = isFiltered(column) ? 'Editar o limpiar filtro' : 'Filtrar esta columna';
+			filterButton.title = isFiltered(column) ? t('webview.grid.filterEdit') : t('webview.grid.filterApply');
 			filterButton.addEventListener('click', event => {event.stopPropagation(); openFilter(column, filterButton);});
 			heading.append(filterButton);
 			const resizeHandle = document.createElement('span');
 			resizeHandle.className = 'column-resize-handle';
 			resizeHandle.setAttribute('role', 'separator');
 			resizeHandle.setAttribute('aria-orientation', 'vertical');
-			resizeHandle.setAttribute('aria-label', `Redimensionar columna ${columnName(column)}`);
+			resizeHandle.setAttribute('aria-label', t('webview.grid.resizeColumn', columnName(column)));
 			resizeHandle.tabIndex = 0;
 			resizeHandle.addEventListener('pointerdown', event => startColumnResize(event, column, resizeHandle));
 			resizeHandle.addEventListener('dblclick', event => {event.preventDefault(); event.stopPropagation(); autoFitColumn(column);});
@@ -163,7 +164,7 @@ const templateColumns = gridTemplateColumns(widths);
 		rowsViewport.style.height = 'auto';
 		const empty = document.createElement('p');
 		empty.className = 'empty-state';
-		empty.textContent = 'Ninguna fila coincide con los filtros. Puedes ajustar o limpiar el filtro en los encabezados.';
+		empty.textContent = t('webview.grid.noFilterRows');
 		rowsViewport.append(empty);
 		return;
 	}
@@ -191,13 +192,13 @@ const templateColumns = gridTemplateColumns(widths);
 		rowHeader.setAttribute('role', 'rowheader');
 		rowHeader.textContent = String(sourceRow + 1);
 		if (snapshot.type === 'csvData' && snapshot.physicalLines?.[sourceRow]) {
-			rowHeader.title = `Registro ${sourceRow + 1} · línea física ${snapshot.physicalLines[sourceRow]}`;
+			rowHeader.title = t('webview.grid.recordLine', sourceRow + 1, snapshot.physicalLines[sourceRow]);
 		}
 		const rowResizeHandle = document.createElement('span');
 		rowResizeHandle.className = 'row-resize-handle';
 		rowResizeHandle.setAttribute('role', 'separator');
 		rowResizeHandle.setAttribute('aria-orientation', 'horizontal');
-		rowResizeHandle.setAttribute('aria-label', `Redimensionar fila ${sourceRow + 1}`);
+		rowResizeHandle.setAttribute('aria-label', t('webview.grid.resizeRow', sourceRow + 1));
 		rowResizeHandle.tabIndex = 0;
 		rowResizeHandle.addEventListener('pointerdown', event => startRowResize(event, sourceRow, rowResizeHandle));
 		rowResizeHandle.addEventListener('keydown', event => resizeRowWithKeyboard(event, sourceRow));
@@ -215,7 +216,7 @@ const templateColumns = gridTemplateColumns(widths);
 			valueCell.className = 'grid-cell';
 			if (context.isCutCell?.(sourceRow, column)) {valueCell.classList.add('cut-source-cell');}
 			valueCell.textContent = value;
-			valueCell.title = value === rawValue ? rawValue : `${value}\nValor crudo: ${rawValue}`;
+			valueCell.title = value === rawValue ? rawValue : `${value}\n${t('webview.grid.cellRawValue', rawValue)}`;
 			valueCell.setAttribute('role', 'gridcell');
 			valueCell.setAttribute('aria-colindex', String(column + 2));
 			valueCell.id = `cell-${sourceRow}-${column}`;
@@ -253,20 +254,20 @@ const templateColumns = gridTemplateColumns(widths);
 			}
 			if (isFormula(sourceRow, column)) {
 				valueCell.classList.add('formula-cell');
-				const cache = getFormulaCache(sourceRow, column) || 'Sin valor almacenado';
+				const cache = getFormulaCache(sourceRow, column) || t('webview.formula.stored');
 				const result = getFormulaResult(sourceRow, column);
-				const calculated = result?.status === 'calculated' ? `Fórmula (calculada): ${result.value}`
-					: result?.status === 'unsupported' ? 'Fórmula NO compatible'
-						: result ? `Error de cálculo: ${result.value}` : 'Fórmula calculándose…';
-				valueCell.title = `${value}\nValor almacenado en caché: ${cache}\n${calculated}`;
+				const calculated = result?.status === 'calculated' ? t('webview.grid.formulaResult', result.value)
+					: result?.status === 'unsupported' ? t('webview.grid.formulaUnsupported')
+						: result ? t('webview.grid.formulaError', result.value) : t('webview.grid.formulaCalculating');
+				valueCell.title = `${value}\n${t('webview.formula.cache')}: ${cache}\n${calculated}`;
 			}
-			if (merge) {valueCell.title += `\nCeldas combinadas ${merge.reference}`;}
+			if (merge) {valueCell.title += `\n${t('webview.grid.mergedCells', merge.reference)}`;}
 			if (isEditing(sourceRow, column)) {
 				const inlineEditor = document.createElement('textarea');
 				inlineEditor.className = 'cell-inline-editor';
 				inlineEditor.rows = 1;
 				inlineEditor.spellcheck = false;
-				inlineEditor.setAttribute('aria-label', `Editar ${columnName(column)}${sourceRow + 1}`);
+				inlineEditor.setAttribute('aria-label', t('webview.grid.editCell', columnName(column), sourceRow + 1));
 				inlineEditor.value = inlineEditValue;
 				inlineEditor.addEventListener('input', () => {
 					setInlineEditValue(inlineEditor.value);
