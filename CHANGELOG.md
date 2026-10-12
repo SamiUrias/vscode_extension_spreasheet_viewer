@@ -6,9 +6,28 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.0.3] - 2026-10-11
+
+### Added
+
+- Calculate supported XLSX formulas in a local worker and show results without writing calculated values back to the workbook.
+- Edit normal XLSX formulas with syntax validation, tested function suggestions, explicit cell-reference insertion, and relative formula fill.
+- Fill selected ranges with repeated values or an explicitly chosen numeric series, with preview and undo.
+- Create native tables, add/rename/delete sheets, apply basic formatting, merge cells, save frozen panes, and move value ranges in compatible XLSX workbooks.
+- Add, append, and delete CSV records; optionally preview the VS Code stdin buffer as a read-only table.
+- Open XLSM files in read-only mode without executing macros.
+
 ### Fixed
 
-- Formula calculation now loads its packaged WebAssembly resource through the Extension Host, avoiding resource fetch timeouts inside the webview. The formula worker still runs outside the grid UI thread.
+- Load the packaged formula WebAssembly resource through the Extension Host so the formula worker does not time out fetching it from the webview.
+- Preserve later edits during consecutive saves and keep recovered drafts pending when manual-save mode is enabled.
+
+### Verified
+
+- The full VS Code test suite passes 113 tests with 1 pending. Production packaging, type checks, lint, the formula worker smoke test, and focused tests for formula editing, fill, XLSX operations, CSV dialects, runtime capabilities, and Restricted Mode pass.
+- The 0.0.3 VSIX passes ZIP integrity checks and installs in a clean VS Code 1.141.0 profile. Excel/LibreOffice, VS Code Web/remotes, and some visual/accessibility checks remain unverified; the interface is currently Spanish-only.
 
 ## [0.0.2] - 2026-10-11
 
