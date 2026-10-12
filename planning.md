@@ -1038,6 +1038,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 - [x] Enviar deltas con valor/tipo/kind/capability solo si ninguna hoja contiene fórmulas; enviar snapshot completo si las hay.
 - [x] Aplicar deltas solo a la hoja activa, avanzar revisión de paneles en otras hojas y solicitar resync tras desfase; `test:cell-deltas` pasa el caso de metadata XLSX y revisión de otras hojas.
+- [x] Verificar edición real de un XLSX sin fórmulas en Extension Host: el 2026-10-11 se abrió `/private/tmp/sv-v2-17b-minimal.xlsx`, se cambió B2 de 10 a 15, el estado regresó a **Sin cambios** y `xl/worksheets/sheet1.xml` guardado contiene `<v>15</v>`, tres filas y cero fórmulas. `test:filesystem-capability` y `test:cell-deltas` pasan con Node 24.21.0.
 - [ ] Verificar cambios, celdas protegidas, fórmulas y metadatos cruzando Provider y Webview en Extension Host. Los tests locales de delta y capability pasan; el lifecycle actual no inspecciona el render ni el resync en la Webview.
 
 #### V2-19B1 — Cache de offsets de filas proyectadas
