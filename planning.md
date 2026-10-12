@@ -1228,6 +1228,8 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Reejecución de compatibilidad y rendimiento 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:cell-deltas`, `test:grid-layout`, `test:runtime`, `test:filesystem-capability`, `test:xlsm-format` y `test:xlsx-tables` pasan. Esto revalida snapshots incrementales, geometría/virtualización, runtime Web, permisos de escritura, inspección XLSM y creación de tablas XLSX en sus perfiles delimitados. No sustituye medición de scroll en Extension Host, pruebas VS Code Web/remotas ni verificación de la interfaz.
 
+**Reejecución de empaquetado/worker 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:web-target` pasó después de ejecutar `package` (tipos, lint y tres bundles de producción); `test:formula-fill-host` pasó preview/cancelación, referencias relativas, transacción única, undo/redo, guardado y rechazo de revisión obsoleta por el handler. Los warnings de webpack solo reflejan los WASM de 9.26 MiB. Los bundles/assets quedan verificados, pero no se ha ejecutado la extensión en VS Code Web real.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
