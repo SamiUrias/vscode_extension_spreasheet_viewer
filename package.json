@@ -294,6 +294,7 @@
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . --outDir out",
     "test:formulas": "node scripts/test-formulas.js",
+    "test:localization": "npm run compile-tests && node scripts/test-localization.js",
     "test:formula-edits": "npm run compile-tests && node scripts/test-formula-edits.js",
     "test:formula-fill-host": "npm run package && npm run compile-tests && node scripts/test-formula-fill-host.js",
     "test:clipboard": "npm run compile-tests && node scripts/test-clipboard.js",
