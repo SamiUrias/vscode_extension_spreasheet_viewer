@@ -143,7 +143,7 @@ For complete behavior details and examples, see the `CONFIGURATION.md` file incl
 
 ## Development checks
 
-The extension targets VS Code 1.140 or newer. Use Node.js 22 or newer for the development test tools; the VS Code test runner's dependencies use JavaScript syntax that older Node releases cannot parse. The project provides focused local tests and `npm test` for Extension Host coverage. Some host tests need a local VS Code installation or network access to download the configured test host. The latest full suite recorded in `planning.md` passed 113 tests with 1 pending. Some visual, remote-host, accessibility, and external Excel/LibreOffice checks remain open and are tracked there.
+The extension targets VS Code 1.140 or newer. The repository pins Node.js 24.21.0 in `.nvmrc` for repeatable development and test runs (`nvm use`). The test tools require Node.js 22 or newer because the VS Code test runner dependencies use syntax older releases cannot parse. The project provides focused local tests and `npm test` for Extension Host coverage. Some host tests need a local VS Code installation or network access to download the configured test host. The latest full suite recorded in `planning.md` passed 113 tests with 1 pending. Some visual, remote-host, accessibility, and external Excel/LibreOffice checks remain open and are tracked there.
 
 ## Language and support
 

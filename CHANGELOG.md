@@ -6,7 +6,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-No unreleased changes.
+### Fixed
+
+- Formula calculation now loads its packaged WebAssembly resource through the Extension Host, avoiding resource fetch timeouts inside the webview. The formula worker still runs outside the grid UI thread.
 
 ## [0.0.2] - 2026-10-11
 
