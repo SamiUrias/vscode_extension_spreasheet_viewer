@@ -1,4 +1,5 @@
 import { base64ToBytes, bytesToBase64, sha256Hex } from './runtime';
+import { t } from './i18n';
 
 const MAGIC = 'SPREADSHEET-VIEWER-RECOVERY\n';
 const MAX_RECOVERY_BYTES = 32 * 1024 * 1024;
@@ -29,24 +30,24 @@ export async function serializeRecoveryEnvelope(envelope: RecoveryEnvelopeV1): P
 		...(envelope.draft ? { draft: envelope.draft } : {}),
 	};
 	const bytes = new TextEncoder().encode(`${MAGIC}${JSON.stringify(serialized)}`);
-	if (bytes.byteLength > MAX_RECOVERY_BYTES) {throw new Error('La copia de recuperación supera el límite admitido.');}
+	if (bytes.byteLength > MAX_RECOVERY_BYTES) {throw new Error(t('recovery.copyTooLarge'));}
 	return bytes;
 }
 
 /** Returns undefined for legacy raw-file backups; malformed versioned backups are rejected. */
 export async function parseRecoveryEnvelope(bytes: Uint8Array): Promise<RecoveryEnvelopeV1 | undefined> {
-	if (bytes.byteLength > MAX_RECOVERY_BYTES) {throw new Error('La copia de recuperación supera el límite admitido.');}
+	if (bytes.byteLength > MAX_RECOVERY_BYTES) {throw new Error(t('recovery.copyTooLarge'));}
 	const magic = new TextEncoder().encode(MAGIC);
 	if (bytes.length < magic.length || magic.some((byte, index) => bytes[index] !== byte)) {return undefined;}
 	const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 	let candidate: unknown;
 	try {candidate = JSON.parse(text.slice(MAGIC.length));}
-	catch {throw new Error('La copia de recuperación está dañada.');}
-	if (!isEnvelope(candidate)) {throw new Error('La versión o estructura de la copia de recuperación no es compatible.');}
+	catch {throw new Error(t('recovery.copyCorrupted'));}
+	if (!isEnvelope(candidate)) {throw new Error(t('recovery.versionOrStructureUnsupported'));}
 	const baselineBytes = base64ToBytes(candidate.baseline);
 	const workingBytes = base64ToBytes(candidate.working);
 	if (await sha256Hex(baselineBytes) !== candidate.baselineSha256 || await sha256Hex(workingBytes) !== candidate.workingSha256) {
-		throw new Error('La verificación de integridad de la copia de recuperación falló.');
+		throw new Error(t('recovery.integrityCheckFailed'));
 	}
 	return { uri: candidate.uri, baselineBytes, workingBytes, ...(candidate.draft ? { draft: candidate.draft } : {}) };
 }

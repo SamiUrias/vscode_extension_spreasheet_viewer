@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const path = require('node:path');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const catalogs = ['package.nls.json', 'package.nls.es.json'].map(file => ({
@@ -45,6 +46,51 @@ if (keys[0].size !== keys[1].size || [...keys[0]].some(key => !keys[1].has(key))
 for (const [key, sources] of referenced) {
 	for (const { values, file } of catalogs) {
 		if (!(key in values)) errors.push(`${file}: missing referenced key ${key} (${sources.join(', ')})`);
+	}
+}
+
+function readRuntimeCatalog(file) {
+	const source = fs.readFileSync(file, 'utf8');
+	const entries = new Map();
+	for (const match of source.matchAll(/^\s*'([^']+)': '((?:\\.|[^'])*)',?\s*$/gm)) {
+		entries.set(match[1], match[2].replace(/\\'/g, "'").replace(/\\\\/g, '\\'));
+	}
+	return entries;
+}
+
+const runtimeCatalogs = ['src/i18n/messages.ts', 'src/i18n/es.ts'].map(readRuntimeCatalog);
+const runtimeKeys = [...runtimeCatalogs[0].keys()];
+if (runtimeCatalogs[0].size !== runtimeCatalogs[1].size
+	|| runtimeKeys.some(key => !runtimeCatalogs[1].has(key))) {
+	errors.push('English and Spanish runtime catalogs must have exactly the same keys');
+}
+const sourceFiles = [];
+function collectSources(directory) {
+	for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+		const filename = path.join(directory, entry.name);
+		if (entry.isDirectory()) collectSources(filename);
+		else if (filename.endsWith('.ts') && !filename.includes(`${path.sep}i18n${path.sep}`)) sourceFiles.push(filename);
+	}
+}
+collectSources('src');
+const runtimeReferences = new Map();
+for (const file of sourceFiles) {
+	const source = fs.readFileSync(file, 'utf8');
+	for (const match of source.matchAll(/\bt\('([^']+)'/g)) {
+		if (!runtimeReferences.has(match[1])) runtimeReferences.set(match[1], []);
+		runtimeReferences.get(match[1]).push(file);
+	}
+}
+for (const [key, sources] of runtimeReferences) {
+	for (const [index, catalog] of runtimeCatalogs.entries()) {
+		if (!catalog.has(key)) errors.push(`${index === 0 ? 'src/i18n/messages.ts' : 'src/i18n/es.ts'}: missing runtime key ${key} (${sources.join(', ')})`);
+	}
+	const english = runtimeCatalogs[0].get(key);
+	const spanish = runtimeCatalogs[1].get(key);
+	const runtimePlaceholders = value => [...value.matchAll(/\{(\d+)\}/g)].map(match => match[1]).sort();
+	if (english !== undefined && spanish !== undefined
+		&& JSON.stringify(runtimePlaceholders(english)) !== JSON.stringify(runtimePlaceholders(spanish))) {
+		errors.push(`${key}: English/Spanish runtime placeholders differ`);
 	}
 }
 for (const { values, file } of catalogs) {

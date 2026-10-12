@@ -7,6 +7,7 @@ import type { CsvDataMessage, ExtensionToWebviewMessage, SelectSheetMessage, Web
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import { createHeaderSignature, ViewStateRepository, type ViewStateV1 } from './view-state';
 import { delimiterForCsvResource } from './csv-dialect';
+import { t } from './i18n';
 
 type PreviewMode = 'disk' | 'buffer' | 'csv-text';
 type HtmlFactory = (uri: vscode.Uri, webview: vscode.Webview, title?: string) => string;
@@ -139,7 +140,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 	): Promise<void> {
 		const key = sessionKey(uri, mode);
 		const panel = vscode.window.createWebviewPanel('spreadsheet-viewer.preview',
-			`${uriBasename(uri.path) || 'CSV'} · Vista previa`, vscode.ViewColumn.Beside,
+			t('preview.panelTitle', uriBasename(uri.path) || 'CSV'), vscode.ViewColumn.Beside,
 			{ enableScripts: true, retainContextWhenHidden: false, localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')] });
 		const session: PreviewSession = {
 			key, uri, mode, panel, documentId: createUuid(),
@@ -164,8 +165,9 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 			if (isReloadMessage(message)) {void this.refresh(session); return;}
 			if (isCopyMessage(message)) {
 				if (message.text.length > 5 * 1024 * 1024) {
-					void vscode.window.showWarningMessage('El texto copiado supera 5 MiB y puede ser demasiado grande para el portapapeles.', 'Copiar de todos modos')
-						.then(choice => choice === 'Copiar de todos modos' ? writeClipboard(message.text) : undefined);
+					const copyAnyway = t('preview.copyAnyway');
+					void vscode.window.showWarningMessage(t('preview.clipboardTooLarge'), copyAnyway)
+						.then(choice => choice === copyAnyway ? writeClipboard(message.text) : undefined);
 				} else {
 					void writeClipboard(message.text);
 				}
@@ -200,7 +202,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 	private readViewState(session: PreviewSession): ViewStateV1 | undefined {
 		if (!vscode.workspace.getConfiguration('spreadsheet-viewer.view', session.uri).get<boolean>('restoreState', true)) {return undefined;}
 		const state = this.viewStates?.read(session.uri.toString(), 'preview');
-		if (state?.corrupted) {void vscode.window.showWarningMessage('Se ignoró un estado de vista dañado; se abrió la vista previa predeterminada.');}
+		if (state?.corrupted) {void vscode.window.showWarningMessage(t('preview.corruptViewState'));}
 		return state?.state;
 	}
 
@@ -213,8 +215,8 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 
 	private postSnapshot(session: PreviewSession, requestId?: number): void {
 		if (!session.ready) {return;}
-		const sourceStatus = session.textDocument?.isDirty ? 'Cambios sin guardar en el buffer.'
-			: session.mode === 'disk' ? 'Datos leídos desde disco.' : 'Vista previa del buffer actual.';
+		const sourceStatus = session.textDocument?.isDirty ? t('preview.unsavedBufferChanges')
+			: session.mode === 'disk' ? t('preview.readFromDisk') : t('preview.currentBufferPreview');
 		let message: CsvDataMessage | XlsxDataMessage;
 		if (session.csv) {
 			const csvSettings = vscode.workspace.getConfiguration('spreadsheet-viewer.csv');
@@ -346,7 +348,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 	}
 
 	private async parseBytesWithPrompt(uri: vscode.Uri, bytes: Uint8Array, options: CsvParseOptions): Promise<CsvTable> {
-		if (bytes.byteLength > MAX_CSV_BYTES) {throw new Error('El archivo excede el límite de 10 MiB para CSV.');}
+		if (bytes.byteLength > MAX_CSV_BYTES) {throw new Error(t('preview.csvTooLarge'));}
 		try {
 			const table = parseCsvBytes(bytes, options);
 			options.delimiter ??= table.delimiter;
@@ -357,8 +359,8 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 			const delimiter = await vscode.window.showQuickPick(error.delimiters.map(value => ({
 				label: value === '\t' ? 'Tabulador (TAB)' : value,
 				description: `Separador ${JSON.stringify(value)}`, value,
-			})), { title: `Elige el separador para ${uriBasename(uri.path) || 'CSV'}` });
-			if (!delimiter) {throw new Error('Se canceló la selección del dialecto CSV.');}
+			})), { title: t('preview.chooseDelimiter', uriBasename(uri.path) || 'CSV') });
+			if (!delimiter) {throw new Error(t('preview.delimiterSelectionCancelled'));}
 			options.delimiter = delimiter.value;
 			const table = parseCsvBytes(bytes, options);
 			options.delimiter ??= table.delimiter;
@@ -405,6 +407,6 @@ function isCopyMessage(message: unknown): message is { type: 'copyToClipboard'; 
 }
 async function writeClipboard(text: string): Promise<void> {
 	try {await vscode.env.clipboard.writeText(text);}
-	catch (error) {void vscode.window.showErrorMessage(`No se pudo copiar la selección: ${errorMessage(error)}`);}
+	catch (error) {void vscode.window.showErrorMessage(t('preview.copyFailed', errorMessage(error)));}
 }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

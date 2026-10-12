@@ -3,8 +3,10 @@ import { SpreadsheetEditorProvider, resolveDirtyTextBuffer } from './editor';
 import { SpreadsheetPreviewProvider } from './preview';
 import { isStdinTempPath, isSupportedCsvLanguageId } from './csv-dialect';
 import { getStdinTemporaryDirectory } from './stdin-config';
+import { configureLocale, t } from './i18n';
 
 export function activateCore(context: vscode.ExtensionContext): void {
+	configureLocale(vscode.env.language);
 	const provider = new SpreadsheetEditorProvider(context.extensionUri, context.workspaceState);
 	const previews = new SpreadsheetPreviewProvider(context.extensionUri, (uri, webview, label) => provider.getHtml(uri, webview, label), context.workspaceState);
 	const stdinAttempts = new Set<string>();
@@ -18,7 +20,7 @@ export function activateCore(context: vscode.ExtensionContext): void {
 		stdinAttempts.add(key);
 		void previews.openBuffer(document.uri).then(() => stdinAttempts.delete(key), error => {
 			stdinAttempts.delete(key);
-			void vscode.window.showErrorMessage(`No se pudo abrir la vista previa de stdin: ${error instanceof Error ? error.message : String(error)}`);
+			void vscode.window.showErrorMessage(t('host.stdinPreviewFailed', error instanceof Error ? error.message : String(error)));
 		});
 	};
 	const stdinOpenListener = vscode.workspace.onDidOpenTextDocument(maybePreviewStdin);
@@ -46,8 +48,8 @@ export function activateCore(context: vscode.ExtensionContext): void {
 			const uri = explicitResource ? resource : getActiveResource();
 			if (!isUri(uri) || !isSupportedSpreadsheetUri(uri)) {
 				void vscode.window.showErrorMessage(explicitResource
-					? 'El recurso seleccionado no es una hoja compatible (.csv, .tsv, .tab, .xlsx, .xlsm u .ods).'
-					: 'Abre o selecciona un archivo .csv, .tsv, .tab, .xlsx, .xlsm u .ods para visualizarlo.');
+					? t('host.invalidSelectedSpreadsheet')
+					: t('host.openSpreadsheetFirst'));
 				return;
 			}
 			try {
@@ -55,39 +57,39 @@ export function activateCore(context: vscode.ExtensionContext): void {
 				await provider.open(uri);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				void vscode.window.showErrorMessage(`No se pudo abrir la hoja: ${message}`);
+				void vscode.window.showErrorMessage(t('host.openSpreadsheetFailed', message));
 			}
 		}),
 		vscode.commands.registerCommand('spreadsheet-viewer.preview', async (resource: unknown) => {
 			const uri = resource === undefined ? getActiveResource() : resource;
 			if (!isUri(uri) || !isSupportedSpreadsheetUri(uri)) {
-				void vscode.window.showErrorMessage('Selecciona una hoja compatible para abrir su vista previa.');
+				void vscode.window.showErrorMessage(t('host.selectSpreadsheetPreview'));
 				return;
 			}
 			try { await previews.openDisk(uri); }
-			catch (error) { void vscode.window.showErrorMessage(`No se pudo abrir la vista previa: ${error instanceof Error ? error.message : String(error)}`); }
+		catch (error) { void vscode.window.showErrorMessage(t('host.previewFailed', error instanceof Error ? error.message : String(error))); }
 		}),
 		vscode.commands.registerCommand('spreadsheet-viewer.previewBuffer', async (resource: unknown) => {
 			const uri = resource === undefined ? getActiveResource() : resource;
 			if (!isUri(uri) || !/\.(csv|tsv|tab)$/i.test(uri.path)) {
-				void vscode.window.showErrorMessage('La vista previa de buffer admite CSV, TSV y TAB. Para otros archivos usa «Vista previa como CSV».');
+				void vscode.window.showErrorMessage(t('host.bufferPreviewFormats'));
 				return;
 			}
 			try { await previews.openBuffer(uri); }
-			catch (error) { void vscode.window.showErrorMessage(`No se pudo abrir la vista previa del buffer: ${error instanceof Error ? error.message : String(error)}`); }
+		catch (error) { void vscode.window.showErrorMessage(t('host.bufferPreviewFailed', error instanceof Error ? error.message : String(error))); }
 		}),
 		vscode.commands.registerCommand('spreadsheet-viewer.previewCsv', async (resource: unknown) => {
 			const uri = resource === undefined ? getActiveResource() : resource;
 			if (!isUri(uri)) {
-				void vscode.window.showErrorMessage('Selecciona un archivo o abre un documento de texto para previsualizarlo como CSV.');
+				void vscode.window.showErrorMessage(t('host.selectCsvPreview'));
 				return;
 			}
 			try { await previews.openBuffer(uri, true); }
-			catch (error) { void vscode.window.showErrorMessage(`No se pudo previsualizar como CSV: ${error instanceof Error ? error.message : String(error)}`); }
+		catch (error) { void vscode.window.showErrorMessage(t('host.csvPreviewFailed', error instanceof Error ? error.message : String(error))); }
 		}),
 		vscode.commands.registerCommand('spreadsheet-viewer.resetView', (resource: unknown) => {
 			const uri = resource === undefined ? getActiveResource() : resource;
-			if (!isUri(uri)) {void vscode.window.showErrorMessage('Selecciona una hoja para restablecer su vista.'); return;}
+			if (!isUri(uri)) {void vscode.window.showErrorMessage(t('host.selectSpreadsheetReset')); return;}
 			provider.resetView(uri);
 			previews.resetView(uri);
 		}),

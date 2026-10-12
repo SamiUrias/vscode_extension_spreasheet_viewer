@@ -4,8 +4,12 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { replaceFile, readBackup, writeBackup, deleteBackup } from '../storage';
+import { configureLocale, getLocale } from '../i18n';
 
 suite('Spreadsheet storage', () => {
+	let originalLocale = getLocale();
+	setup(() => {originalLocale = getLocale(); configureLocale('es');});
+	teardown(() => configureLocale(originalLocale));
 	test('replaces a verified temporary copy and refuses an unexpected disk version', async () => {
 		const directory = await mkdtemp(path.join(os.tmpdir(), 'spreadsheet-viewer-storage-'));
 		const uri = vscode.Uri.file(path.join(directory, 'data.csv'));

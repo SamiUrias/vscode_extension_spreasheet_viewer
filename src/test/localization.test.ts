@@ -25,6 +25,17 @@ suite('Runtime localization', () => {
 		assert.strictEqual(t('ui.actionFailed', 'guardar', 'documento'), 'No se pudo guardar documento.');
 	});
 
+	test('localizes host, preview, storage, and recovery messages in both catalogs', () => {
+		configureLocale('en');
+		assert.strictEqual(t('preview.panelTitle', 'sales.csv'), 'sales.csv · Preview');
+		assert.strictEqual(t('storage.restoreFailedBackupKept', '/tmp/backup'), 'The save failed and the original file could not be restored. A recovery copy was kept at /tmp/backup.');
+		assert.strictEqual(t('recovery.copyCorrupted'), 'The recovery copy is corrupted.');
+		configureLocale('es');
+		assert.strictEqual(t('preview.panelTitle', 'ventas.csv'), 'ventas.csv · Vista previa');
+		assert.strictEqual(t('storage.restoreFailedBackupKept', '/tmp/respaldo'), 'Falló el guardado y no se pudo restaurar el archivo original. Se conservó una copia de recuperación en /tmp/respaldo.');
+		assert.strictEqual(t('recovery.copyCorrupted'), 'La copia de recuperación está dañada.');
+	});
+
 	test('keeps English fallback for defensive missing translations', () => {
 		configureLocale('es');
 		const catalog = es as Record<string, string | undefined>;

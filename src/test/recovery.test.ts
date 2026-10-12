@@ -1,7 +1,11 @@
 import * as assert from 'node:assert/strict';
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../recovery';
+import { configureLocale, getLocale } from '../i18n';
 
 suite('recovery envelope', () => {
+	let originalLocale = getLocale();
+	setup(() => {originalLocale = getLocale(); configureLocale('es');});
+	teardown(() => configureLocale(originalLocale));
 	test('round-trips baseline, working bytes, URI, and an uncommitted cell draft', async () => {
 		const envelope = { uri: 'file:///work/data.csv', baselineBytes: new TextEncoder().encode('a,b\n1,2'), workingBytes: new TextEncoder().encode('a,b\n1,3'), draft: { sheetIndex: 0, row: 1, column: 0, value: 'draft' } };
 		const restored = await parseRecoveryEnvelope(await serializeRecoveryEnvelope(envelope));

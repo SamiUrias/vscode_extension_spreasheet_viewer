@@ -161,6 +161,8 @@ Las subtarjetas ML-03C y ML-02 son independientes de la traducción webview. Est
 
 ### ML-03A/B/C — Host y mensajes compartidos
 
+**ML-03A implementada (2026-10-11):** `activateCore` configura `vscode.env.language` antes de crear providers; las entradas Node y Web delegan a esa función. Se localizaron los mensajes propios de `extension.ts`, `preview.ts`, `storage.ts`, `storage-node.ts` y `recovery.ts`, incluido título y modeLabel de preview. Se conservan `sourceMode`, URI, contenido, límites técnicos, errores externos y semántica IO. Se añadieron mensajes completos es/en con placeholders equivalentes, tests puros de runtime/catálogos en `test:localization` y verificación de claves/placeholders runtime en `check:localization`; se actualizaron ambos inventarios. Pendiente de este bloque: suite de Extension Host, no ejecutada por los fallos SIGABRT/ENOTFOUND ya documentados en ML-01B/02.
+
 - ML-03A: configurar locale al inicio de activateCore; traducir `extension.ts`, `preview.ts`, textos propios `storage.ts`/`storage-node.ts`/`recovery.ts` y sus mensajes mostrados. Traducir título preview y modeLabel con helper. Conservar sourceMode/URI y contenido.
 - ML-03B: migrar bloques `editor.ts` por grupos: apertura/carga/dialectos; save/reload/conflicto/backup; edit/copy/drafts; formula/fill; structure/table/sheet/move/style; eventos de historial/output. `getHtml` se hace en ML-04A.
 - ML-03C: migrar validaciones/warnings/capabilities de dominio/adaptadores y formula help. No importar vscode. Usar strings formateados actuales como argumentos, manteniendo rutas, códigos, nombres y XML intactos. Corregir conteos de UI con `formatUiNumber`; no tocar serialización.

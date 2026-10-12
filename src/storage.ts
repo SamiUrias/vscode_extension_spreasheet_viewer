@@ -3,6 +3,7 @@ import { isWritableFileSystem } from './filesystem-capability';
 import { createUuid } from './runtime';
 import { uriBasename, uriDirname, uriJoin } from './uri-path';
 import { ExternalFileConflictError } from './user-errors';
+import { t } from './i18n';
 
 type LocalFileReplaceAdapter = (uri: vscode.Uri, bytes: Uint8Array, expected?: Uint8Array, isCancelled?: () => boolean) => Promise<void>;
 let localFileReplaceAdapter: LocalFileReplaceAdapter | undefined;
@@ -14,13 +15,13 @@ export function setLocalFileReplaceAdapter(adapter: LocalFileReplaceAdapter): vo
 /** Replace a resource through a verified sibling temporary file. */
 export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?: Uint8Array, isCancelled: () => boolean = () => false): Promise<void> {
 	if (!isWritableFileSystem(vscode.workspace.fs.isWritableFileSystem(uri.scheme))) {
-		throw new Error('El proveedor de archivos no confirma permisos de escritura; el documento se conserva sin guardar.');
+		throw new Error(t('storage.writePermissionUnconfirmed'));
 	}
 	if (uri.scheme === 'file' && localFileReplaceAdapter) {return localFileReplaceAdapter(uri, bytes, expected, isCancelled);}
 	if (isCancelled()) {throw new vscode.CancellationError();}
 	let original = await readIfExists(uri);
 	if (expected && (!original || !equalBytes(original, expected))) {
-		throw new ExternalFileConflictError('El archivo cambió en disco desde que se abrió. Recárgalo antes de guardar.');
+		throw new ExternalFileConflictError(t('storage.fileChangedSinceOpen'));
 	}
 	const temporary = uri.with({ path: uriJoin(uriDirname(uri.path), `.${uriBasename(uri.path)}.spreadsheet-viewer-${createUuid()}.tmp`) });
 	const backup = original
@@ -31,23 +32,23 @@ export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?:
 	try {
 		await vscode.workspace.fs.writeFile(temporary, bytes);
 		const verification = await vscode.workspace.fs.readFile(temporary);
-		if (!equalBytes(verification, bytes)) {throw new Error('No se pudo verificar el archivo temporal antes de reemplazar el destino.');}
+		if (!equalBytes(verification, bytes)) {throw new Error(t('storage.temporaryFileVerificationFailed'));}
 		if (original) {
 			const latest = await readIfExists(uri);
 			if (!latest || !equalBytes(latest, original)) {
-				throw new ExternalFileConflictError('El archivo cambió en disco durante el guardado; se conservó la versión externa.');
+				throw new ExternalFileConflictError(t('storage.fileChangedDuringSave'));
 			}
 		}
 		if (isCancelled()) {throw new vscode.CancellationError();}
 		if (backup && original) {
 			await vscode.workspace.fs.writeFile(backup, original);
 			const backupVerification = await vscode.workspace.fs.readFile(backup);
-			if (!equalBytes(backupVerification, original)) {throw new Error('No se pudo verificar la copia temporal de recuperación.');}
+			if (!equalBytes(backupVerification, original)) {throw new Error(t('storage.temporaryRecoveryCopyVerificationFailed'));}
 			backupReady = true;
 		}
 		await vscode.workspace.fs.rename(temporary, uri, { overwrite: true });
 		const saved = await vscode.workspace.fs.readFile(uri);
-		if (!equalBytes(saved, bytes)) {throw new Error('El archivo reemplazado no coincide con los datos guardados.');}
+		if (!equalBytes(saved, bytes)) {throw new Error(t('storage.replacedFileMismatch'));}
 	} catch (error) {
 		if (backup && original && backupReady) {
 			try {
@@ -55,15 +56,15 @@ export async function replaceFile(uri: vscode.Uri, bytes: Uint8Array, expected?:
 				if (!current) {
 					await vscode.workspace.fs.writeFile(uri, original);
 					const restored = await vscode.workspace.fs.readFile(uri);
-					if (!equalBytes(restored, original)) {throw new Error('La verificación de restauración no coincide.');}
+					if (!equalBytes(restored, original)) {throw new Error(t('storage.restoreVerificationMismatch'));}
 				} else if (!equalBytes(current, original)) {
 					preserveBackup = true;
-					throw new Error(`El destino cambió durante el fallo; se conservó una copia de recuperación en ${backup.toString()}.`);
+					throw new Error(t('storage.destinationChangedBackupKept', backup.toString()));
 				}
 			} catch (restoreError) {
-				if (restoreError instanceof Error && restoreError.message.includes(backup.toString())) {throw restoreError;}
+				if (preserveBackup) {throw restoreError;}
 				preserveBackup = true;
-				throw new Error(`Falló el guardado y no se pudo restaurar el archivo original. Se conservó una copia de recuperación en ${backup.toString()}.`, { cause: error });
+				throw new Error(t('storage.restoreFailedBackupKept', backup.toString()), { cause: error });
 			}
 		}
 		throw error;
@@ -88,7 +89,7 @@ export async function writeBackup(uri: vscode.Uri, bytes: Uint8Array): Promise<v
 	await vscode.workspace.fs.writeFile(uri, bytes);
 	const verified = await vscode.workspace.fs.readFile(uri);
 	if (!equalBytes(verified, bytes)) {
-		throw new Error('No se pudo verificar la copia de recuperación.');
+		throw new Error(t('storage.recoveryCopyVerificationFailed'));
 	}
 }
 
