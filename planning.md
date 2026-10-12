@@ -1224,6 +1224,8 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Reejecución 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:edit-batch-host`, `test:csv-row-operations`, `test:presentation`, `test:xlsx-sheets` y `test:xlsx-styles` pasan. Cubren el handler de acciones CSV y su confirmación/foco/undo-redo, preservación estructural CSV, formatos de presentación, gestión de hojas XLSX y estilo/merge/pane con undo. La selección y el modal en la UI continúan pendientes; CUA no pudo adjuntarse a la ventana de Extension Host (detalle registrado en V2-14B). No se infiere de estas suites una certificación visual ni de accesibilidad.
 
+**Reejecución adicional 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:xlsx-structure`, `test:move-range`, `test:fill`, `test:formula-edits` y `test:formula-references` terminan con código 0. Se comprobaron preflight/serialización estructural, movimiento rectangular, cálculo de relleno, edición asistida de fórmulas y referencias con el parser. Los checks no validan los menús de V2-17B, escritura desde la UI ni reparación en Excel; esos puntos siguen pendientes en sus tarjetas.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
