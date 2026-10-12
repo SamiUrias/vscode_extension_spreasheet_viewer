@@ -6,13 +6,23 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-### Añadido
+No unreleased changes.
 
-- Al añadir una fila a un CSV completamente vacío, se puede elegir cuántos campos tendrá el primer registro.
+## [0.0.2] - 2026-10-11
 
-### Corregido
+### Added
 
-- Un backup recuperado respeta el modo de guardado manual y no escribe cambios al archivo hasta que el usuario los guarde.
+- When appending the first row to a completely empty CSV, choose how many fields the record should contain.
+
+### Fixed
+
+- Recovered backups now remain pending when manual-save mode is enabled, instead of being written to disk automatically.
+- The README now documents the implemented in-sheet range move and no longer says that moving ranges is unavailable.
+
+### Verified
+
+- Production package, type checks, and lint pass. CSV row operations and recovery lifecycle tests pass, including the empty-file first row and manual-save recovery behavior. Focused formula-fill host coverage verifies preview cancellation, relative references, one-step undo/redo, save scheduling, and stale-revision rejection.
+- The broader V2 suite and Extension Host checks are documented in `planning.md`; visual and external-application checks remain open.
 
 ## [0.0.1] - 2026-10-11
 

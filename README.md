@@ -1,6 +1,6 @@
 # Spreadsheet Viewer by Samuel Urias
 
-**View, search, sort, filter, and edit CSV, TSV, TAB, XLSX, and ODS files without leaving VS Code.** Spreadsheet Viewer keeps the values stored in your files visible and lets you save cell edits back to the original document. XLSM workbooks open read-only.
+**View, search, sort, filter, and edit CSV, TSV, TAB, XLSX, and ODS files without leaving VS Code.** Spreadsheet Viewer keeps the values stored in your files visible and lets you save changes back to the original document. XLSM workbooks open read-only.
 
 > **Language:** The extension's interface is currently in **Spanish**. This Marketplace page is in English. English interface translations are planned for a future release.
 
@@ -59,7 +59,9 @@ Sorting and filtering only change the visible projection. The source rows and th
 - Use the cell reference field to jump to a location such as `B54`.
 - Use the search field and its previous/next controls to move through matches in the active sheet.
 
-Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Paste TSV into the focused grid to apply the whole range as one undoable edit; a single value fills the selected range. Press `Delete` or `Backspace` to clear selected contents. Paste and clear are disabled for sorted, filtered, or searched views to prevent changes landing on unexpected rows. Formulas and unsupported cells are rejected by the edit preflight. Moving ranges is not available yet.
+Range selection follows the visible order and skips filtered-out rows. Press `Ctrl+C` (`Cmd+C` on macOS) while the grid has focus to copy raw values. The **Copiar mostrado** and **Copiar con encabezados** buttons provide the other variants. TSV quoting preserves tabs, line breaks, quotes, Unicode, and empty cells. Paste TSV into the focused grid to apply the whole range as one undoable edit; a single value fills the selected range. Press `Delete` or `Backspace` to clear selected contents. Paste and clear are disabled for sorted, filtered, or searched views to prevent changes landing on unexpected rows. Formulas and unsupported cells are rejected by the edit preflight.
+
+To move plain values within a sheet, choose **Cortar rango** and then **Pegar movimiento** at the destination. The move requires an unfiltered, unsorted, unsearched view and is confirmed as one undoable operation. Formula cells, merged cells, protected sheets, and unsupported workbook structures are rejected. Copying to an external clipboard or pasting external text never deletes the source.
 
 For editable CSV files, **Insertar fila** adds an empty row below the selection, **Añadir fila** adds one at the end, and **Eliminar fila(s)** removes the selected range after confirmation. If the CSV has no rows or columns, **Añadir fila** asks how many fields the first record should contain. The actions are disabled while sorting, filtering, or searching; their visibility is controlled by `spreadsheet-viewer.csv.showRowActions`.
 
@@ -141,7 +143,7 @@ For complete behavior details and examples, see the `CONFIGURATION.md` file incl
 
 ## Development checks
 
-The extension targets VS Code 1.140 or newer. Use Node.js 22 or newer for the development test tools; the VS Code test runner's dependencies use JavaScript syntax that older Node releases cannot parse. The project provides focused local tests and `npm test` for Extension Host coverage. Some host tests need a local VS Code installation or network access to download the configured test host. A build or unit test does not replace checks in the VS Code Extension Host or opening saved workbook copies in Excel or LibreOffice.
+The extension targets VS Code 1.140 or newer. Use Node.js 22 or newer for the development test tools; the VS Code test runner's dependencies use JavaScript syntax that older Node releases cannot parse. The project provides focused local tests and `npm test` for Extension Host coverage. Some host tests need a local VS Code installation or network access to download the configured test host. The latest full suite recorded in `planning.md` passed 113 tests with 1 pending. Some visual, remote-host, accessibility, and external Excel/LibreOffice checks remain open and are tracked there.
 
 ## Language and support
 

@@ -2,8 +2,8 @@
   "name": "spreadsheet-viewer",
   "displayName": "Spreadsheet Viewer by Samuel Urias",
   "publisher": "SamuelUrias",
-  "description": "View and edit CSV, TSV, TAB, XLSX, XLSM, and ODS spreadsheets in VS Code, with raw values, search, sorting, filters, and save-to-file support.",
-  "version": "0.0.1",
+  "description": "View and edit CSV, TSV, TAB, XLSX, and ODS in VS Code. Search, sort, filter, edit formulas, and save supported files. XLSM opens read-only.",
+  "version": "0.0.2",
   "license": "MIT",
   "keywords": [
     "spreadsheet",

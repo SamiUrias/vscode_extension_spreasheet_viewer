@@ -17,16 +17,26 @@ class FileUri {
 }
 
 class CancellationError extends Error {}
+class MockFileSystemError extends Error {
+	constructor(code) {super(code); this.code = code;}
+}
 let warningChoice;
 let configuredSaveOnCommit;
 const vscode = {
 	CancellationError,
+	FileSystemError: MockFileSystemError,
 	FileType: { File: 1 },
 	Uri: FileUri,
 	workspace: {
 		fs: {
 			isWritableFileSystem: () => true,
-			async readFile(uri) {return new Uint8Array(await readFile(uri.fsPath));},
+			async readFile(uri) {
+				try {return new Uint8Array(await readFile(uri.fsPath));}
+				catch (error) {
+					if (error.code === 'ENOENT') {throw new MockFileSystemError('FileNotFound');}
+					throw error;
+				}
+			},
 			async writeFile(uri, bytes) {await writeFile(uri.fsPath, bytes);},
 			async createDirectory(uri) {await mkdir(uri.fsPath, { recursive: true });},
 			async delete(uri) {await rm(uri.fsPath, { force: true, recursive: true });},
