@@ -127,6 +127,17 @@ Hay dependencias reales confirmadas que no deben sobrevivir como comparaciones c
 
 Las subtarjetas ML-03C y ML-02 son independientes de la traducción webview. Esta dependencia permite seguir avanzando si una comprobación GUI falla por entorno. El release requiere completar los cambios funcionales de las tres superficies; los checkpoints intermedios pueden mostrar partes aún sin traducir y no se anuncian como bilingües terminados.
 
+### Punto de reanudación — checklist
+
+- [x] **ML-04A** — HTML inicial de `getHtml`, locale temprano, protocolo `ready` editor/preview y locale del worker. Commit `e1babd5`. Pasaron `check-types`, `lint`, `check:localization`, `test:localization`, `npm run package` y `test:web-target` en Node 24.21.0.
+- [x] **ML-05A (checkpoint parcial)** — startup/data, grid renderer, selección/celda/fórmulas, save/reload, estados de hojas y preview readonly. Commit `99a6e18`. Pasaron `check-types`, `check:localization`, `test:localization` y `git diff --check` en Node 24.21.0. No se ejecutaron lint/package/web-target en este checkpoint.
+- [ ] **Siguiente: ML-05B** — localizar búsqueda, orden, filtros, chips/popup/operadores y controles de autoajuste, freeze y wrap; actualizar catálogo/inventario, validar con tests focalizados y hacer commit.
+- [ ] **Después: ML-05C** — localizar acciones y estados de rango, copiar/cortar/rellenar/mover y operaciones CSV/XLSX/estructura/estilo/hojas/tablas; usar IDs estables para decisiones y prompts, añadir pruebas pertinentes y hacer commit.
+- [ ] **ML-06A** — auditoría de strings e invariantes de datos entre idiomas, README/CONFIGURATION/CHANGELOG, inventario final y smoke es/en si el Extension Host funciona.
+- [ ] **ML-06B** — preparar y verificar VSIX/release 1.0.0. No publicar sin autorización explícita.
+
+**Al retomar:** continuar directamente en ML-05B; no repetir ML-04A/ML-05A salvo que una prueba posterior encuentre una regresión concreta. Los mensajes activos se miden con `python3 /Users/samuelurias/Downloads/codex_usage.py --json` fuera del sandbox; cerrar un checkpoint y detener el trabajo al quedar 15% o menos en la ventana de cinco horas. La prueba de Extension Host y el smoke visual es/en continúan pendientes por el `SIGABRT`/`ENOTFOUND` de VS Code 1.141.0; no quedarse bloqueado en ese entorno, registrar el pendiente y seguir con validaciones locales.
+
 ### ML-01A — Inventario y helper
 
 **Estado local (implementada; 2026-10-11):** helper puro `src/i18n/index.ts`, catálogos ingles/español con 8 mensajes iniciales y glosario/inventario inicial creados. `src/test/localization.test.ts`, `scripts/test-localization.js` y `npm run test:localization` cubren locales regionales, inglés fallback, placeholders repetidos/reordenados y datos `$`/llaves, fallback defensivo y formato numérico UI. `npm run check-types` pasa; lint y test focalizado pasan con Node 24.21.0. En Node 18.20.4, `npm run lint` falla en el formatter de ESLint por `util.styleText is not a function`; ejecución directa de ESLint con Node 24.21.0 pasa (dos warnings de estilo corregidos y lint final pendiente de repetir). No se migró UI ni manifiesto. **Pendiente:** ampliar inventario y catálogos al migrar cada superficie; migración de UI, NLS, bootstrap/worker y verificaciones reales pertenecen a tarjetas posteriores.
