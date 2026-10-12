@@ -7,6 +7,15 @@ export interface FormulaEvaluation {
 	readonly reason?: 'unsupported-function' | 'invalid-name' | 'formula-error' | 'spill' | 'date-format' | 'date-system';
 }
 
+export type UiLocale = 'en' | 'es';
+export interface LocalizationMessage { type: 'localization'; locale: UiLocale; }
+
+export function localizationLocaleFromMessage(value: unknown): UiLocale | undefined {
+	if (typeof value !== 'object' || value === null || !('type' in value) || value.type !== 'localization'
+		|| !('locale' in value) || (value.locale !== 'en' && value.locale !== 'es')) {return undefined;}
+	return value.locale;
+}
+
 /** Minimal startup handshake shared by the extension and its webview. */
 export interface WebviewReadyMessage {
 	type: 'ready';
@@ -242,5 +251,5 @@ export interface ClearSortButtonVisibilityMessage { type: 'clearSortButtonVisibi
 export interface FormulaEditingVisibilityMessage { type: 'formulaEditingVisibility'; visible: boolean; }
 export interface FormulaAssistanceVisibilityMessage { type: 'formulaAssistanceVisibility'; visible: boolean; }
 
-export type ExtensionToWebviewMessage = CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | FormulaWasmDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | FormulaFillActionsVisibilityMessage | TableActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
+export type ExtensionToWebviewMessage = LocalizationMessage | CsvDataMessage | XlsxDataMessage | CellEditDeltaMessage | WorkbookCellEditDeltaMessage | FormulaWasmDataMessage | SaveStateMessage | ReloadStateMessage | SortStateMessage | RestoreViewStateMessage | ResetViewButtonVisibilityMessage | ClearSortButtonVisibilityMessage | FormulaEditingVisibilityMessage | FormulaAssistanceVisibilityMessage | CopyButtonVisibilityMessage | DisplayModeButtonVisibilityMessage | WorkbookAppearanceVisibilityMessage | FillActionsVisibilityMessage | FormulaFillActionsVisibilityMessage | TableActionsVisibilityMessage | CsvRowActionsVisibilityMessage | XlsxStructureActionsVisibilityMessage | FocusCellMessage | RestoreCellDraftMessage | DiscardCellDraftMessage | DraftStateChangedMessage | CaptureDraftMessage;
 

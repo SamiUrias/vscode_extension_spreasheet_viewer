@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import es from '../i18n/es';
-import { configureLocale, formatUiNumber, getLocale, resolveLocale, t } from '../i18n';
+import { configureLocale, formatUiNumber, getLocale, resolveLocale, setActiveLocale, t } from '../i18n';
+import { localizationLocaleFromMessage } from '../protocol';
 
 suite('Runtime localization', () => {
 	let originalLocale = getLocale();
@@ -17,6 +18,19 @@ suite('Runtime localization', () => {
 		configureLocale('de');
 		assert.strictEqual(getLocale(), 'en');
 		assert.strictEqual(t('ui.loading'), 'Loading spreadsheet…');
+	});
+
+	test('accepts repeated locale messages and ignores unknown payloads without changing locale', () => {
+		configureLocale('es');
+		for (const payload of [{ type: 'data', locale: 'en' }, { type: 'localization', locale: 'fr' }, null, 'localization']) {
+			assert.strictEqual(localizationLocaleFromMessage(payload), undefined);
+			assert.strictEqual(getLocale(), 'es');
+		}
+		for (let index = 0; index < 2; index++) {
+			const locale = localizationLocaleFromMessage({ type: 'localization', locale: 'en' });
+			assert.strictEqual(setActiveLocale(locale), 'en');
+		}
+		assert.strictEqual(getLocale(), 'en');
 	});
 
 	test('uses Spanish and safely interpolates repeated, reordered, and dollar data', () => {

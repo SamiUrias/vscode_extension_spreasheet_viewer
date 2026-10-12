@@ -1,4 +1,5 @@
 import type { FormulaEvaluation } from '../protocol';
+import { configureLocale, t } from '../i18n';
 
 declare let __webpack_public_path__: string;
 
@@ -12,6 +13,7 @@ interface FormulaCalculationRequest {
 	rows?: readonly (readonly string[])[];
 	wasmBaseUri: string;
 	wasmBase64: string;
+	locale: 'en' | 'es';
 }
 
 interface FormulaCalculationResponse {
@@ -37,6 +39,8 @@ workerScope.addEventListener('message', event => {
 
 async function calculate(request: FormulaCalculationRequest): Promise<void> {
 	try {
+		configureLocale(typeof request.locale === 'string' ? request.locale : '');
+		if (request.locale !== 'en' && request.locale !== 'es') {throw new Error(t('worker.invalidLocale'));}
 		// The worker is loaded from a blob URL, so point webpack at the extension's
 		// resource URI. Serve the large WASM response from bytes sent by the host;
 		// the vscode-resource proxy can time out on a direct 9.7 MB fetch.
@@ -59,7 +63,7 @@ async function calculate(request: FormulaCalculationRequest): Promise<void> {
 
 function installWasmFetch(wasmBase64: string): void {
 	if (wasmFetchInstalled) {return;}
-	if (!wasmBase64) {throw new Error('No se recibieron los bytes del motor WASM de fórmulas.');}
+	if (!wasmBase64) {throw new Error(t('worker.wasmMissing'));}
 	const wasmBytes = decodeBase64(wasmBase64);
 	const responseBytes = new ArrayBuffer(wasmBytes.byteLength);
 	new Uint8Array(responseBytes).set(wasmBytes);

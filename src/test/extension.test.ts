@@ -6,8 +6,46 @@ import { readFileSync } from 'node:fs';
 import * as vscode from 'vscode';
 import { zipSync } from 'fflate';
 import { isSupportedSpreadsheetUri } from '../extension';
+import { SpreadsheetEditorProvider } from '../editor';
+import { configureLocale } from '../i18n';
 
 suite('Spreadsheet Viewer editor', () => {
+	test('renders initial HTML labels by locale and escapes file and mode labels', () => {
+		const workspaceState = {
+			get: () => undefined,
+			update: async () => undefined,
+			keys: () => [],
+		} as unknown as vscode.Memento;
+		const provider = new SpreadsheetEditorProvider(vscode.Uri.file('/tmp'), workspaceState);
+		const webview = {
+			cspSource: 'https://webview.test',
+			asWebviewUri: (uri: vscode.Uri) => vscode.Uri.parse(`https://webview.test/${uri.path.split('/').pop()}`),
+		} as unknown as vscode.Webview;
+		const uri = vscode.Uri.file('/tmp/<report "&.csv');
+		try {
+			configureLocale('en');
+			const english = provider.getHtml(uri, webview, '<mode "&>');
+			assert.ok(english.includes('<html lang="en">'));
+			assert.ok(english.includes('Loading spreadsheet…'));
+			assert.ok(english.includes('Copy the raw selection as TSV; formulas are copied as expressions.'));
+			assert.ok(english.includes('aria-label="Copy selection"'));
+			assert.ok(english.includes('placeholder="Text or value"'));
+			assert.ok(english.includes('&lt;report &quot;&amp;.csv'));
+			assert.ok(english.includes('&lt;mode &quot;&amp;&gt;'));
+
+			configureLocale('es-MX');
+			const spanish = provider.getHtml(uri, webview);
+			assert.ok(spanish.includes('<html lang="es">'));
+			assert.ok(spanish.includes('Cargando hoja de cálculo…'));
+			assert.ok(spanish.includes('Copia la selección cruda en TSV; las fórmulas se copian como expresión.'));
+			assert.ok(spanish.includes('aria-label="Copiar selección"'));
+			assert.ok(spanish.includes('placeholder="Texto o valor"'));
+			assert.ok(spanish.includes('&lt;report &quot;&amp;.csv'));
+		} finally {
+			configureLocale(vscode.env.language);
+			provider.dispose();
+		}
+	});
 	test('declares read-only spreadsheet viewing safe in untrusted workspaces', () => {
 		const extension = vscode.extensions.all.find(item => item.packageJSON.name === 'spreadsheet-viewer');
 		assert.ok(extension);

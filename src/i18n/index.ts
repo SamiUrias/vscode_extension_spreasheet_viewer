@@ -15,6 +15,12 @@ export function configureLocale(language: string): void {
 	locale = resolveLocale(language);
 }
 
+export function setActiveLocale(value: unknown): UiLocale | undefined {
+	if (value !== 'en' && value !== 'es') {return undefined;}
+	if (locale !== value) {locale = value;}
+	return locale;
+}
+
 export function getLocale(): UiLocale {
 	return locale;
 }

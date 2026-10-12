@@ -18,7 +18,7 @@ import { transformFormulaReferences, validateFormulaExpression } from './formula
 import { serializeXlsxEdits } from './formats/xlsx';
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import type { CellEditDeltaMessage, WorkbookCellEditDeltaMessage } from './protocol';
-import { t } from './i18n';
+import { getLocale, t } from './i18n';
 
 export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<SpreadsheetDocument> {
 	static readonly viewType = 'spreadsheet-viewer.editor';
@@ -221,6 +221,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 				return;
 			}
 			if (isWebviewReadyMessage(message)) {
+				void panel.webview.postMessage({ type: 'localization', locale: getLocale() });
 				this.formulaSnapshotsSent.delete(panel);
 				const restored = this.readViewState(document.uri, 'edit');
 				const workbook = document.xlsx ?? document.ods;
@@ -1560,7 +1561,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 		const nonce = randomBase64(16);
 
 		return `<!DOCTYPE html>
-<html lang="es">
+<html lang="${getLocale()}">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1574,120 +1575,120 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			<div id="file-heading-row">
 				<div id="file-heading">
 					<h1>${escapeHtml(fileName)}${modeLabel ? ` · ${escapeHtml(modeLabel)}` : ''}</h1>
-					<p id="dimensions" role="status">Cargando archivo…</p>
+					<p id="dimensions" role="status">${escapeHtml(t('ui.loading'))}</p>
 				</div>
 				<div id="header-actions">
-					<div id="copy-actions"${showCopyButtons ? '' : ' hidden'} aria-label="Copiar selección">
-						<span class="copy-control"><button id="copy-raw" type="button" aria-describedby="copy-raw-tooltip">Copiar</button><span id="copy-raw-tooltip" role="tooltip">Copia la selección cruda en TSV; las fórmulas se copian como expresión.</span></span>
-						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">Copiar mostrado</button><span id="copy-displayed-tooltip" role="tooltip">Copia los valores tal como aparecen en la cuadrícula con la presentación actual.</span></span>
-						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">Copiar con encabezados</button><span id="copy-headers-tooltip" role="tooltip">Añade las etiquetas de columna al inicio; no modifica el archivo.</span></span>
+					<div id="copy-actions"${showCopyButtons ? '' : ' hidden'} aria-label="${escapeHtml(t('html.runtime.001'))}">
+						<span class="copy-control"><button id="copy-raw" type="button" aria-describedby="copy-raw-tooltip">${escapeHtml(t('html.runtime.000'))}</button><span id="copy-raw-tooltip" role="tooltip">${escapeHtml(t('html.runtime.002'))}</span></span>
+						<span class="copy-control"><button id="copy-displayed" type="button" aria-describedby="copy-displayed-tooltip">${escapeHtml(t('html.runtime.003'))}</button><span id="copy-displayed-tooltip" role="tooltip">${escapeHtml(t('html.runtime.004'))}</span></span>
+						<span class="copy-control"><button id="copy-headers" type="button" aria-describedby="copy-headers-tooltip">${escapeHtml(t('html.runtime.005'))}</button><span id="copy-headers-tooltip" role="tooltip">${escapeHtml(t('html.runtime.006'))}</span></span>
 					</div>
-					<div id="move-actions" data-setting-visible="${showMoveActions}"${showMoveActions ? '' : ' hidden'} aria-label="Mover celdas"><span class="copy-control"><button id="cut-range" type="button" aria-describedby="cut-range-tooltip">Cortar rango</button><span id="cut-range-tooltip" role="tooltip">Marca el rango seleccionado para moverlo dentro de esta hoja; copiar al portapapeles nunca borra el origen.</span></span><span class="copy-control"><button id="move-range" type="button" aria-describedby="move-range-tooltip" hidden>Pegar movimiento</button><span id="move-range-tooltip" role="tooltip">Mueve el rango marcado a la celda seleccionada después de confirmar; puedes deshacerlo.</span></span><output id="move-status" aria-live="polite"></output></div>
-					<div id="xlsx-style-actions" data-setting-visible="${showStyleActions}"${showStyleActions ? '' : ' hidden'} aria-label="Formato XLSX"><span class="copy-control"><button id="toggle-xlsx-style" type="button" aria-describedby="toggle-xlsx-style-tooltip" aria-expanded="false">Formato XLSX</button><span id="toggle-xlsx-style-tooltip" role="tooltip">Abre las acciones para aplicar estilos simples, combinar celdas o guardar los paneles fijos en el libro.</span></span><div id="xlsx-style-controls" hidden><span class="copy-control"><button id="xlsx-style-bold" type="button" aria-describedby="xlsx-style-bold-tooltip">Negrita</button><span id="xlsx-style-bold-tooltip" role="tooltip">Activa o quita negrita en todas las celdas seleccionadas; conserva sus demás estilos y valores.</span></span><span class="copy-control"><button id="xlsx-style-italic" type="button" aria-describedby="xlsx-style-italic-tooltip">Cursiva</button><span id="xlsx-style-italic-tooltip" role="tooltip">Activa o quita cursiva en todas las celdas seleccionadas; conserva sus demás estilos y valores.</span></span><span class="copy-control"><button id="xlsx-style-wrap" type="button" aria-describedby="xlsx-style-wrap-tooltip">Ajustar texto</button><span id="xlsx-style-wrap-tooltip" role="tooltip">Activa o quita el ajuste de texto en las celdas seleccionadas.</span></span><span class="copy-control"><button id="xlsx-style-left" type="button" aria-describedby="xlsx-style-left-tooltip">Izquierda</button><span id="xlsx-style-left-tooltip" role="tooltip">Alinea horizontalmente las celdas seleccionadas a la izquierda.</span></span><span class="copy-control"><button id="xlsx-style-center" type="button" aria-describedby="xlsx-style-center-tooltip">Centrar</button><span id="xlsx-style-center-tooltip" role="tooltip">Centra horizontalmente las celdas seleccionadas.</span></span><span class="copy-control"><button id="xlsx-style-right" type="button" aria-describedby="xlsx-style-right-tooltip">Derecha</button><span id="xlsx-style-right-tooltip" role="tooltip">Alinea horizontalmente las celdas seleccionadas a la derecha.</span></span><label><span class="control-label">Formato numérico</span><select id="xlsx-number-format" aria-label="Formato numérico"><option>General</option><option>0</option><option>0.00</option><option>#,##0</option><option>#,##0.00</option><option>0%</option><option>0.00%</option><option>mm-dd-yy</option></select></label><span class="copy-control"><button id="xlsx-style-apply-number" type="button" aria-describedby="xlsx-style-apply-number-tooltip">Aplicar formato</button><span id="xlsx-style-apply-number-tooltip" role="tooltip">Aplica al rango el formato numérico de la lista. Solo se ofrecen formatos incorporados de Excel.</span></span><span class="copy-control"><button id="xlsx-style-merge" type="button" aria-describedby="xlsx-style-merge-tooltip">Combinar</button><span id="xlsx-style-merge-tooltip" role="tooltip">Combina el rango rectangular seleccionado si las celdas cubiertas están vacías.</span></span><span class="copy-control"><button id="xlsx-style-unmerge" type="button" aria-describedby="xlsx-style-unmerge-tooltip">Separar</button><span id="xlsx-style-unmerge-tooltip" role="tooltip">Separa exactamente la combinación seleccionada; no inventa ni modifica valores.</span></span><span class="copy-control"><button id="xlsx-style-freeze" type="button" aria-describedby="xlsx-style-freeze-tooltip">Guardar paneles fijos</button><span id="xlsx-style-freeze-tooltip" role="tooltip">Guarda en el XLSX las filas y columnas que ahora están fijadas en la vista del editor.</span></span></div><output id="xlsx-style-status" aria-live="polite"></output></div>
-					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">Rellenar rango</button><span id="fill-range-tooltip" role="tooltip">Repite los valores o extiende una serie numérica en el rango seleccionado. Muestra una vista previa antes de aplicar; se puede deshacer.</span></span>
-					<div id="formula-fill-actions" data-setting-visible="${showFormulaFillActions}"${showFormulaFillActions ? '' : ' hidden'}><span class="copy-control"><button id="fill-formulas-down" type="button" aria-describedby="fill-formulas-down-tooltip">Rellenar fórmulas abajo</button><span id="fill-formulas-down-tooltip" role="tooltip">Copia las fórmulas de la primera fila seleccionada hacia abajo y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span><span class="copy-control"><button id="fill-formulas-right" type="button" aria-describedby="fill-formulas-right-tooltip">Rellenar fórmulas derecha</button><span id="fill-formulas-right-tooltip" role="tooltip">Copia las fórmulas de la primera columna seleccionada hacia la derecha y ajusta referencias relativas. Revisa la vista previa antes de aplicar.</span></span></div>
-					<span id="table-actions-control" data-setting-visible="${showTableActions}"${showTableActions ? '' : ' hidden'} class="copy-control"><button id="create-xlsx-table" type="button" aria-describedby="create-xlsx-table-tooltip">Crear tabla XLSX</button><span id="create-xlsx-table-tooltip" role="tooltip">Crea una tabla nativa de Excel en el rango seleccionado si sus encabezados y el libro pasan la validación. No cambia los valores.</span></span>
-					<span class="copy-control"><button id="toggle-display-mode" type="button"${showDisplayModeButton ? '' : ' hidden'} aria-describedby="display-mode-tooltip">Ver libro</button><span id="display-mode-tooltip" role="tooltip">Alterna entre valores crudos y su formato numérico de presentación. No modifica el archivo.</span></span>
-					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="Acciones de registros CSV">
-						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">Insertar fila</button><span id="insert-row-tooltip" role="tooltip">Inserta un registro vacío debajo de la fila seleccionada. La operación se puede deshacer.</span></span>
-						<span class="copy-control"><button id="append-row" type="button" aria-describedby="append-row-tooltip">Añadir fila</button><span id="append-row-tooltip" role="tooltip">Añade un registro vacío al final de los datos CSV. La operación se puede deshacer.</span></span>
-						<span class="copy-control"><button id="delete-row" type="button" aria-describedby="delete-row-tooltip">Eliminar fila(s)</button><span id="delete-row-tooltip" role="tooltip">Elimina el registro o rango seleccionado después de pedir confirmación.</span></span>
+					<div id="move-actions" data-setting-visible="${showMoveActions}"${showMoveActions ? '' : ' hidden'} aria-label="${escapeHtml(t('html.runtime.007'))}"><span class="copy-control"><button id="cut-range" type="button" aria-describedby="cut-range-tooltip">${escapeHtml(t('html.runtime.008'))}</button><span id="cut-range-tooltip" role="tooltip">${escapeHtml(t('html.runtime.009'))}</span></span><span class="copy-control"><button id="move-range" type="button" aria-describedby="move-range-tooltip" hidden>${escapeHtml(t('html.runtime.010'))}</button><span id="move-range-tooltip" role="tooltip">${escapeHtml(t('html.runtime.011'))}</span></span><output id="move-status" aria-live="polite"></output></div>
+					<div id="xlsx-style-actions" data-setting-visible="${showStyleActions}"${showStyleActions ? '' : ' hidden'} aria-label="${escapeHtml(t('html.runtime.012'))}"><span class="copy-control"><button id="toggle-xlsx-style" type="button" aria-describedby="toggle-xlsx-style-tooltip" aria-expanded="false">${escapeHtml(t('html.runtime.012'))}</button><span id="toggle-xlsx-style-tooltip" role="tooltip">${escapeHtml(t('html.runtime.013'))}</span></span><div id="xlsx-style-controls" hidden><span class="copy-control"><button id="xlsx-style-bold" type="button" aria-describedby="xlsx-style-bold-tooltip">${escapeHtml(t('html.runtime.014'))}</button><span id="xlsx-style-bold-tooltip" role="tooltip">${escapeHtml(t('html.runtime.015'))}</span></span><span class="copy-control"><button id="xlsx-style-italic" type="button" aria-describedby="xlsx-style-italic-tooltip">${escapeHtml(t('html.runtime.016'))}</button><span id="xlsx-style-italic-tooltip" role="tooltip">${escapeHtml(t('html.runtime.017'))}</span></span><span class="copy-control"><button id="xlsx-style-wrap" type="button" aria-describedby="xlsx-style-wrap-tooltip">${escapeHtml(t('html.runtime.018'))}</button><span id="xlsx-style-wrap-tooltip" role="tooltip">${escapeHtml(t('html.runtime.019'))}</span></span><span class="copy-control"><button id="xlsx-style-left" type="button" aria-describedby="xlsx-style-left-tooltip">${escapeHtml(t('html.runtime.020'))}</button><span id="xlsx-style-left-tooltip" role="tooltip">${escapeHtml(t('html.runtime.021'))}</span></span><span class="copy-control"><button id="xlsx-style-center" type="button" aria-describedby="xlsx-style-center-tooltip">${escapeHtml(t('html.runtime.022'))}</button><span id="xlsx-style-center-tooltip" role="tooltip">${escapeHtml(t('html.runtime.023'))}</span></span><span class="copy-control"><button id="xlsx-style-right" type="button" aria-describedby="xlsx-style-right-tooltip">${escapeHtml(t('html.runtime.024'))}</button><span id="xlsx-style-right-tooltip" role="tooltip">${escapeHtml(t('html.runtime.025'))}</span></span><label><span class="control-label">${escapeHtml(t('html.runtime.026'))}</span><select id="xlsx-number-format" aria-label="${escapeHtml(t('html.runtime.026'))}"><option>General</option><option>0</option><option>0.00</option><option>#,##0</option><option>#,##0.00</option><option>0%</option><option>0.00%</option><option>mm-dd-yy</option></select></label><span class="copy-control"><button id="xlsx-style-apply-number" type="button" aria-describedby="xlsx-style-apply-number-tooltip">${escapeHtml(t('html.runtime.027'))}</button><span id="xlsx-style-apply-number-tooltip" role="tooltip">${escapeHtml(t('html.runtime.028'))}</span></span><span class="copy-control"><button id="xlsx-style-merge" type="button" aria-describedby="xlsx-style-merge-tooltip">${escapeHtml(t('html.runtime.029'))}</button><span id="xlsx-style-merge-tooltip" role="tooltip">${escapeHtml(t('html.runtime.030'))}</span></span><span class="copy-control"><button id="xlsx-style-unmerge" type="button" aria-describedby="xlsx-style-unmerge-tooltip">${escapeHtml(t('html.runtime.031'))}</button><span id="xlsx-style-unmerge-tooltip" role="tooltip">${escapeHtml(t('html.runtime.032'))}</span></span><span class="copy-control"><button id="xlsx-style-freeze" type="button" aria-describedby="xlsx-style-freeze-tooltip">${escapeHtml(t('html.runtime.033'))}</button><span id="xlsx-style-freeze-tooltip" role="tooltip">${escapeHtml(t('html.runtime.034'))}</span></span></div><output id="xlsx-style-status" aria-live="polite"></output></div>
+					<span id="fill-actions-control"${showFillActions ? '' : ' hidden'} class="copy-control"><button id="fill-range" type="button" aria-describedby="fill-range-tooltip">${escapeHtml(t('html.runtime.035'))}</button><span id="fill-range-tooltip" role="tooltip">${escapeHtml(t('html.runtime.036'))}</span></span>
+					<div id="formula-fill-actions" data-setting-visible="${showFormulaFillActions}"${showFormulaFillActions ? '' : ' hidden'}><span class="copy-control"><button id="fill-formulas-down" type="button" aria-describedby="fill-formulas-down-tooltip">${escapeHtml(t('html.runtime.037'))}</button><span id="fill-formulas-down-tooltip" role="tooltip">${escapeHtml(t('html.runtime.038'))}</span></span><span class="copy-control"><button id="fill-formulas-right" type="button" aria-describedby="fill-formulas-right-tooltip">${escapeHtml(t('html.runtime.039'))}</button><span id="fill-formulas-right-tooltip" role="tooltip">${escapeHtml(t('html.runtime.040'))}</span></span></div>
+					<span id="table-actions-control" data-setting-visible="${showTableActions}"${showTableActions ? '' : ' hidden'} class="copy-control"><button id="create-xlsx-table" type="button" aria-describedby="create-xlsx-table-tooltip">${escapeHtml(t('html.runtime.041'))}</button><span id="create-xlsx-table-tooltip" role="tooltip">${escapeHtml(t('html.runtime.042'))}</span></span>
+					<span class="copy-control"><button id="toggle-display-mode" type="button"${showDisplayModeButton ? '' : ' hidden'} aria-describedby="display-mode-tooltip">${escapeHtml(t('html.runtime.043'))}</button><span id="display-mode-tooltip" role="tooltip">${escapeHtml(t('html.runtime.044'))}</span></span>
+					<div id="csv-row-actions"${showCsvRowActions ? '' : ' hidden'} aria-label="${escapeHtml(t('html.runtime.045'))}">
+						<span class="copy-control"><button id="insert-row" type="button" aria-describedby="insert-row-tooltip">${escapeHtml(t('html.runtime.046'))}</button><span id="insert-row-tooltip" role="tooltip">${escapeHtml(t('html.runtime.047'))}</span></span>
+						<span class="copy-control"><button id="append-row" type="button" aria-describedby="append-row-tooltip">${escapeHtml(t('html.runtime.048'))}</button><span id="append-row-tooltip" role="tooltip">${escapeHtml(t('html.runtime.049'))}</span></span>
+						<span class="copy-control"><button id="delete-row" type="button" aria-describedby="delete-row-tooltip">${escapeHtml(t('html.runtime.050'))}</button><span id="delete-row-tooltip" role="tooltip">${escapeHtml(t('html.runtime.051'))}</span></span>
 					</div>
-					<span class="copy-control"><button id="toggle-xlsx-structure" type="button"${showXlsxStructureActions ? '' : ' hidden'} aria-describedby="xlsx-structure-tooltip" aria-expanded="false">Estructura XLSX</button><span id="xlsx-structure-tooltip" role="tooltip">Abre las acciones para insertar o eliminar filas y columnas. Se habilitan solo en libros compatibles.</span></span>
-					<div id="xlsx-structure-actions" hidden aria-label="Acciones estructurales XLSX">
+					<span class="copy-control"><button id="toggle-xlsx-structure" type="button"${showXlsxStructureActions ? '' : ' hidden'} aria-describedby="xlsx-structure-tooltip" aria-expanded="false">${escapeHtml(t('html.runtime.052'))}</button><span id="xlsx-structure-tooltip" role="tooltip">${escapeHtml(t('html.runtime.053'))}</span></span>
+					<div id="xlsx-structure-actions" hidden aria-label="${escapeHtml(t('html.runtime.052'))}">
 						<p id="xlsx-structure-status" role="status" aria-live="polite"></p>
-						<span class="copy-control"><button id="insert-xlsx-row-before" type="button" aria-describedby="insert-xlsx-row-before-tooltip">Insertar fila arriba</button><span id="insert-xlsx-row-before-tooltip" role="tooltip">Inserta una fila vacía antes de la fila seleccionada.</span></span>
-						<span class="copy-control"><button id="insert-xlsx-row-after" type="button" aria-describedby="insert-xlsx-row-after-tooltip">Insertar fila abajo</button><span id="insert-xlsx-row-after-tooltip" role="tooltip">Inserta una fila vacía después de la fila seleccionada.</span></span>
-						<span class="copy-control"><button id="delete-xlsx-row" type="button" aria-describedby="delete-xlsx-row-tooltip">Eliminar fila(s)</button><span id="delete-xlsx-row-tooltip" role="tooltip">Elimina las filas seleccionadas después de pedir confirmación.</span></span>
-						<span class="copy-control"><button id="insert-xlsx-column-before" type="button" aria-describedby="insert-xlsx-column-before-tooltip">Insertar columna izquierda</button><span id="insert-xlsx-column-before-tooltip" role="tooltip">Inserta una columna vacía a la izquierda de la columna seleccionada.</span></span>
-						<span class="copy-control"><button id="insert-xlsx-column-after" type="button" aria-describedby="insert-xlsx-column-after-tooltip">Insertar columna derecha</button><span id="insert-xlsx-column-after-tooltip" role="tooltip">Inserta una columna vacía a la derecha de la columna seleccionada.</span></span>
-						<span class="copy-control"><button id="delete-xlsx-column" type="button" aria-describedby="delete-xlsx-column-tooltip">Eliminar columna(s)</button><span id="delete-xlsx-column-tooltip" role="tooltip">Elimina las columnas seleccionadas después de pedir confirmación.</span></span>
+						<span class="copy-control"><button id="insert-xlsx-row-before" type="button" aria-describedby="insert-xlsx-row-before-tooltip">${escapeHtml(t('html.runtime.054'))}</button><span id="insert-xlsx-row-before-tooltip" role="tooltip">${escapeHtml(t('html.runtime.055'))}</span></span>
+						<span class="copy-control"><button id="insert-xlsx-row-after" type="button" aria-describedby="insert-xlsx-row-after-tooltip">${escapeHtml(t('html.runtime.056'))}</button><span id="insert-xlsx-row-after-tooltip" role="tooltip">${escapeHtml(t('html.runtime.057'))}</span></span>
+						<span class="copy-control"><button id="delete-xlsx-row" type="button" aria-describedby="delete-xlsx-row-tooltip">${escapeHtml(t('html.runtime.050'))}</button><span id="delete-xlsx-row-tooltip" role="tooltip">${escapeHtml(t('html.runtime.058'))}</span></span>
+						<span class="copy-control"><button id="insert-xlsx-column-before" type="button" aria-describedby="insert-xlsx-column-before-tooltip">${escapeHtml(t('html.runtime.059'))}</button><span id="insert-xlsx-column-before-tooltip" role="tooltip">${escapeHtml(t('html.runtime.060'))}</span></span>
+						<span class="copy-control"><button id="insert-xlsx-column-after" type="button" aria-describedby="insert-xlsx-column-after-tooltip">${escapeHtml(t('html.runtime.061'))}</button><span id="insert-xlsx-column-after-tooltip" role="tooltip">${escapeHtml(t('html.runtime.062'))}</span></span>
+						<span class="copy-control"><button id="delete-xlsx-column" type="button" aria-describedby="delete-xlsx-column-tooltip">${escapeHtml(t('html.runtime.063'))}</button><span id="delete-xlsx-column-tooltip" role="tooltip">${escapeHtml(t('html.runtime.064'))}</span></span>
 					</div>
-					<button id="toggle-comments" type="button" hidden>Mostrar comentarios</button>
+					<button id="toggle-comments" type="button" hidden>${escapeHtml(t('html.runtime.065'))}</button>
 					<span id="clear-sort-control">
-						<button id="clear-sort" type="button" data-setting-enabled="${showClearSortButton}" aria-describedby="clear-sort-tooltip" hidden>Limpiar orden</button>
-						<span id="clear-sort-tooltip" role="tooltip">Quita todos los criterios de orden activos. No modifica los datos del archivo.</span>
+						<button id="clear-sort" type="button" data-setting-enabled="${showClearSortButton}" aria-describedby="clear-sort-tooltip" hidden>${escapeHtml(t('html.runtime.066'))}</button>
+						<span id="clear-sort-tooltip" role="tooltip">${escapeHtml(t('html.runtime.067'))}</span>
 					</span>
 					<span id="reset-view-control">
-						<button id="reset-view" type="button"${showResetButton ? '' : ' hidden'} aria-describedby="reset-view-tooltip">Restablecer vista</button>
-						<span id="reset-view-tooltip" role="tooltip">Borra búsqueda, orden y filtros, y restaura selección y tamaños. No modifica el archivo ni descarta el borrador.</span>
+						<button id="reset-view" type="button"${showResetButton ? '' : ' hidden'} aria-describedby="reset-view-tooltip">${escapeHtml(t('html.runtime.068'))}</button>
+						<span id="reset-view-tooltip" role="tooltip">${escapeHtml(t('html.runtime.069'))}</span>
 					</span>
-					<p id="save-status" role="status" aria-live="polite">Sin cambios</p>
-					<button id="reload-file" type="button" title="Volver a leer el archivo desde disco">↻ Recargar</button>
+					<p id="save-status" role="status" aria-live="polite">${escapeHtml(t('html.runtime.070'))}</p>
+					<button id="reload-file" type="button" title="${escapeHtml(t('html.runtime.071'))}">↻ ${escapeHtml(t('html.runtime.072'))}</button>
 				</div>
 			</div>
 			<p id="format-note" role="status"></p>
 				<p id="sort-warning" role="status" aria-live="polite"></p>
 		</header>
-		<nav id="navigation-bar" aria-label="Navegación de hoja y celda">
+		<nav id="navigation-bar" aria-label="${escapeHtml(t('html.runtime.073'))}">
 			<div id="sheet-control" class="navigation-group" data-actions-visible="${showSheetActions}" hidden>
-				<div id="sheet-tabs" role="tablist" aria-label="Hojas del libro"></div>
-				<label class="sheet-selector-fallback"><span class="control-label">Ir a hoja</span><select id="sheet-selector" aria-label="Hoja activa"></select></label>
-				<div id="sheet-actions"${showSheetActions ? '' : ' hidden'}><span class="copy-control"><button id="add-xlsx-sheet" type="button" aria-describedby="add-xlsx-sheet-tooltip">Añadir hoja</button><span id="add-xlsx-sheet-tooltip" role="tooltip">Añade una hoja vacía al libro con un nombre válido y único.</span></span><span class="copy-control"><button id="rename-xlsx-sheet" type="button" aria-describedby="rename-xlsx-sheet-tooltip">Renombrar hoja</button><span id="rename-xlsx-sheet-tooltip" role="tooltip">Cambia el nombre de la hoja seleccionada si el libro cumple el perfil seguro.</span></span><span class="copy-control"><button id="delete-xlsx-sheet" type="button" aria-describedby="delete-xlsx-sheet-tooltip">Eliminar hoja</button><span id="delete-xlsx-sheet-tooltip" role="tooltip">Elimina la hoja seleccionada después de confirmarlo; el libro conserva una hoja visible.</span></span></div>
+				<div id="sheet-tabs" role="tablist" aria-label="${escapeHtml(t('html.runtime.074'))}"></div>
+				<label class="sheet-selector-fallback"><span class="control-label">${escapeHtml(t('html.runtime.075'))}</span><select id="sheet-selector" aria-label="${escapeHtml(t('html.runtime.076'))}"></select></label>
+				<div id="sheet-actions"${showSheetActions ? '' : ' hidden'}><span class="copy-control"><button id="add-xlsx-sheet" type="button" aria-describedby="add-xlsx-sheet-tooltip">${escapeHtml(t('html.runtime.077'))}</button><span id="add-xlsx-sheet-tooltip" role="tooltip">${escapeHtml(t('html.runtime.078'))}</span></span><span class="copy-control"><button id="rename-xlsx-sheet" type="button" aria-describedby="rename-xlsx-sheet-tooltip">${escapeHtml(t('html.runtime.079'))}</button><span id="rename-xlsx-sheet-tooltip" role="tooltip">${escapeHtml(t('html.runtime.080'))}</span></span><span class="copy-control"><button id="delete-xlsx-sheet" type="button" aria-describedby="delete-xlsx-sheet-tooltip">${escapeHtml(t('html.runtime.081'))}</button><span id="delete-xlsx-sheet-tooltip" role="tooltip">${escapeHtml(t('html.runtime.082'))}</span></span></div>
 				<output id="sheet-state-status" aria-live="polite"></output>
 			</div>
 			<div id="cell-navigation" class="navigation-group">
-				<label class="control-label" for="cell-reference-input">Ir a celda</label>
+				<label class="control-label" for="cell-reference-input">${escapeHtml(t('html.runtime.083'))}</label>
 				<div class="control-row">
 					<input id="cell-reference-input" type="text" placeholder="B54" autocomplete="off" spellcheck="false">
-					<button id="go-to-cell" type="button">Ir</button>
+					<button id="go-to-cell" type="button">${escapeHtml(t('html.runtime.084'))}</button>
 				</div>
 			</div>
 			<div id="search-navigation" class="navigation-group">
-				<label class="control-label" for="search-input">Buscar en la hoja</label>
+				<label class="control-label" for="search-input">${escapeHtml(t('html.runtime.085'))}</label>
 				<div class="control-row">
-					<input id="search-input" type="search" autocomplete="off" placeholder="Texto o valor">
-					<button id="previous-match" type="button" aria-label="Coincidencia anterior" title="Coincidencia anterior">↑</button>
-					<button id="next-match" type="button" aria-label="Coincidencia siguiente" title="Coincidencia siguiente">↓</button>
-					<output id="search-status" aria-live="polite">Escribe para buscar</output>
+					<input id="search-input" type="search" autocomplete="off" placeholder="${escapeHtml(t('html.runtime.115'))}">
+					<button id="previous-match" type="button" aria-label="${escapeHtml(t('html.runtime.086'))}" title="${escapeHtml(t('html.runtime.086'))}">↑</button>
+					<button id="next-match" type="button" aria-label="${escapeHtml(t('html.runtime.087'))}" title="${escapeHtml(t('html.runtime.087'))}">↓</button>
+					<output id="search-status" aria-live="polite">${escapeHtml(t('html.runtime.088'))}</output>
 				</div>
 				<div class="control-row search-options">
-					<label><input id="search-all-rows" type="checkbox"> Toda la hoja</label>
-					<button id="reveal-hidden-match" type="button" hidden>Mostrar coincidencia</button>
+					<label><input id="search-all-rows" type="checkbox"> ${escapeHtml(t('html.runtime.089'))}</label>
+					<button id="reveal-hidden-match" type="button" hidden>${escapeHtml(t('html.runtime.090'))}</button>
 				</div>
 			</div>
 		</nav>
 		<div id="projection-toolbar">
-			<div id="filter-chips" aria-label="Filtros activos"></div>
+			<div id="filter-chips" aria-label="${escapeHtml(t('html.runtime.091'))}"></div>
 			<output id="projection-count" aria-live="polite"></output>
 			<output id="filter-status" aria-live="polite"></output>
-			<div id="view-tools" aria-label="Ajustes de vista">
-				<label>Autoajuste
-					<select id="auto-fit-mode" aria-label="Columnas para autoajustar">
-						<option value="none">Desactivado</option><option value="first">Primera columna</option><option value="all" selected>Todas las columnas</option>
+			<div id="view-tools" aria-label="${escapeHtml(t('html.runtime.092'))}">
+				<label>${escapeHtml(t('html.runtime.093'))}
+					<select id="auto-fit-mode" aria-label="${escapeHtml(t('html.runtime.094'))}">
+						<option value="none">${escapeHtml(t('html.runtime.095'))}</option><option value="first">${escapeHtml(t('html.runtime.096'))}</option><option value="all" selected>${escapeHtml(t('html.runtime.097'))}</option>
 					</select>
 				</label>
 				<span id="auto-fit-control">
-					<button id="auto-fit-columns" type="button" aria-describedby="auto-fit-tooltip">Autoajustar</button>
-					<span id="auto-fit-tooltip" role="tooltip">Ajusta el ancho de la primera columna o de todas, según la opción elegida. Con Desactivado no cambia los anchos.</span>
+					<button id="auto-fit-columns" type="button" aria-describedby="auto-fit-tooltip">${escapeHtml(t('html.runtime.098'))}</button>
+					<span id="auto-fit-tooltip" role="tooltip">${escapeHtml(t('html.runtime.099'))}</span>
 				</span>
-				<label><input id="wrap-cells" type="checkbox"> Ajustar texto</label>
-				<label>Filas fijas <input id="freeze-rows" type="number" min="0" max="50" value="0" aria-label="Cantidad de filas fijas"></label>
-				<label>Columnas fijas <input id="freeze-columns" type="number" min="0" max="256" value="0" aria-label="Cantidad de columnas fijas"></label>
+				<label><input id="wrap-cells" type="checkbox"> ${escapeHtml(t('html.runtime.018'))}</label>
+				<label>${escapeHtml(t('html.runtime.100'))} <input id="freeze-rows" type="number" min="0" max="50" value="0" aria-label="${escapeHtml(t('html.runtime.102'))}"></label>
+				<label>${escapeHtml(t('html.runtime.101'))} <input id="freeze-columns" type="number" min="0" max="256" value="0" aria-label="${escapeHtml(t('html.runtime.103'))}"></label>
 			</div>
 		</div>
-		<section id="filter-popover" role="dialog" aria-label="Filtrar columna" hidden></section>
+		<section id="filter-popover" role="dialog" aria-label="${escapeHtml(t('html.runtime.104'))}" hidden></section>
 		<section id="selection" aria-live="polite">
 			<div id="selection-meta">
-				<strong id="cell-reference">Sin selección</strong>
-				<p id="cell-state" data-state="empty">Selecciona una celda para ver su contenido.</p>
+				<strong id="cell-reference">${escapeHtml(t('html.runtime.105'))}</strong>
+				<p id="cell-state" data-state="empty">${escapeHtml(t('html.runtime.106'))}</p>
 			</div>
 			<div id="selection-value">
-				<span class="control-label">Valor de la celda</span>
+				<span class="control-label">${escapeHtml(t('html.runtime.107'))}</span>
 				<pre id="cell-value"></pre>
 			</div>
 			<div id="cell-editor-group">
-				<label id="formula-mode-control"${showFormulaEditing ? '' : ' hidden'}><input id="formula-edit-mode" type="checkbox" data-setting-enabled="${showFormulaEditing}" aria-describedby="formula-mode-tooltip"> Editar como fórmula <span id="formula-mode-tooltip" role="tooltip">Habilita la edición o creación explícita de una fórmula XLSX. La sintaxis se valida antes de guardarla.</span></label>
-				<label id="cell-edit-label" class="control-label" for="cell-editor">Editar valor crudo</label>
-				<textarea id="cell-editor" rows="2" spellcheck="false" aria-label="Editar valor crudo" disabled></textarea>
+				<label id="formula-mode-control"${showFormulaEditing ? '' : ' hidden'}><input id="formula-edit-mode" type="checkbox" data-setting-enabled="${showFormulaEditing}" aria-describedby="formula-mode-tooltip"> ${escapeHtml(t('html.runtime.108'))} <span id="formula-mode-tooltip" role="tooltip">${escapeHtml(t('html.runtime.109'))}</span></label>
+				<label id="cell-edit-label" class="control-label" for="cell-editor">${escapeHtml(t('html.runtime.110'))}</label>
+				<textarea id="cell-editor" rows="2" spellcheck="false" aria-label="${escapeHtml(t('html.runtime.110'))}" disabled></textarea>
 				<div id="formula-assistance-controls" data-setting-enabled="${showFormulaAssistance}"${showFormulaAssistance ? '' : ' hidden'}>
-					<span><button id="pick-formula-reference" type="button" aria-pressed="false" aria-describedby="pick-formula-reference-tooltip">Insertar referencia seleccionada</button><span id="pick-formula-reference-tooltip" role="tooltip">Activa el modo y haz clic en una celda para insertar su referencia sin cambiar el borrador de fórmula.</span></span>
-					<div id="formula-completions" role="listbox" aria-label="Funciones compatibles" hidden></div>
+					<span><button id="pick-formula-reference" type="button" aria-pressed="false" aria-describedby="pick-formula-reference-tooltip">${escapeHtml(t('html.runtime.111'))}</button><span id="pick-formula-reference-tooltip" role="tooltip">${escapeHtml(t('html.runtime.112'))}</span></span>
+					<div id="formula-completions" role="listbox" aria-label="${escapeHtml(t('html.runtime.113'))}" hidden></div>
 				</div>
-				<button id="apply-cell-edit" type="button" disabled>Aplicar</button>
+				<button id="apply-cell-edit" type="button" disabled>${escapeHtml(t('html.runtime.116'))}</button>
 			</div>
 		</section>
-		<div id="grid-scroll" aria-label="Vista de tabla" tabindex="0">
+		<div id="grid-scroll" aria-label="${escapeHtml(t('html.runtime.114'))}" tabindex="0">
 			<div id="grid-root" data-workbook-appearance="${showWorkbookAppearance}"></div>
 		</div>
 	</main>
@@ -1696,8 +1697,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomEditorProvider<Sp
 			if (!(event.target instanceof HTMLScriptElement)) {return;}
 			const dimensions = document.getElementById('dimensions');
 			const status = document.getElementById('save-status');
-			if (dimensions) {dimensions.textContent = 'No se pudo iniciar la tabla.';}
-			if (status) {status.textContent = 'No se pudo cargar la interfaz: ' + event.target.src; status.classList.add('save-error');}
+			if (dimensions) {dimensions.textContent = ${JSON.stringify(t('webview.startup.failed'))};}
+			if (status) {status.textContent = ${JSON.stringify(t('webview.startup.error', ''))} + event.target.src; status.classList.add('save-error');}
 		}, true);
 	</script>
 	<script nonce="${nonce}" src="${scriptUri}"></script>

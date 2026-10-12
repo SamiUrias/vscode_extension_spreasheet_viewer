@@ -7,7 +7,7 @@ import type { CsvDataMessage, ExtensionToWebviewMessage, SelectSheetMessage, Web
 import { odsColumnDimensions, odsRowDimensions, xlsxColumnDimensions, xlsxRowDimensions } from './formats/view-metadata';
 import { createHeaderSignature, ViewStateRepository, type ViewStateV1 } from './view-state';
 import { delimiterForCsvResource } from './csv-dialect';
-import { t } from './i18n';
+import { getLocale, t } from './i18n';
 
 type PreviewMode = 'disk' | 'buffer' | 'csv-text';
 type HtmlFactory = (uri: vscode.Uri, webview: vscode.Webview, title?: string) => string;
@@ -154,6 +154,7 @@ export class SpreadsheetPreviewProvider implements vscode.Disposable {
 		panel.webview.onDidReceiveMessage((message: unknown) => {
 			if (isReadyMessage(message)) {
 				session.ready = true;
+				void panel.webview.postMessage({ type: 'localization', locale: getLocale() });
 				const restored = this.readViewState(session);
 				const workbook = session.spreadsheet?.xlsx ?? session.spreadsheet?.ods;
 				const restoredIndex = workbook?.sheets.findIndex((_, index) => previewSheetId(session, index) === restored?.activeSheetId) ?? -1;

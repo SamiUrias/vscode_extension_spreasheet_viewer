@@ -1,4 +1,4 @@
-import type { CellVisualStyle, CsvDataMessage, FormulaEvaluation, ReloadStateMessage, RestoreViewStateMessage, SaveStateMessage, WebviewToExtensionMessage, XlsxDataMessage } from '../protocol';
+import { localizationLocaleFromMessage, type CellVisualStyle, type CsvDataMessage, type FormulaEvaluation, type ReloadStateMessage, type RestoreViewStateMessage, type SaveStateMessage, type WebviewToExtensionMessage, type XlsxDataMessage } from '../protocol';
 import type { CellEditDeltaMessage, WorkbookCellEditDeltaMessage } from '../protocol';
 import { parseCellRangeBounds, resolveCellReference } from '../cell-reference';
 import { applyCsvCellEditDelta, applyWorkbookCellEditDelta } from '../cell-delta';
@@ -15,12 +15,14 @@ import { presentXlsxCell, type CellPresentation } from './presentation';
 import { completeFormulaFunction, getFormulaCompletions, insertFormulaReference, type FormulaCompletion } from '../formula-assistance';
 import { cycleSort, getColumnFilterValues, projectRows, validateColumnFilters, type ColumnFilter, type FilterCondition, type FilterOperator, type SortCriterion } from '../table-view';
 import type { SheetViewState, ViewMode } from '../view-state';
-import { t, type MessageKey } from '../i18n';
+import { configureLocale, getLocale, setActiveLocale, t, type MessageKey } from '../i18n';
+
+configureLocale(document.documentElement.lang);
 
 window.addEventListener('error', event => {
 	const detail = event.target instanceof HTMLScriptElement
-		? `No se pudo cargar el script de la tabla: ${event.target.src}`
-		: event.message || 'Error inesperado en la interfaz.';
+		? t('webview.startup.scriptLoad', event.target.src)
+		: event.message || t('webview.startup.unexpected');
 	showStartupError(detail);
 }, true);
 window.addEventListener('unhandledrejection', event => {
@@ -31,9 +33,9 @@ window.addEventListener('unhandledrejection', event => {
 function showStartupError(detail: string): void {
 	const dimensions = document.querySelector<HTMLElement>('#dimensions');
 	const status = document.querySelector<HTMLElement>('#save-status');
-	if (dimensions) {dimensions.textContent = 'La interfaz de la tabla encontró un error.';}
+	if (dimensions) {dimensions.textContent = t('webview.startup.failed');}
 	if (status) {
-		status.textContent = `Error de la interfaz: ${detail}`;
+		status.textContent = t('webview.startup.error', detail);
 		status.classList.add('save-error');
 	}
 	console.error('Spreadsheet Viewer webview error:', detail);
@@ -217,6 +219,12 @@ gridScroll.setAttribute('role', 'grid');
 gridScroll.setAttribute('aria-label', 'Tabla de datos. Usa las flechas para moverte entre celdas y escribe para editar la celda seleccionada.');
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
+	const locale = localizationLocaleFromMessage(event.data);
+	if (locale) {
+		setActiveLocale(locale);
+		if (document.documentElement.lang !== locale) {document.documentElement.lang = locale;}
+		return;
+	}
 	if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'formulaWasmData'
 		&& 'requestId' in event.data && Number.isInteger(event.data.requestId)) {
 		const message = event.data as { requestId: number; wasmBase64?: unknown; error?: unknown };
@@ -649,7 +657,7 @@ async function calculateFormulasInWorker(data: XlsxDataMessage, generation: numb
 		const includeWasmBytes = !formulaWasmWorkerReady;
 		worker.postMessage({
 			type: 'calculate', requestId, workbookBase64: data.workbookBase64!, revision: data.revision,
-			sheetName: data.sheetName, kinds: data.cellKinds, rows: data.rows, wasmBaseUri, wasmBase64: includeWasmBytes ? wasmBase64 : '',
+			sheetName: data.sheetName, kinds: data.cellKinds, rows: data.rows, locale: getLocale(), wasmBaseUri, wasmBase64: includeWasmBytes ? wasmBase64 : '',
 		});
 		if (includeWasmBytes) {
 			formulaWasmWorkerReady = true;
@@ -2825,7 +2833,7 @@ function updateReloadState(message: ReloadStateMessage): void {
 function requiredElement<T extends HTMLElement>(selector: string): T {
 	const element = document.querySelector<T>(selector);
 	if (!element) {
-		throw new Error(`No se encontró el elemento requerido ${selector}.`);
+		throw new Error(t('webview.requiredElement', selector));
 	}
 	return element;
 }
