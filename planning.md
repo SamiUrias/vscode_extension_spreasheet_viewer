@@ -1230,6 +1230,8 @@ Cada ampliación se divide por familia: especificar relaciones/nodos/refs afecta
 
 **Reejecución de empaquetado/worker 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:web-target` pasó después de ejecutar `package` (tipos, lint y tres bundles de producción); `test:formula-fill-host` pasó preview/cancelación, referencias relativas, transacción única, undo/redo, guardado y rechazo de revisión obsoleta por el handler. Los warnings de webpack solo reflejan los WASM de 9.26 MiB. Los bundles/assets quedan verificados, pero no se ha ejecutado la extensión en VS Code Web real.
 
+**Reejecución de dialectos y suite general 2026-10-11 (America/Guatemala, Node 24.21.0):** `test:csv-dialect` pasó. `npm test` completó compilación, tipos y lint, pero el runner de `@vscode/test-electron` terminó con `SIGABRT` al inicializar VS Code 1.141.0 dentro del sandbox, antes de ejecutar Mocha; la suite general no se cuenta como pasada en este intento. La ejecución completa externa que pasó 113 tests/1 pending está registrada arriba; este intento no modifica ese resultado previo ni prueba que el binario de producto falle.
+
 ### 15.10. Fixtures y escenarios que cierran la v2
 
 Crear fixtures pequeños propios y expectativas explícitas. No comparar únicamente lectura contra escritura usando el mismo parser como oracle: comparar bytes CSV, XML/partes XLSX/ODS y resultados independientes, y reabrir con aplicaciones externas cuando la semántica lo requiera.
