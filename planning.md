@@ -1049,7 +1049,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 
 - [x] Cachear alturas y offsets por identidad de proyección y revisión de dimensiones de fila.
 - [x] Probar orden de filas, offsets acumulados y revisión tras resize; `test:grid-layout` pasa y también cubre ventanas horizontales y merges. Reejecutado el 2026-10-11 con Node 24.21.0: pasan seis grupos para muestreo, altura de filas, offsets proyectados, virtualización/overscan, columnas congeladas y merges.
-- [ ] Medir scroll con datos de 35 290 filas en Extension Host y registrar p50/p95. Los tests verifican offsets y caché, pero no miden render, interacción ni rendimiento visual.
+- [ ] Medición parcial en Extension Host con `/private/tmp/sv-v2-19b-scroll.csv` (35,290 filas incluidas cabecera, 5 columnas, 1,300,004 bytes; 35,289 registros de datos): el viewer carga todas las filas y responde a desplazamientos repetidos hasta superar el registro 2,300. Treinta llamadas CUA `scroll` tuvieron p50 67.5 ms y p95 83.6 ms; son tiempos de despacho de entrada, no presentación del frame. Treinta ciclos `scroll + snapshot de accesibilidad` tuvieron p50 981.9 ms y p95 1,226.7 ms, dominados en parte por capturar/serializar el árbol del Host. **Pendiente para cerrar el criterio:** medir render y scroll real con temporización del navegador/DevTools y documentar p50/p95 de frames; las cifras CUA no se anuncian como latencia visual. Estrategia: repetir el fixture con grabación Performance de Chromium/DevTools o instrumentación `requestAnimationFrame` en Webview sin modificar datos ni incluir el árbol AX.
 
 #### V2-19B2 — Virtualización horizontal
 
