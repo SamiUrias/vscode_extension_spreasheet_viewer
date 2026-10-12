@@ -928,7 +928,9 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Presentar formatos numéricos, fechas de sistema 1900/1904 y booleanos en una matriz derivada; preservar números largos, fórmulas, celdas sin estilo y datos originales.
 - [x] Mantener edición/copia raw sin formato y hacer que **Copiar mostrado** use la presentación activa.
 - [x] Documentar configuración, alcance y licencia; añadir `npm run test:presentation` para las cinco pruebas unitarias de presentación y tipos/lint/build. Reejecutado el 2026-10-11 con Node 24.21.0: pasan porcentajes, sistemas 1900/1904/serial 60, fechas UTC/booleanos, precisión/fórmulas y valores ODS sin cambios.
-- [ ] Verificar manualmente el toggle **Ver libro**, la actualización del modo en paneles abiertos y **Copiar mostrado** en la UI. `test:presentation` cubre el formateo, no el flujo de interacción de la Webview.
+- [x] Verificar manualmente el toggle **Ver libro** y **Copiar mostrado** en la UI. En Extension Host, `formula_matrix_1900.xlsx` mostró `46026` en crudo y `1/4/26` en modo libro; **Copiar mostrado** pegó `1/4/26` en búsqueda; volver a crudo restauró `46026` y el estado siguió **Sin cambios**. No se comprobó la actualización simultánea de paneles duplicados.
+
+**Revisión 2026-10-11 (America/Guatemala):** la prueba manual confirmó el ciclo de presentación y copia sin alterar el documento. La actualización simultánea de paneles abiertos sigue pendiente.
 
 #### V2-16B — Libro visual, hojas y combinaciones
 
