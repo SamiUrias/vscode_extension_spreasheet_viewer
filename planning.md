@@ -959,7 +959,7 @@ Las tarjetas V2-00A a V2-21 tienen implementación local; V2-22A y V2-22B están
 - [x] Renderizar merges horizontales y verticales bajo virtualización manteniendo visible el ancla, sin dibujar sobre el corte de panes; covered cells llevan a su ancla.
 - [x] Pasar a vista tabular cuando el sort/filtro reordena o quita filas, mostrar la razón y restaurar merges al volver a orden original; exponer notas y destinos de hyperlinks como texto inerte.
 - [x] Exponer `spreadsheet-viewer.view.showWorkbookAppearance` (booleano, default `true`) en `settings.json`, documentarlo y actualizarlo en paneles abiertos.
-- [ ] Verificación visual pendiente en tema claro/oscuro/alto contraste y editor estrecho; los tests no certifican contraste, legibilidad ni anclaje de merges en la UI.
+- [ ] Verificación visual parcial pendiente: en Extension Host con tema oscuro, `formula_excel.xlsx` mostró el encabezado de la hoja `Datos` en negrita y conservó una fila fija (metadata visible: `Filas fijas 1`). No hay merges en este fixture; falta revisar anclaje de merges, temas claro/alto contraste y editor estrecho. Los tests no certifican esos aspectos visuales.
 
 #### V2-17A — Estructura XLSX segura en modelo
 
